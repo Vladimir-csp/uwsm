@@ -1,0 +1,142 @@
+#!/bin/sh
+
+SUPPORTED_COMPOSITORS='wayfire|sway'
+
+COMPOSITOR="${1:-wayfire}"
+
+if ! echo "$COMPOSITOR" | grep -qE "^(${SUPPORTED_COMPOSITORS})$"
+then
+	echo "$COMPOSITOR not supported, choose $SUPPORTED_COMPOSITORS" >&2
+	exit 1
+fi 
+
+echo "Compositor: $COMPOSITOR"
+
+#### Basic environment
+export XDG_CONFIG_DIRS=/etc/xdg
+export XDG_CONFIG_HOME="${HOME}/.config"
+export XDG_DATA_DIRS=/usr/local/share:/usr/share
+export XDG_DATA_HOME="${HOME}/.local/share"
+export XDG_CACHE_HOME="${HOME}/.cache"
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+# wayfire
+if [ "$COMPOSITOR" = "wayfire" ]
+then
+	# XDG env
+	export XDG_CURRENT_DESKTOP=Wayfire
+	export XDG_SESSION_DESKTOP=Wayfire
+	export XDG_MENU_PREFIX=wayfire-
+
+	# detect disabled xwayland
+	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${XDG_CONFIG_HOME}/wayfire.ini"
+	then
+		XWAYLAND=false
+	else
+		XWAYLAND=true
+	fi
+
+	#### find global config and make updateable default out of it
+	# initial point
+	GLOBAL_CONFIG=/usr/share/doc/wayfire/examples/wayfire.ini
+	LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
+	
+	# iterate in $XDG_CONFIG_DIRS
+	OIFS="$IFS"
+	IFS=":"
+	for CD in $XDG_CONFIG_DIRS
+	do
+		IFS="$OIFS"
+		if [ -f "${CD}/wayfire.ini" ]
+		then
+			GLOBAL_CONFIG="${CD}/wayfire.ini"
+			break
+		fi
+	done
+	IFS="$OIFS"
+
+	if [ -n "$GLOBAL_CONFIG" ]
+	then
+		# copy to stage location if not already there
+		if [ ! -f "${LOCAL_CONFIG}.upstream" ]
+		then
+			cp -av "$GLOBAL_CONFIG" "${LOCAL_CONFIG}.upstream"
+		fi
+		# if local config is missing or has the same content as stage, update
+		if [ ! -f "${LOCAL_CONFIG}" -o "$(cat "${LOCAL_CONFIG}.upstream")" = "$(cat "${LOCAL_CONFIG}")" ]
+		then
+			cp -av "${LOCAL_CONFIG}.upstream" "$LOCAL_CONFIG"
+		fi
+		# update stage
+		cp -av "$GLOBAL_CONFIG" "${LOCAL_CONFIG}.upstream"
+	fi
+
+# sway
+elif [ "$COMPOSITOR" = "sway" ]
+then
+	# XDG env
+	export XDG_SESSION_DESKTOP=Sway
+	export XDG_CURRENT_DESKTOP=Sway
+	export XDG_MENU_PREFIX=Sway-
+
+	# detect disabled xwayland
+	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config"
+	then
+		XWAYLAND=false
+	else
+		XWAYLAND=true
+	fi
+fi
+
+if [ "${XWAYLAND:-true}" = "false" ]
+then
+	echo XWayland is disabled
+	export QT_QPA_PLATFORMTHEME=gtk3
+else
+	# for Qt-GTK theming.
+	export GTK2_RC_FILES="$HOME/.gtkrc-2.0:/etc/gtk-2.0/gtkrc"
+	export QT_QPA_PLATFORMTHEME=gtk2
+	echo XWayland is enabled
+fi
+
+# fix Lightdm influence
+unset DESKTOP_SESSION
+unset GDMSESSION
+
+# for reducing GTK stderr spam
+export NO_AT_BRIDGE=1
+
+# wayland enablement env
+export CLUTTER_BACKEND=wayland
+export SDL_VIDEODRIVER=wayland
+#export QT_QPA_PLATFORM="wayland;xcb"
+export QT_QPA_PLATFORM="wayland"
+
+# possibly not needed
+export GDK_BACKEND=wayland
+export WINIT_UNIX_BACKEND=wayland
+
+# lang
+export LANG=ru_RU.UTF-8
+export LC_TIME=en_DK.UTF-8
+
+systemctl --user import-environment \
+  CLUTTER_BACKEND \
+  GDK_BACKEND \
+  GTK2_RC_FILES \
+  NO_AT_BRIDGE \
+  QT_QPA_PLATFORM \
+  QT_QPA_PLATFORMTHEME \
+  SDL_VIDEODRIVER \
+  WINIT_UNIX_BACKEND \
+  XDG_CACHE_HOME \
+  XDG_CONFIG_DIRS \
+  XDG_CONFIG_HOME \
+  XDG_CURRENT_DESKTOP \
+  XDG_DATA_DIRS \
+  XDG_DATA_HOME \
+  XDG_MENU_PREFIX \
+  XDG_RUNTIME_DIR \
+  XDG_SESSION_DESKTOP
+
+exec systemd-cat -t "$COMPOSITOR" "$COMPOSITOR"
