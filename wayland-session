@@ -139,4 +139,4 @@ systemctl --user import-environment \
   XDG_RUNTIME_DIR \
   XDG_SESSION_DESKTOP
 
-exec systemd-cat -t "$COMPOSITOR" "$COMPOSITOR"
+exec systemd-cat -t "${COMPOSITOR}-$(id -u)${XDG_VTNR:+-}${XDG_VTNR:+-}" "$COMPOSITOR"
