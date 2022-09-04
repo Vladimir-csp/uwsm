@@ -1,91 +1,421 @@
 #!/bin/sh
 
-SUPPORTED_COMPOSITORS='wayfire|sway'
+# Universal wayland desktop session manager
+# Runs selected compositor with extendable tweaks
+# Manages systemd environment and targets along the way
+# Inspired by and uses some parts from https://github.com/xdbob/sway-services
 
-COMPOSITOR="${1:-wayfire}"
+SUPPORTED_COMPOSITORS=''
+SUPPORTED_MODES='start|intstart|stop|cleanup|check'
+PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
+PLUGIN_DIR_NAME=wayland-session-plugins
+COMPOSITOR_ARGS=''
+
+DEFAULT_CLEANUP_VARS="DISPLAY
+WAYLAND_DISPLAY
+XDG_SESSION_ID
+XDG_CURRENT_DESKTOP
+XDG_SESSION_DESKTOP
+XDG_MENU_PREFIX"
+
+show_help() {
+	
+	cat <<- EOF
+		Generic wayland session manager with systemd integration
+		Usage:
+		  $(basename $0) ${SUPPORTED_COMPOSITORS:-supported_compositor} ${SUPPORTED_MODES}
+		
+		$(basename $0) manages session for selected wayland compositor.
+		Modes:
+		  start:     starts session of selected compositor
+		  intstart:  integrated exec of self in start mode with systemd-cat for logging
+		  stop:      cleanly shuts down session or cleans up environment
+		  cleanup:   cleans up environment from systemd user manager
+		  check:     checks supported arguments
+	EOF
+}
+
+add_supported_compositor() {
+	if echo "$1" | grep -qE "^[a-zA-Z0-9_-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	then
+		SUPPORTED_COMPOSITORS="${SUPPORTED_COMPOSITORS}${SUPPORTED_COMPOSITORS:+|}${1}"
+		echo "Added supported compositor $1"
+	else
+		echo "Attempted to add invalid compositor name" >&2
+		echo "$1" >&2
+		exit 1
+	fi
+}
+
+# load plugins
+# plugins should contain only add_supported_compositor call and functions:
+# example:
+#  add_supported_compositor sway
+#  quirks_sway() {
+#    # here additional vars can be set for session manager
+#    # like IMPORT_BACK_VARS and COMPOSITOR_ARGS
+#    # or exported for session
+#    # or config preparations and other actions performed
+#  ...
+#  }
+#  exit_sway() {
+#    # requires SWAYSOCK in IMPORT_BACK_VARS
+#    swaymsg exit
+#  }
+
+OIFS="$IFS"
+IFS=":"
+for PLUGIN_PREFIX_PATH in $PLUGIN_PREFIX_PATHS
+do
+	if [ -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
+	then
+		IFS="
+"
+		for PFILE in $(
+			find "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/"\
+			  -mindepth 1 -maxdepth 1 \
+			  -type f -name "*.plugin.sh"
+		)
+		do
+			echo Loading "$PFILE"
+			. "$PFILE"
+		done
+	fi
+done
+IFS="$OIFS"
+
+COMPOSITOR="${1:?Requires a compositor as first argument: $SUPPORTED_COMPOSITORS}"
+MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
+
+CHECKOUT=true
+
+if ! echo "$MODE" | grep -qE "^(${SUPPORTED_MODES})$"
+then
+	echo "Mode $MODE not supported, choose $SUPPORTED_MODES" >&2
+	CHECKOUT=false
+fi
+
+if ! echo "$COMPOSITOR" | grep -qE "^[a-zA-Z0-9_-]+$"
+then
+	echo "Got malformed compositor name: $COMPOSITOR" >&2
+	CHECKOUT=false
+fi
+
+if ! [ -x "$(which "$COMPOSITOR")" ]
+then
+	echo "$COMPOSITOR is not an executable binary" >&2
+	CHECKOUT=false
+fi
 
 if ! echo "$COMPOSITOR" | grep -qE "^(${SUPPORTED_COMPOSITORS})$"
 then
-	echo "$COMPOSITOR not supported, choose $SUPPORTED_COMPOSITORS" >&2
-	exit 1
-fi 
+	echo "Compositor $COMPOSITOR not supported, choose $SUPPORTED_COMPOSITORS" >&2
+	CHECKOUT=false
+fi
 
-echo "Compositor: $COMPOSITOR"
-
-#### Basic environment
-export XDG_CONFIG_DIRS=/etc/xdg
-export XDG_CONFIG_HOME="${HOME}/.config"
-export XDG_DATA_DIRS=/usr/local/share:/usr/share
-export XDG_DATA_HOME="${HOME}/.local/share"
-export XDG_CACHE_HOME="${HOME}/.cache"
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-
-# wayfire
-if [ "$COMPOSITOR" = "wayfire" ]
+# exit with error on failed checks
+if [ "$CHECKOUT" = "false" ]
 then
-	# XDG env
-	export XDG_CURRENT_DESKTOP=Wayfire
-	export XDG_SESSION_DESKTOP=Wayfire
-	export XDG_MENU_PREFIX=wayfire-
+	exit 1
+elif [ "$MODE" = "intstart" ]
+then
+	echo "Doing integrated start"
+	exec "$0" "$COMPOSITOR" start
+fi
 
-	# detect disabled xwayland
-	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${XDG_CONFIG_HOME}/wayfire.ini"
-	then
-		XWAYLAND=false
-	else
-		XWAYLAND=true
-	fi
+inject_targets() {
+	# injects customized targets bound to systemd special graphical targets
+	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
+	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- 'EOF'
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=Session services which should run early before the %I session is brought up
+		Documentation=man:systemd.special(7)
+		Requires=basic.target
+		#StopWhenUnneeded=yes
+		BindsTo=graphical-session-pre.target
+		Before=graphical-session-pre.target
+	EOF
+	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- 'EOF'
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=Session of %I Wayland Window Manager
+		Documentation=man:systemd.special(7)
+		Requires=wayland-session-pre@%i.target
+		After=wayland-session-pre@%i.target
+		#StopWhenUnneeded=yes
+		BindsTo=graphical-session.target
+		Before=graphical-session.target
+	EOF
+	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- 'EOF'
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=XDG Autostart of %I Wayland Window Manager
+		Documentation=man:systemd.special(7)
+		Requires=wayland-session@%i.target
+		After=wayland-session@%i.target
+		#StopWhenUnneeded=yes
+		BindsTo=xdg-desktop-autostart.target
+		Before=xdg-desktop-autostart.target
+	EOF
+	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-watchdog@.service"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-watchdog@.service" <<- 'EOF'
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=Watchdog for %I Wayland Window Manager
+		Documentation=man:systemd.service(7)
+		PartOf=wayland-session@%i.target
+		Before=wayland-session@%i.target
+		#StopWhenUnneeded=yes
+		[Service]
+		Type=oneshot
+		RemainAfterExit=yes
+		ExecStart=/bin/true
+		ExecStop=-/bin/sh -c "kill $(cat "${XDG_RUNTIME_DIR}/%I_pid")"
+	EOF
+	echo Reloading systemd user manager
+	systemctl --user daemon-reload
+}
 
-	#### find global config and make updateable default out of it
-	# initial point
-	GLOBAL_CONFIG=/usr/share/doc/wayfire/examples/wayfire.ini
-	LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
-	
-	# iterate in $XDG_CONFIG_DIRS
-	OIFS="$IFS"
-	IFS=":"
-	for CD in $XDG_CONFIG_DIRS
+list_active_part_of() {
+	# find active units boud to target $1, echo back
+	for unit in $(systemctl --user --no-legend --plain list-units --state=active | cut -d ' ' -f 1)
 	do
-		IFS="$OIFS"
-		if [ -f "${CD}/wayfire.ini" ]
+		partof="$(systemctl --user show -p PartOf --value -- "$unit")"
+		if [ "$partof" = "$1" ]
 		then
-			GLOBAL_CONFIG="${CD}/wayfire.ini"
-			break
+			echo "$unit"
 		fi
 	done
-	IFS="$OIFS"
+}
 
-	if [ -n "$GLOBAL_CONFIG" ]
-	then
-		# copy to stage location if not already there
-		if [ ! -f "${LOCAL_CONFIG}.upstream" ]
+start_and_check() {
+	echo "Starting $1"
+	systemctl --user start "$1"
+	echo "Checking status of $1"
+	COUNTDOWN=10
+	while true
+	do
+		if [ "$COUNTDOWN" -le "0" ]
 		then
-			cp -av "$GLOBAL_CONFIG" "${LOCAL_CONFIG}.upstream"
+			echo Timed Out
+			return 1
+		else
+			systemctl --user is-active "$1" && return 0
 		fi
-		# if local config is missing or has the same content as stage, update
-		if [ ! -f "${LOCAL_CONFIG}" -o "$(cat "${LOCAL_CONFIG}.upstream")" = "$(cat "${LOCAL_CONFIG}")" ]
+		echo "Retries left: $COUNTDOWN"
+		sleep 1
+		COUNTDOWN=$(( $COUNTDOWN - 1 ))
+	done
+}
+
+import_back_vars() {
+	# takes specific vars from systemd user manager environment and exports locally
+	for VAR in DISPLAY WAYLAND_DISPLAY ${IMPORT_BACK_VARS}
+	do
+		VAR_VALUE=$(
+			systemctl --user show-environment \
+			  | grep -E "^${VAR}="
+		)
+		if [ -n "$VAR_VALUE" ]
 		then
-			cp -av "${LOCAL_CONFIG}.upstream" "$LOCAL_CONFIG"
+			echo "Exporting back $VAR"
+			export $VAR_VALUE && echo "success"
 		fi
-		# update stage
-		cp -av "$GLOBAL_CONFIG" "${LOCAL_CONFIG}.upstream"
-	fi
+	done
+}
 
-# sway
-elif [ "$COMPOSITOR" = "sway" ]
-then
-	# XDG env
-	export XDG_SESSION_DESKTOP=Sway
-	export XDG_CURRENT_DESKTOP=Sway
-	export XDG_MENU_PREFIX=Sway-
-
-	# detect disabled xwayland
-	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config"
+cleanup_vars() {
+	# remove previously added environment vars and exit
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env" ]
 	then
-		XWAYLAND=false
+		CLEANUP_VARS=$(
+			cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env" | tr ' ' '\n' | sort -u
+		)
+		echo "Cleaning up previously added variables:"
+		echo "$CLEANUP_VARS"
+		systemctl --user unset-environment $CLEANUP_VARS
+		CLEANUP_RC=$?
+		rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env"
 	else
-		XWAYLAND=true
+		CLEANUP_VARS=$(
+			echo ${DEFAULT_CLEANUP_VARS} ${IMPORT_BACK_VARS} | tr ' ' '\n' | sort -u
+		)
+		echo "Cleaning up default seat of variables:"
+		echo "$CLEANUP_VARS"
+		systemctl --user unset-environment $CLEANUP_VARS
+		CLEANUP_RC=$?
 	fi
+}
+
+shutdown_target() {
+	# stop target and wait for children to die
+	echo "Shutting down $1"
+	if systemctl --user is-active -q "$1"
+	then
+		systemctl --user stop "$1"
+	fi
+
+	echo "Waiting for depending units to go down"
+	COUNTER=10
+	while true
+	do
+		if  [ -z "$(list_active_part_of "$1")" ] && ! systemctl --user is-active -q "$1" ]
+		then
+			echo "$1 is down"
+			return 0
+		elif [ "$COUNTER" -le "0" ]
+		then
+			echo "timed out waiting for children of $1 to die" >&2
+			return 1
+		fi
+		echo "Retries left: $COUNTDOWN"
+		sleep 1
+		COUNTER=$(( $COUNTER - 1))
+	done
+}
+
+shutdown() {
+	echo "Shutting down $COMPOSITOR session"
+	# stop autostart target
+	shutdown_target "wayland-session-xdg-autostart@${COMPOSITOR}.target"
+
+	shutdown_target "wayland-session@${COMPOSITOR}.target"
+
+	if [ -z "$COMPOSITOR_RC" ]
+	then
+		# kill compositor
+		if type "exit_${COMPOSITOR}" >/dev/null
+		then
+			"exit_${COMPOSITOR}" || kill ${COMPOSITOR_PID}
+		else
+			kill ${COMPOSITOR_PID}
+		fi
+		wait $COMPOSITOR_PID
+		COMPOSITOR_RC=$?
+	fi
+	if [ "$COMPOSITOR_RC" != "0" ]
+	then
+		echo "Compositor exited with RC $COMPOSITOR_RC" >&2
+	fi
+
+	shutdown_target "wayland-session-pre@${COMPOSITOR}.target"
+
+	cleanup_vars
+
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+	then
+		rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+	fi
+
+	exit "$COMPOSITOR_RC"
+}
+
+# dir for saving var states
+# (var is used just in this script for consistency in case of later overrides)
+__LOCAL_RUNTIME_DIR__="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+if [ "$MODE" = "check" ]
+then
+	# exit successfully after supported compositors check
+	echo "Checked for compositor ${COMPOSITOR}"
+	exit 0
+
+elif [ "$MODE" = "cleanup" ]
+then
+	# remove previously added environment vars and exit
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+	then
+		MAINPID=$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid")
+		if kill -0 $MAINPID 2>/dev/null
+		then
+			echo "Main process $MAINPID is still running, run with 'stop' instead" >&2
+			exit 1
+		fi
+	fi
+	cleanup_vars
+	exit $CLEANUP_RC
+
+elif [ "$MODE" = "stop" ]
+then
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+	then
+		MAIN_PID=$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid")
+		echo Killing process $MAIN_PID
+		kill $MAIN_PID
+		KILL_RC=$?
+		if [ "$KILL_RC" = "0" ]
+		then
+			rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+			exit 0
+		else
+			echo "Kill returned $KILL_RC, cleaning up vars instead"
+			cleanup_vars
+			rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+			exit $CLEANUP_RC
+		fi
+	else
+		echo "Pidfile ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid not found, cleaning up vars instead"
+		cleanup_vars
+		exit $CLEANUP_RC
+	fi
+fi
+
+# continue with "start" mode
+
+# inject dynamic targets and watchdog service
+inject_targets
+
+# take full snapshot of initial env vars
+env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env"
+
+# save main pid
+echo $$ > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+
+#### Basic environment
+#. /etc/profile
+export PATH
+export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# contiune with "start" mode
+
+export XDG_CURRENT_DESKTOP="$COMPOSITOR"
+export XDG_SESSION_DESKTOP="$COMPOSITOR"
+export XDG_MENU_PREFIX="${COMPOSITOR}-"
+
+# iterate config dirs in increasing importance and load additional env
+ALL_XDG_CONFIG_DIRS_REV=''
+OIFS="$IFS"
+IFS=":"
+for CD in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
+do
+	# fill list in revers order
+	ALL_XDG_CONFIG_DIRS_REV="${ALL_XDG_CONFIG_DIRS_REV}${ALL_XDG_CONFIG_DIRS_REV:+:}${CD}"
+done
+for CD in ${ALL_XDG_CONFIG_DIRS_REV}
+do
+	if [ -f "${CD}/${COMPOSITOR}/env" ]
+	then
+		echo "Loading environment from ${CD}/${COMPOSITOR}/env"
+		#set -a
+		. "${CD}/${COMPOSITOR}/env"
+		#set +a
+	fi
+done
+IFS="$OIFS"
+
+# apply quirks
+if type "quirks_${COMPOSITOR}" >/dev/null
+then
+	quirks_${COMPOSITOR}
 fi
 
 if [ "${XWAYLAND:-true}" = "false" ]
@@ -93,13 +423,14 @@ then
 	echo XWayland is disabled
 	export QT_QPA_PLATFORMTHEME=gtk3
 else
-	# for Qt-GTK theming.
+	echo XWayland is enabled
+	# for uniform Qt-GTK theming.
 	export GTK2_RC_FILES="$HOME/.gtkrc-2.0:/etc/gtk-2.0/gtkrc"
 	export QT_QPA_PLATFORMTHEME=gtk2
-	echo XWayland is enabled
 fi
 
 # fix Lightdm influence
+systemctl --user unset-environment DESKTOP_SESSION GDMSESSION
 unset DESKTOP_SESSION
 unset GDMSESSION
 
@@ -120,23 +451,116 @@ export WINIT_UNIX_BACKEND=wayland
 export LANG=ru_RU.UTF-8
 export LC_TIME=en_DK.UTF-8
 
-systemctl --user import-environment \
-  CLUTTER_BACKEND \
-  GDK_BACKEND \
-  GTK2_RC_FILES \
-  NO_AT_BRIDGE \
-  QT_QPA_PLATFORM \
-  QT_QPA_PLATFORMTHEME \
-  SDL_VIDEODRIVER \
-  WINIT_UNIX_BACKEND \
-  XDG_CACHE_HOME \
-  XDG_CONFIG_DIRS \
-  XDG_CONFIG_HOME \
-  XDG_CURRENT_DESKTOP \
-  XDG_DATA_DIRS \
-  XDG_DATA_HOME \
-  XDG_MENU_PREFIX \
-  XDG_RUNTIME_DIR \
-  XDG_SESSION_DESKTOP
+# From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
+# robustness: if the previous graphical session left some failed units,
+# reset them so that they don't break this startup
+for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f1 -d ' '); do
+	partof="$(systemctl --user show -p PartOf --value -- "$unit")"
+	for target in wayland-session@${COMPOSITOR}.target graphical-session.target; do
+		if [ "$partof" = "$target" ]; then
+			systemctl --user reset-failed "$unit"
+			break
+		fi
+	done
+done
 
-exec systemd-cat -t "${COMPOSITOR}-$(id -u)${XDG_VTNR:+-}${XDG_VTNR:+-}" "$COMPOSITOR"
+# take another snapshot of environment
+__LOCAL_RUNTIME_DIR__="/run/user/$(id -u)"
+env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_modified_env"
+
+# get names of changed env vars to upload to systemd user manager
+CHANGED_ENV=$(
+  comm -z -13 \
+    "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env" \
+    "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_modified_env" \
+    | cut -z -d '=' -f 1 \
+    | tr '\0' '\n' \
+    | grep -vE '^_$'
+)
+rm \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env" \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_modified_env"
+
+# find names of env vars not yet present in systemd user manager
+# and save for later cleanup
+# systemctl can not do zero-delimited output,
+# so at least try to anchor valid var names at newlines
+systemctl --user show-environment \
+  | grep -oE '^[a-zA-Z_][a-zA-Z0-9_]*=' \
+  | cut -d '=' -f 1 \
+  | sort > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env"
+env -0 \
+  | cut -z -d '=' -f 1 \
+  | sort -z \
+  | tr '\0' '\n' \
+  | grep -vE '^_$' \
+  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_shell_env"
+{
+	comm -13 \
+	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env" \
+	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_shell_env"
+	echo ${DEFAULT_CLEANUP_VARS} ${IMPORT_BACK_VARS} | tr ' ' '\n'
+} | sort -u > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env"
+
+rm \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env" \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_shell_env"
+
+cat << EOF
+modified environment vars:
+$CHANGED_ENV
+vars to be cleaned up after exit:
+$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env")
+EOF
+
+echo "Injecting environment vars to systemd user manager"
+systemctl --user import-environment XDG_SESSION_ID $CHANGED_ENV
+
+# cleanup conflicting vars
+systemctl --user unset-environment DISPLAY WAYLAND_DISPLAY ${IMPORT_BACK_VARS}
+
+echo "Declaring graphical-pre target"
+start_and_check "wayland-session-pre@${COMPOSITOR}.target"
+
+echo "Executing ${COMPOSITOR} compositor"
+systemd-cat -t "wayland-session-${COMPOSITOR}" -- ${COMPOSITOR} ${COMPOSITOR_ARGS} &
+COMPOSITOR_PID=$!
+
+# wait for DISPLAY or WAYLAND_DISPLAY to appear in systemd user manager env
+# or for compositor to exit early
+echo "Waiting for environment injection from compositor"
+CONFIRMATION_COUNT=10
+while true
+do
+	if ! kill -0 $COMPOSITOR_PID 2>/dev/null || [ "$CONFIRMATION_COUNT" -le "0" ]
+	then
+		echo "Compositor did not start or exited early, shutting down"
+		shutdown
+		break
+	elif systemctl --user show-environment | grep -qE '^(DISPLAY|WAYLAND_DISPLAY)='
+	then
+		echo "Environment injection confirmed"
+		break
+	fi
+	echo "Retries left: $CONFIRMATION_COUNT"
+	sleep 1
+	CONFIRMATION_COUNT=$(( $CONFIRMATION_COUNT - 1 ))
+done
+
+echo "Declare graphical target via watchdog session service"
+start_and_check "wayland-session-watchdog@${COMPOSITOR}.service"
+
+import_back_vars
+
+trap shutdown EXIT
+trap shutdown HUP
+trap shutdown TERM
+trap shutdown INT
+
+echo "Declaring autostart target"
+start_and_check "wayland-session-xdg-autostart@${COMPOSITOR}.target"
+
+echo "All management tasks completed"
+wait $COMPOSITOR_PID
+COMPOSITOR_RC=$!
+shutdown
