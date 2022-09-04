@@ -11,6 +11,15 @@ SUPPORTED_MODES='start|intstart|stop|cleanup|check'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 
+IMPORT_BACK_VARS="DISPLAY
+WAYLAND_DISPLAY"
+
+ALWAYS_EXPORT_VARS="XDG_SESSION_ID
+XDG_CURRENT_DESKTOP
+XDG_SESSION_DESKTOP
+XDG_MENU_PREFIX
+PATH"
+
 ALWAYS_CLEANUP_VARS="DISPLAY
 WAYLAND_DISPLAY
 XDG_SESSION_ID
@@ -57,28 +66,42 @@ add_supported_compositor() {
 
 add_import_back_vars() {
 	# takes space-separated var names
-	if echo "$1" | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	if echo $* | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
 	then
-		IMPORT_BACK_VARS="$(echo $IMPORT_BACK_VARS ${1} | tr ' ' '\n' | tr -s '\n')"
+		IMPORT_BACK_VARS="$(echo $IMPORT_BACK_VARS ${*} | tr ' ' '\n' | tr -s '\n')"
 		echo "Added import back vars:"
-		echo $1
+		echo $*
 	else
 		echo "Attempted to add invalid var names" >&2
-		echo "$1" >&2
+		echo $* >&2
+		exit 1
+	fi
+}
+
+add_always_export_vars() {
+	# takes space-separated var names
+	if echo $* | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	then
+		ALWAYS_EXPORT_VARS="$(echo $ALWAYS_EXPORT_VARS ${*} | tr ' ' '\n' | tr -s '\n')"
+		echo "Added always export vars:"
+		echo $*
+	else
+		echo "Attempted to add invalid var names" >&2
+		echo $* >&2
 		exit 1
 	fi
 }
 
 add_always_cleanup_vars() {
 	# takes space-separated var names
-	if echo "$1" | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	if echo $* | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
 	then
-		ALWAYS_CLEANUP_VARS="$(echo $ALWAYS_CLEANUP_VARS ${1} | tr ' ' '\n' | tr -s '\n')"
-		echo "Added cleanup vars:"
-		echo $1
+		ALWAYS_CLEANUP_VARS="$(echo $ALWAYS_CLEANUP_VARS ${*} | tr ' ' '\n' | tr -s '\n')"
+		echo "Added always cleanup vars:"
+		echo $*
 	else
 		echo "Attempted to add invalid var names" >&2
-		echo "$1" >&2
+		echo $* >&2
 		exit 1
 	fi
 }
@@ -167,7 +190,7 @@ then
 elif [ "$MODE" = "intstart" ]
 then
 	echo "Doing integrated start"
-	exec "$0" "$COMPOSITOR" start
+	exec systemd-cat -t "wayland-session-${COMPOSITOR}-manager" -- "$0" "$COMPOSITOR" start
 fi
 
 inject_targets() {
@@ -208,23 +231,21 @@ inject_targets() {
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
-	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-watchdog@.service"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-watchdog@.service" <<- 'EOF'
-		# injected by $(basename "$0"), do not edit
-		[Unit]
-		Description=Watchdog for %I Wayland Window Manager
-		Documentation=man:systemd.service(7)
-		PartOf=wayland-session@%i.target
-		Before=wayland-session@%i.target
-		#StopWhenUnneeded=yes
-		[Service]
-		Type=oneshot
-		RemainAfterExit=yes
-		ExecStart=/bin/true
-		ExecStop=-/bin/sh -c "kill $(cat "${XDG_RUNTIME_DIR}/%I_pid")"
-	EOF
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
+}
+
+compositor_scope_wrapper() {
+	# wraps compositor into scope
+	# adds stop propagation from graphical-pre.target
+	# and sets up logging
+	systemd-run --user --scope -u "wayland-session-${COMPOSITOR}" \
+	  --send-sighup \
+	  --property="StopPropagatedFrom=wayland-session-pre@${COMPOSITOR}.target" \
+	  -- \
+	  systemd-cat -t "wayland-session-${COMPOSITOR}" \
+	  -- \
+	  "$@"
 }
 
 list_active_part_of() {
@@ -261,7 +282,7 @@ start_and_check() {
 
 import_back_vars() {
 	# takes specific vars from systemd user manager environment and exports locally
-	for VAR in DISPLAY WAYLAND_DISPLAY ${IMPORT_BACK_VARS}
+	for VAR in ${IMPORT_BACK_VARS}
 	do
 		VAR_VALUE=$(
 			systemctl --user show-environment \
@@ -310,7 +331,7 @@ shutdown_target() {
 	COUNTER=10
 	while true
 	do
-		if  [ -z "$(list_active_part_of "$1")" ] && ! systemctl --user is-active -q "$1" ]
+		if  [ -z "$(list_active_part_of "$1")" ] && ! systemctl --user is-active -q "$1"
 		then
 			echo "$1 is down"
 			return 0
@@ -330,16 +351,33 @@ shutdown() {
 	# stop autostart target
 	shutdown_target "wayland-session-xdg-autostart@${COMPOSITOR}.target"
 
+	# stop graphical target
 	shutdown_target "wayland-session@${COMPOSITOR}.target"
 
+	# if haven't caught compositor RC yet, try to kill it
 	if [ -z "$COMPOSITOR_RC" ]
 	then
-		# kill compositor
-		if type "exit_${COMPOSITOR}" >/dev/null
+		if kill -0 $COMPOSITOR_PID 2>/dev/null
 		then
-			"exit_${COMPOSITOR}" || kill ${COMPOSITOR_PID}
+			# kill compositor via function if exists
+			if type "exit_${COMPOSITOR}" >/dev/null
+			then
+				"exit_${COMPOSITOR}"
+				EXIT_COMPOSITOR_RC=$?
+				if [ "$EXIT_COMPOSITOR_RC" != "0" ]
+				then
+					echo "Composer exit function returned $EXIT_COMPOSITOR_RC" >&2
+				fi
+			else
+				kill $COMPOSITOR_PID
+				KILL_COMPOSITOR_RC=$?
+				if [ "$KILL_COMPOSITOR_RC" != "0" ]
+				then
+					echo "Killing composer returned $KILL_COMPOSITOR_RC" >&2
+				fi
+			fi
 		else
-			kill ${COMPOSITOR_PID}
+			echo "Compositor is already dead"
 		fi
 		wait $COMPOSITOR_PID
 		COMPOSITOR_RC=$?
@@ -350,6 +388,13 @@ shutdown() {
 	fi
 
 	shutdown_target "wayland-session-pre@${COMPOSITOR}.target"
+
+	# check and terminate compositor scope
+	if systemctl --user is-active -q "wayland-session-${COMPOSITOR}.scope"
+	then
+		echo "wayland-session-${COMPOSITOR}.scope is still active, terminating directly"
+		shutdown_target "wayland-session-${COMPOSITOR}.scope"
+	fi
 
 	cleanup_vars
 
@@ -415,7 +460,7 @@ fi
 
 # continue with "start" mode
 
-# create runtime targets and watchdog service
+# create runtime targets
 inject_targets
 
 # take full snapshot of initial env vars
@@ -513,24 +558,40 @@ for unit in $(systemctl --user --no-legend --state=failed --plain list-units | c
 done
 
 # take another snapshot of environment
-__LOCAL_RUNTIME_DIR__="/run/user/$(id -u)"
-env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_modified_env"
+env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env"
 
-# get names of changed env vars to upload to systemd user manager
-CHANGED_ENV=$(
-  comm -z -13 \
-    "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env" \
-    "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_modified_env" \
-    | cut -z -d '=' -f 1 \
-    | tr '\0' '\n' \
-    | grep -vE '^_$'
+# save ${ALWAYS_EXPORT_VARS} for comparison with defined vars (systemctl will might error out on undefined)
+echo ${ALWAYS_EXPORT_VARS} \
+  | tr ' ' '\n' | tr -s '\n' \
+  | sort -u \
+  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_always_export_env_names"
+
+# just names from latest snapshot
+cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env" \
+  | cut -z -d '=' -f 1 \
+  | tr '\0' '\n' \
+  | grep -vE '^_$' \
+  | sort -u \
+  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names"
+
+# finalize export vars:
+# env vars modified since initial environment + defined subset of ${ALWAYS_EXPORT_VARS}
+EXPORT_VARS=$(
+	{
+		comm -z -13 \
+		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env" \
+		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env" \
+		    | cut -z -d '=' -f 1 \
+		    | tr '\0' '\n' \
+		    | grep -vE '^_$'
+		comm -12 \
+		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names" \
+		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_always_export_env_names"
+	} | sort -u
 )
-rm \
-  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env" \
-  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_modified_env"
 
 # find names of env vars not yet present in systemd user manager
-# and save for later cleanup
+# and save for later cleanup, also add ${ALWAYS_CLEANUP_VARS} and ${IMPORT_BACK_VARS}
 # systemctl can not do zero-delimited output,
 # so at least try to anchor valid var names at newlines
 systemctl --user show-environment \
@@ -550,12 +611,17 @@ env -0 \
 	echo ${ALWAYS_CLEANUP_VARS} ${IMPORT_BACK_VARS} | tr ' ' '\n'
 } | tr -s '\n' | sort -u > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env"
 
+# cleanup
 rm \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env" \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env" \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names" \
+  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_always_export_env_names" \
   "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env" \
   "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_shell_env"
 
-echo "modified environment vars:"
-for VAR in $CHANGED_ENV
+echo "Vars for export into systemd user manager (explicit and detected modified):"
+for VAR in $EXPORT_VARS
 do
 	echo "  $VAR"
 done
@@ -566,11 +632,11 @@ do
 done
 
 echo "Injecting environment vars to systemd user manager"
-systemctl --user import-environment XDG_SESSION_ID $CHANGED_ENV
+systemctl --user import-environment $EXPORT_VARS
 
 # cleanup conflicting vars
 systemctl --user unset-environment $(
-	echo ${IMPORT_BACK_VARS} ${ALWAYS_CLEANUP_VARS} \
+	echo ${IMPORT_BACK_VARS} \
 	 | tr ' ' '\n' | tr -s '\n' | sort -u
 )
 
@@ -579,7 +645,7 @@ start_and_check "wayland-session-pre@${COMPOSITOR}.target"
 
 # this function can be overridden in plugin by defining function named run_compositor_${COMPOSITOR}
 run_compositor() {
-	systemd-cat -t "wayland-session-${COMPOSITOR}" -- ${COMPOSITOR}
+	compositor_scope_wrapper ${COMPOSITOR}
 }
 echo "Executing ${COMPOSITOR} compositor"
 if type "run_compositor_${COMPOSITOR}" > /dev/null
@@ -597,26 +663,28 @@ echo "Waiting for environment injection from compositor"
 CONFIRMATION_COUNT=10
 while true
 do
+	sleep 1
 	if ! kill -0 $COMPOSITOR_PID 2>/dev/null || [ "$CONFIRMATION_COUNT" -le "0" ]
 	then
 		echo "Compositor did not start or exited early, shutting down"
 		shutdown
 		break
+	# TODO: maybe do this with ${IMPORT_BACK_VARS} instead of hardcode
 	elif systemctl --user show-environment | grep -qE '^(DISPLAY|WAYLAND_DISPLAY)='
 	then
 		echo "Environment injection confirmed"
 		break
 	fi
 	echo "Retries left: $CONFIRMATION_COUNT"
-	sleep 1
 	CONFIRMATION_COUNT=$(( $CONFIRMATION_COUNT - 1 ))
 done
 
-echo "Declare graphical target via watchdog session service"
-start_and_check "wayland-session-watchdog@${COMPOSITOR}.service"
+echo "Declaring graphical target"
+start_and_check "wayland-session@${COMPOSITOR}.target"
 
 import_back_vars
 
+# rig gracefull shutdown on signals
 trap shutdown EXIT
 trap shutdown HUP
 trap shutdown TERM
@@ -625,7 +693,7 @@ trap shutdown INT
 echo "Declaring autostart target"
 start_and_check "wayland-session-xdg-autostart@${COMPOSITOR}.target"
 
-echo "All management tasks completed"
+echo "All session startup tasks completed"
 wait $COMPOSITOR_PID
 COMPOSITOR_RC=$!
 shutdown
