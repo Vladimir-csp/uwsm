@@ -1,7 +1,8 @@
 #!/bin/sh
 
+
 # Universal wayland desktop session manager
-# Runs selected compositor with extendable tweaks
+# Runs selected compositor with plugin-extendable tweaks
 # Manages systemd environment and targets along the way
 # Inspired by and uses some parts from https://github.com/xdbob/sway-services
 
@@ -9,9 +10,8 @@ SUPPORTED_COMPOSITORS=''
 SUPPORTED_MODES='start|intstart|stop|cleanup|check'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
-COMPOSITOR_ARGS=''
 
-DEFAULT_CLEANUP_VARS="DISPLAY
+ALWAYS_CLEANUP_VARS="DISPLAY
 WAYLAND_DISPLAY
 XDG_SESSION_ID
 XDG_CURRENT_DESKTOP
@@ -19,8 +19,8 @@ XDG_SESSION_DESKTOP
 XDG_MENU_PREFIX"
 
 show_help() {
-	
 	cat <<- EOF
+		
 		Generic wayland session manager with systemd integration
 		Usage:
 		  $(basename $0) ${SUPPORTED_COMPOSITORS:-supported_compositor} ${SUPPORTED_MODES}
@@ -28,14 +28,22 @@ show_help() {
 		$(basename $0) manages session for selected wayland compositor.
 		Modes:
 		  start:     starts session of selected compositor
-		  intstart:  integrated exec of self in start mode with systemd-cat for logging
+		  intstart:  reexec self in start mode with full systemd-cat logging not just compositor
 		  stop:      cleanly shuts down session or cleans up environment
-		  cleanup:   cleans up environment from systemd user manager
+		             just killing main session manager process is also supported
+		  cleanup:   cleans up environment from systemd user manager if main process is not running
 		  check:     checks supported arguments
+		
+		Session manager also loads environment from \${COMPOSITOR}/env files in
+		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
+		
+		See code comments for documentation on plugins.
 	EOF
 }
 
+# functions for use in plugins
 add_supported_compositor() {
+	# takes simple executable name
 	if echo "$1" | grep -qE "^[a-zA-Z0-9_-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
 	then
 		SUPPORTED_COMPOSITORS="${SUPPORTED_COMPOSITORS}${SUPPORTED_COMPOSITORS:+|}${1}"
@@ -47,16 +55,49 @@ add_supported_compositor() {
 	fi
 }
 
+add_import_back_vars() {
+	# takes space-separated var names
+	if echo "$1" | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	then
+		IMPORT_BACK_VARS="$(echo $IMPORT_BACK_VARS ${1} | tr ' ' '\n' | tr -s '\n')"
+		echo "Added import back vars:"
+		echo $1
+	else
+		echo "Attempted to add invalid var names" >&2
+		echo "$1" >&2
+		exit 1
+	fi
+}
+
+add_always_cleanup_vars() {
+	# takes space-separated var names
+	if echo "$1" | grep -qE "^[a-zA-Z_][a-zA-Z0-9_]+( +[a-zA-Z_][a-zA-Z0-9_]+)*$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	then
+		ALWAYS_CLEANUP_VARS="$(echo $ALWAYS_CLEANUP_VARS ${1} | tr ' ' '\n' | tr -s '\n')"
+		echo "Added cleanup vars:"
+		echo $1
+	else
+		echo "Attempted to add invalid var names" >&2
+		echo "$1" >&2
+		exit 1
+	fi
+}
+
 # load plugins
 # plugins should contain only add_supported_compositor call and functions:
 # example:
 #  add_supported_compositor sway
 #  quirks_sway() {
-#    # here additional vars can be set for session manager
-#    # like IMPORT_BACK_VARS and COMPOSITOR_ARGS
-#    # or exported for session
-#    # or config preparations and other actions performed
-#  ...
+#    # here additional vars can be added set for session manager
+#    # like
+#    add_import_back_vars SWAYSOCK I3SOCK
+#    add_always_cleanup_vars SOME OTHER VARS
+#    # or export more vars for session
+#    # or prepare a config
+#    ...
+#  }
+#  run_compositor_sway() {
+#    sway --with any args --without systemd-cat logging
 #  }
 #  exit_sway() {
 #    # requires SWAYSOCK in IMPORT_BACK_VARS
@@ -77,12 +118,18 @@ do
 			  -type f -name "*.plugin.sh"
 		)
 		do
-			echo Loading "$PFILE"
+			echo "Loading plugin: $PFILE"
 			. "$PFILE"
 		done
 	fi
 done
 IFS="$OIFS"
+
+if echo "$*" | grep -qE '(^| )(--help|-h)( |$)'
+then
+	show_help
+	exit 0
+fi
 
 COMPOSITOR="${1:?Requires a compositor as first argument: $SUPPORTED_COMPOSITORS}"
 MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
@@ -232,21 +279,21 @@ cleanup_vars() {
 	# remove previously added environment vars and exit
 	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env" ]
 	then
-		CLEANUP_VARS=$(
+		VARS_FOR_CLEANUP=$(
 			cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env" | tr ' ' '\n' | sort -u
 		)
 		echo "Cleaning up previously added variables:"
-		echo "$CLEANUP_VARS"
-		systemctl --user unset-environment $CLEANUP_VARS
+		echo "$VARS_FOR_CLEANUP"
+		systemctl --user unset-environment $VARS_FOR_CLEANUP
 		CLEANUP_RC=$?
 		rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env"
 	else
-		CLEANUP_VARS=$(
-			echo ${DEFAULT_CLEANUP_VARS} ${IMPORT_BACK_VARS} | tr ' ' '\n' | sort -u
+		VARS_FOR_CLEANUP=$(
+			echo ${DEFAULT_VARS_FOR_CLEANUP} ${IMPORT_BACK_VARS} | tr ' ' '\n' | sort -u
 		)
 		echo "Cleaning up default seat of variables:"
-		echo "$CLEANUP_VARS"
-		systemctl --user unset-environment $CLEANUP_VARS
+		echo "$VARS_FOR_CLEANUP"
+		systemctl --user unset-environment $VARS_FOR_CLEANUP
 		CLEANUP_RC=$?
 	fi
 }
@@ -326,7 +373,7 @@ then
 
 elif [ "$MODE" = "cleanup" ]
 then
-	# remove previously added environment vars and exit
+	# abort cleanup if main process still running
 	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
 	then
 		MAINPID=$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid")
@@ -336,6 +383,8 @@ then
 			exit 1
 		fi
 	fi
+
+	# remove previously added environment vars and exit
 	cleanup_vars
 	exit $CLEANUP_RC
 
@@ -366,7 +415,7 @@ fi
 
 # continue with "start" mode
 
-# inject dynamic targets and watchdog service
+# create runtime targets and watchdog service
 inject_targets
 
 # take full snapshot of initial env vars
@@ -385,8 +434,6 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-# contiune with "start" mode
-
 export XDG_CURRENT_DESKTOP="$COMPOSITOR"
 export XDG_SESSION_DESKTOP="$COMPOSITOR"
 export XDG_MENU_PREFIX="${COMPOSITOR}-"
@@ -402,6 +449,7 @@ do
 done
 for CD in ${ALL_XDG_CONFIG_DIRS_REV}
 do
+	IFS="$OIFS"
 	if [ -f "${CD}/${COMPOSITOR}/env" ]
 	then
 		echo "Loading environment from ${CD}/${COMPOSITOR}/env"
@@ -499,32 +547,49 @@ env -0 \
 	comm -13 \
 	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env" \
 	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_shell_env"
-	echo ${DEFAULT_CLEANUP_VARS} ${IMPORT_BACK_VARS} | tr ' ' '\n'
-} | sort -u > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env"
+	echo ${ALWAYS_CLEANUP_VARS} ${IMPORT_BACK_VARS} | tr ' ' '\n'
+} | tr -s '\n' | sort -u > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env"
 
 rm \
   "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env" \
   "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_shell_env"
 
-cat << EOF
-modified environment vars:
-$CHANGED_ENV
-vars to be cleaned up after exit:
-$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env")
-EOF
+echo "modified environment vars:"
+for VAR in $CHANGED_ENV
+do
+	echo "  $VAR"
+done
+echo "vars to be cleaned up after exit:"
+for VAR in $(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_added_env")
+do
+	echo "  $VAR"
+done
 
 echo "Injecting environment vars to systemd user manager"
 systemctl --user import-environment XDG_SESSION_ID $CHANGED_ENV
 
 # cleanup conflicting vars
-systemctl --user unset-environment DISPLAY WAYLAND_DISPLAY ${IMPORT_BACK_VARS}
+systemctl --user unset-environment $(
+	echo ${IMPORT_BACK_VARS} ${ALWAYS_CLEANUP_VARS} \
+	 | tr ' ' '\n' | tr -s '\n' | sort -u
+)
 
 echo "Declaring graphical-pre target"
 start_and_check "wayland-session-pre@${COMPOSITOR}.target"
 
+# this function can be overridden in plugin by defining function named run_compositor_${COMPOSITOR}
+run_compositor() {
+	systemd-cat -t "wayland-session-${COMPOSITOR}" -- ${COMPOSITOR}
+}
 echo "Executing ${COMPOSITOR} compositor"
-systemd-cat -t "wayland-session-${COMPOSITOR}" -- ${COMPOSITOR} ${COMPOSITOR_ARGS} &
-COMPOSITOR_PID=$!
+if type "run_compositor_${COMPOSITOR}" > /dev/null
+then
+	"run_compositor_${COMPOSITOR}" &
+	COMPOSITOR_PID=$!
+else
+	run_compositor &
+	COMPOSITOR_PID=$!
+fi
 
 # wait for DISPLAY or WAYLAND_DISPLAY to appear in systemd user manager env
 # or for compositor to exit early
