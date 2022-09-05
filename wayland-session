@@ -27,6 +27,11 @@ SSH_AGENT_LAUNCHER
 SSH_AUTH_SOCK
 SSH_AGENT_PID"
 
+# variables that will never be cleaned up from systemd user manager during shutdown
+NEVER_CLEANUP_VARS="SSH_AGENT_LAUNCHER
+SSH_AUTH_SOCK
+SSH_AGENT_PID"
+
 # variables that will always be cleaned up from systemd user manager during shutdown
 ALWAYS_CLEANUP_VARS="DISPLAY
 WAYLAND_DISPLAY
@@ -168,9 +173,30 @@ then
 	exec systemd-cat -t "wayland-session-${COMPOSITOR}-manager" -- "$0" "$COMPOSITOR" start
 fi
 
-normalize_varnames() {
+normalize_varnames_space() {
 	# pipe var names to get sorted, uniqued, normalized space-separated output
 	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u | tr '\n' ' ' | sed 's/^ \+\| \+$//g'
+}
+
+normalize_varnames_newline() {
+	# pipe var names to get sorted, uniqued, normalized newline-separated output
+	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u
+}
+
+varnames_subtract() {
+	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
+	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1"
+	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+	comm -23 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+}
+
+varnames_intersect() {
+	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
+	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1"
+	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+	comm -12 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
 }
 
 inject_targets() {
@@ -214,6 +240,7 @@ inject_targets() {
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
 }
+
 
 compositor_wrapper() {
 	# receives compositor execution args
@@ -286,12 +313,16 @@ import_back_vars() {
 		echo "Importing back var ${__VAR__}"
 		if printf %s "${__VALUE__}" | grep -qE "\$'"
 		then
-			# this sh is probably dash, so we have to expand a complex value
-			__VALUE__="${__VALUE__#\$\'}"
-			__VALUE__="${__VALUE__%\'}"
-			export "${__VAR__}=$(printf %b "${__VALUE__}")" && echo "success"
+			# we are probably in dash, so we have to expand a complex value
+			__VALUE__="${__VALUE__#??}"
+			__VALUE__="${__VALUE__%?}"
+			__VALUE__=$(printf %b "${__VALUE__}")
+		fi
+		if export "${__VAR__}=${__VALUE__}"
+		then
+			echo "Imported ${__VAR__}"
 		else
-			export "${__VAR__}=${__VALUE__}" && echo "success"
+			echo "Failed importing ${__VAR__}" >&2
 		fi
 	done
 }
@@ -303,18 +334,29 @@ cleanup_vars() {
 	local __VAR__
 	local __VARS_FOR_CLEANUP__=$(
 		{
+			# saved cleanup list if exists
 			[ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names" ] \
 			  && cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
+			# vars to always cleanup
 			echo ${ALWAYS_CLEANUP_VARS}
-		} | normalize_varnames
+			# subtract vars to never cleanup
+		} | varnames_subtract ${NEVER_CLEANUP_VARS} | normalize_varnames_space
 	)
 	echo "Cleaning up variables:"
+	__HAS_VARS__=false
 	for __VAR__ in ${__VARS_FOR_CLEANUP__}
 	do
+		__HAS_VARS__=true
 		echo "  ${__VAR__}"
 	done
-	systemctl --user unset-environment ${__VARS_FOR_CLEANUP__}
-	CLEANUP_RC=$?
+	if [ "${__HAS_VARS__}" = "true" ]
+	then
+		systemctl --user unset-environment ${__VARS_FOR_CLEANUP__}
+		CLEANUP_RC=$?
+	else
+		echo "  No vars"
+		CLEANUP_RC=0
+	fi
 	[ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names" ] \
 	  && rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
 	return $CLEANUP_RC
@@ -478,33 +520,31 @@ echo "Wayland session manager ($$) initiates startup sequence for ${COMPOSITOR}"
 inject_targets
 
 #### begin env voodoo
-# take full snapshot of initial env vars state (zero-delimited)
-env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env"
-# names (sorted, newline-delimited)
-env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' '\n' > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env_names"
+# get current shell env names
+__ENV_NAMES__=$(
+	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+)
 
-# take snapshot of current systemd user manager environment (sorted, otherwise as is)
-systemctl --user show-environment | sort > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_systemd_env"
-# also names
-cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_systemd_env" \
-  | cut -d '=' -f 1 \
-  | normalize_varnames \
-  | tr ' ' '\n' \
-  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_systemd_env_names"
+# get systemd user manager env names
+__SYSTEMD_ENV_NAMES__=$(
+	systemctl --user show-environment | cut -d '=' -f 1 | normalize_varnames_space
+)
 
 echo "Importing env difference from systemd user manager"
 import_back_vars $(
-	comm -13 \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env_names" \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_systemd_env_names" \
-	| normalize_varnames
+	echo ${__SYSTEMD_ENV_NAMES__} \
+	| varnames_subtract ${__ENV_NAMES__} \
+	| normalize_varnames_space
 )
 
-# take full snapshot and names of combined env vars state (zero-delimited)
-# and names (sorted, newline-delimited)
+# take full snapshot of env vars state (zero-delimited)
 # this will be used for comparisons later
 env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env"
-env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' '\n' > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env_names"
+
+# take env names again
+__ENV_NAMES__=$(
+	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+)
 
 #### Basic environment
 . /etc/profile
@@ -554,82 +594,96 @@ IFS="$OIFS"
 # if they were in systemd user manager environment, they will be unset by the coming magic
 unset DISPLAY WAYLAND_DISPLAY
 
-# take another snapshot of environment for comparison
+# take another zero-delimited snapshot of environment for comparison
 env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env"
-env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' '\n' > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names"
 
-# save ${ALWAYS_EXPORT_VARS} for union with defined var names (systemctl might error out on undefined)
-echo ${ALWAYS_EXPORT_VARS} \
-  | normalize_varnames \
-  | tr ' ' '\n' \
-  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_always_export_env_names"
+__ENV_NAMES_AFTER__=$(
+	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+)
 
 # finalize export vars:
-# env vars modified since initial combined environment + defined subset of ${ALWAYS_EXPORT_VARS}
-{
-	comm -z -13 \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env" \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env" \
-	  | cut -z -d '=' -f 1 \
-	  | tr '\0' '\n'
-	comm -12 \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names" \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_always_export_env_names"
-} | sort -u > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_export_env_names"
+__VARS_FOR_EXPORT__=$(
+	{
+		# names of vars modified since initial combined environment
+		comm -z -13 \
+		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env" \
+		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env" \
+		| cut -z -d '=' -f 1 \
+		| tr '\0' '\n'
 
+		# add defined subset of ${ALWAYS_EXPORT_VARS}
+		echo ${ALWAYS_EXPORT_VARS} \
+		| normalize_varnames_space \
+		| varnames_intersect ${__ENV_NAMES_AFTER__} \
+		| normalize_varnames_newline
+	} | sort -u | normalize_varnames_space
+)
 
 # finalize unset vars:
 # env vars that were in intial combined environment, but were explicitly unset since
+__VARS_FOR_UNSET__=$(
+	echo ${__ENV_NAMES__} \
+	| varnames_difference ${__ENV_NAMES_AFTER__} \
+	| normalize_varnames_space
+)
 
-comm -23 \
-  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env_names" \
-  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names" \
-| normalize_varnames | tr ' ' '\n' > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_unset_env_names"
+# generate list of vars for cleanup after exit
+__VARS_FOR_CLEANUP__=$(
+	{
+		# names of env vars not yet present in systemd user manager, but going to
+		echo ${__VARS_FOR_EXPORT__} \
+		  | varnames_difference ${__SYSTEMD_ENV_NAMES__}
+		# also add ${ALWAYS_CLEANUP_VARS}
+		echo ${ALWAYS_CLEANUP_VARS}
+		# then subtract ${NEVER_CLEANUP_VARS}
+	} | normalize_varnames_space \
+	  | varnames_subtract ${NEVER_CLEANUP_VARS} \
+	  | normalize_varnames_space
+)
 
-# find names of env vars not yet present in systemd user manager, but going to
-# and save for later cleanup, also add ${ALWAYS_CLEANUP_VARS}
-systemctl --user show-environment \
-  | cut -d '=' -f 1 \
-  | sort \
-  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env_names"
-{
-	comm -23 \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_export_env_names" \
-	  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env_names"
-	echo ${ALWAYS_CLEANUP_VARS} | normalize_varnames | tr ' ' '\n'
-} | tr -s '\n' | sort -u > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
+# cleanup temp files
+rm -f \
+  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env \
+  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env
+
+# save cleanup list
+echo ${__VARS_FOR_CLEANUP__} \
+  | normalize_varnames_newline \
+  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
 
 __HAS_VARS__=false
 echo "Exporting vars to systemd user manager:"
-for VAR in $(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_export_env_names")
+for VAR in ${__VARS_FOR_EXPORT__}
 do
 	__HAS_VARS__=true
 	echo "  $VAR"
 done
+
 if [ "${__HAS_VARS__}" = "true" ]
 then
-	systemctl --user import-environment $(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_export_env_names")
+	systemctl --user import-environment ${__VARS_FOR_EXPORT__}
 else
 	echo "  No vars"
 fi
 
 __HAS_VARS__=false
 echo "Unsetting vars from systemd user manager:"
-for VAR in $(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_unset_env_names")
+for VAR in ${__VARS_FOR_UNSET__}
 do
 	__HAS_VARS__=true
 	echo "  $VAR"
 done
+
 if [ "${__HAS_VARS__}" = "true" ]
 then
-	systemctl --user unset-environment $(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_unset_env_names")
+	systemctl --user unset-environment ${__VARS_FOR_UNSET__}
 else
 	echo "  No vars"
 fi
 
 __HAS_VARS__=false
-echo "vars to be cleaned up from systemd user manager after exit:"
-for VAR in $(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names")
+echo "Vars to be cleaned up from systemd user manager after exit:"
+for VAR in ${__VARS_FOR_CLEANUP__}
 do
 	__HAS_VARS__=true
 	echo "  $VAR"
@@ -640,21 +694,6 @@ then
 else
 	echo "  No vars"
 fi
-
-# cleanup env-related files except _for_cleanup_env_names
-rm -f \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_always_export_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_check_systemd_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_export_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_unset_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_env_names \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_systemd_env \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_systemd_env_names
 
 #### startup sequence
 # rig gracefull shutdown on signals
@@ -680,7 +719,7 @@ echo "Declaring graphical-pre target"
 start_and_check "wayland-session-pre@${COMPOSITOR}.target" graphical-session-pre.target
 
 # early import back for stuff like ssh agents
-import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames)
+import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
 
 echo "Executing ${COMPOSITOR} compositor"
 if type "run_compositor_${COMPOSITOR}" > /dev/null 2> /dev/null
@@ -717,7 +756,7 @@ done
 echo "Declaring graphical target"
 start_and_check "wayland-session@${COMPOSITOR}.target" graphical-session.target
 
-import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames)
+import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
 
 echo "Declaring autostart target"
 start_and_check "wayland-session-xdg-autostart@${COMPOSITOR}.target" xdg-desktop-autostart.target
