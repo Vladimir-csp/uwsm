@@ -222,7 +222,7 @@ compositor_wrapper() {
 	# wraps into systemd-cat for logging
 	systemd-run --user --scope \
 	  --unit="wayland-session-${COMPOSITOR}" \
-	  --description="Scope for ${COMPOSITOR} wayland compositor and its children"
+	  --description="Scope for ${COMPOSITOR} wayland compositor and its children" \
 	  --send-sighup \
 	  --property="StopPropagatedFrom=wayland-session-pre@${COMPOSITOR}.target" \
 	  -- \
