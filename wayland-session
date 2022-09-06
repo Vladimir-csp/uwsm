@@ -185,18 +185,20 @@ normalize_varnames_newline() {
 
 varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
-	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1"
-	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
-	comm -23 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
-	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom| head -n 10 | tr -d '\n' )
+	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}"
+	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
+	comm -23 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
+	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
 }
 
 varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
-	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1"
-	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
-	comm -12 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
-	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
+	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom | head -n 10 | tr -d '\n' )
+	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}"
+	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
+	comm -12 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
+	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
 }
 
 varnames_union() {
