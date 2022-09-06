@@ -199,10 +199,18 @@ varnames_intersect() {
 	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2"
 }
 
-inject_targets() {
+varnames_union() {
+	# pipe in list 1, get list 2 on args, output merged newline-separated output
+	{
+		normalize_varnames_newline
+		echo $* | normalize_varnames_newline
+	} | sort -u
+}
+
+generate_units() {
 	# injects customized targets bound to systemd special graphical targets
 	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
-	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target"
+	echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
@@ -213,7 +221,7 @@ inject_targets() {
 		BindsTo=graphical-session-pre.target
 		Before=graphical-session-pre.target
 	EOF
-	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target"
+	echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
@@ -225,7 +233,7 @@ inject_targets() {
 		BindsTo=graphical-session.target
 		Before=graphical-session.target
 	EOF
-	echo "Injecting ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target"
+	echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
@@ -237,10 +245,23 @@ inject_targets() {
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
+	#echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service"
+	#cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
+	#	# injected by $(basename "$0"), do not edit
+	#	[Unit]
+	#	Description=%I Wayland Window Manager
+	#	Documentation=man:systemd.service(7)
+	#	Requires=wayland-session@%i.target
+	#	Before=wayland-session@%i.target
+	#	After=wayland-session-pre@%i.target
+	#	#StopWhenUnneeded=yes
+	#	[Service]
+	#	Type=notify
+	#	ExecStart=/usr/bin/env %I
+	#EOF
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
 }
-
 
 compositor_wrapper() {
 	# receives compositor execution args
@@ -311,7 +332,7 @@ import_back_vars() {
 			continue
 		fi
 		echo "Importing back var ${__VAR__}"
-		if printf %s "${__VALUE__}" | grep -qE "\$'"
+		if printf %s "${__VALUE__}" | grep -qE "^\$'"
 		then
 			# we are probably in dash, so we have to expand a complex value
 			__VALUE__="${__VALUE__#??}"
@@ -330,9 +351,10 @@ import_back_vars() {
 cleanup_vars() {
 	# take var names from "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
 	# and ${ALWAYS_CLEANUP_VARS}
+	# exclude ${NEVER_CLEANUP_VARS}
 	# and remove them from systemd user manager
 	local __VAR__
-	local __VARS_FOR_CLEANUP__=$(
+	local __ENV_NAMES_FOR_CLEANUP__=$(
 		{
 			# saved cleanup list if exists
 			[ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names" ] \
@@ -344,14 +366,14 @@ cleanup_vars() {
 	)
 	echo "Cleaning up variables:"
 	__HAS_VARS__=false
-	for __VAR__ in ${__VARS_FOR_CLEANUP__}
+	for __VAR__ in ${__ENV_NAMES_FOR_CLEANUP__}
 	do
 		__HAS_VARS__=true
 		echo "  ${__VAR__}"
 	done
 	if [ "${__HAS_VARS__}" = "true" ]
 	then
-		systemctl --user unset-environment ${__VARS_FOR_CLEANUP__}
+		systemctl --user unset-environment ${__ENV_NAMES_FOR_CLEANUP__}
 		CLEANUP_RC=$?
 	else
 		echo "  No vars"
@@ -409,14 +431,14 @@ shutdown() {
 				EXIT_COMPOSITOR_RC=$?
 				if [ "$EXIT_COMPOSITOR_RC" != "0" ]
 				then
-					echo "Composer exit function returned $EXIT_COMPOSITOR_RC" >&2
+					echo "Compositor exit function returned $EXIT_COMPOSITOR_RC" >&2
 				fi
 			else
 				kill $COMPOSITOR_PID
 				KILL_COMPOSITOR_RC=$?
 				if [ "$KILL_COMPOSITOR_RC" != "0" ]
 				then
-					echo "Killing composer returned $KILL_COMPOSITOR_RC" >&2
+					echo "Killing compositor returned $KILL_COMPOSITOR_RC" >&2
 				fi
 			fi
 		else
@@ -517,7 +539,7 @@ echo $$ > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
 echo "Wayland session manager ($$) initiates startup sequence for ${COMPOSITOR}"
 
 # create runtime targets
-inject_targets
+generate_units
 
 #### begin env voodoo
 # get current shell env names
@@ -541,7 +563,7 @@ import_back_vars $(
 # this will be used for comparisons later
 env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env"
 
-# take env names again
+# collect env names
 __ENV_NAMES__=$(
 	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
 )
@@ -591,18 +613,19 @@ done
 IFS="$OIFS"
 
 # hardcode unset conflicting vars.
-# if they were in systemd user manager environment, they will be unset by the coming magic
+# if they were in systemd user manager environment, they will be automatically unset by the algorithm later
 unset DISPLAY WAYLAND_DISPLAY
 
 # take another zero-delimited snapshot of environment for comparison
 env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env"
 
+# collect env names
 __ENV_NAMES_AFTER__=$(
 	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
 )
 
 # finalize export vars:
-__VARS_FOR_EXPORT__=$(
+__ENV_NAMES_FOR_EXPORT__=$(
 	{
 		# names of vars modified since initial combined environment
 		comm -z -13 \
@@ -621,18 +644,18 @@ __VARS_FOR_EXPORT__=$(
 
 # finalize unset vars:
 # env vars that were in intial combined environment, but were explicitly unset since
-__VARS_FOR_UNSET__=$(
+__ENV_NAMES_FOR_UNSET__=$(
 	echo ${__ENV_NAMES__} \
-	| varnames_difference ${__ENV_NAMES_AFTER__} \
+	| varnames_subtract ${__ENV_NAMES_AFTER__} \
 	| normalize_varnames_space
 )
 
 # generate list of vars for cleanup after exit
-__VARS_FOR_CLEANUP__=$(
+__ENV_NAMES_FOR_CLEANUP__=$(
 	{
 		# names of env vars not yet present in systemd user manager, but going to
-		echo ${__VARS_FOR_EXPORT__} \
-		  | varnames_difference ${__SYSTEMD_ENV_NAMES__}
+		echo ${__ENV_NAMES_FOR_EXPORT__} \
+		  | varnames_subtract ${__SYSTEMD_ENV_NAMES__}
 		# also add ${ALWAYS_CLEANUP_VARS}
 		echo ${ALWAYS_CLEANUP_VARS}
 		# then subtract ${NEVER_CLEANUP_VARS}
@@ -647,13 +670,13 @@ rm -f \
   ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env
 
 # save cleanup list
-echo ${__VARS_FOR_CLEANUP__} \
+echo ${__ENV_NAMES_FOR_CLEANUP__} \
   | normalize_varnames_newline \
   > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
 
 __HAS_VARS__=false
 echo "Exporting vars to systemd user manager:"
-for VAR in ${__VARS_FOR_EXPORT__}
+for VAR in ${__ENV_NAMES_FOR_EXPORT__}
 do
 	__HAS_VARS__=true
 	echo "  $VAR"
@@ -661,14 +684,14 @@ done
 
 if [ "${__HAS_VARS__}" = "true" ]
 then
-	systemctl --user import-environment ${__VARS_FOR_EXPORT__}
+	systemctl --user import-environment ${__ENV_NAMES_FOR_EXPORT__}
 else
 	echo "  No vars"
 fi
 
 __HAS_VARS__=false
 echo "Unsetting vars from systemd user manager:"
-for VAR in ${__VARS_FOR_UNSET__}
+for VAR in ${__ENV_NAMES_FOR_UNSET__}
 do
 	__HAS_VARS__=true
 	echo "  $VAR"
@@ -676,14 +699,14 @@ done
 
 if [ "${__HAS_VARS__}" = "true" ]
 then
-	systemctl --user unset-environment ${__VARS_FOR_UNSET__}
+	systemctl --user unset-environment ${__ENV_NAMES_FOR_UNSET__}
 else
 	echo "  No vars"
 fi
 
 __HAS_VARS__=false
 echo "Vars to be cleaned up from systemd user manager after exit:"
-for VAR in ${__VARS_FOR_CLEANUP__}
+for VAR in ${__ENV_NAMES_FOR_CLEANUP__}
 do
 	__HAS_VARS__=true
 	echo "  $VAR"
