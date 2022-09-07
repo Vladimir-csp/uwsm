@@ -1,15 +1,16 @@
 #!/bin/sh
 
-
 # Universal wayland desktop session manager
-# Runs selected compositor with plugin-extendable tweaks
+# Runs selected WM with plugin-extendable tweaks
 # Manages systemd environment and targets along the way
 # Inspired by and uses some parts from https://github.com/xdbob/sway-services
 
-SUPPORTED_COMPOSITORS=''
-SUPPORTED_MODES='start|intstart|stop|cleanup|check'
+SUPPORTED_WMS=''
+SUPPORTED_MODES='unitgen|prepare|start|intstart|stop|cleanup|check'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
+
+WS_EXEC="$(realpath -s "$0")"
 
 START_STOP_RETRIES=10
 
@@ -19,6 +20,13 @@ XDG_CURRENT_DESKTOP
 XDG_SESSION_DESKTOP
 XDG_MENU_PREFIX
 PATH"
+
+# variables that will never be exported to systemd user manager during startup
+NEVER_EXPORT_VARS="PWD
+LS_COLORS
+INVOCATION_ID
+SHLVL
+SHELL"
 
 # variables that will be imported back from systemd user manager during startup
 IMPORT_BACK_VARS="DISPLAY
@@ -39,25 +47,28 @@ XDG_SESSION_ID
 XDG_CURRENT_DESKTOP
 XDG_SESSION_DESKTOP
 XDG_MENU_PREFIX
-XCURSOR_SIZE"
+XCURSOR_THEME
+XCURSOR_SIZE
+LANG"
 
 show_help() {
 	cat <<- EOF
 		
 		Generic wayland session manager with systemd integration
 		Usage:
-		  $(basename $0) ${SUPPORTED_COMPOSITORS:-supported_compositor} ${SUPPORTED_MODES}
+		  $(basename $0) ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
 		
-		$(basename $0) manages session for selected wayland compositor.
+		$(basename $0) manages session for selected wayland WM.
 		Modes:
-		  start:     starts session of selected compositor
-		  intstart:  reexec self in start mode with full systemd-cat logging not just compositor
+		  unitgen:   generates systemd unit files in runtime hierarchy
+		  start:     starts session of selected WM from current shell inside a scope with logging
+		  intstart:  reexec self inside a scope with logging in start mode not just WM
 		  stop:      cleanly shuts down session or cleans up environment
 		             just killing main session manager process is also supported
 		  cleanup:   cleans up environment from systemd user manager if main process is not running
 		  check:     checks supported arguments
 		
-		Session manager also loads environment from \${COMPOSITOR}/env files in
+		Session manager also loads environment from \${WM}/env files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
 		
 		See code comments for documentation on plugins.
@@ -65,25 +76,25 @@ show_help() {
 }
 
 # functions for use in plugins
-add_supported_compositor() {
+add_supported_wm() {
 	# takes simple executable name
 	if echo "$1" | grep -qE "^[a-zA-Z0-9_-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
 	then
-		SUPPORTED_COMPOSITORS="${SUPPORTED_COMPOSITORS}${SUPPORTED_COMPOSITORS:+|}${1}"
-		echo "Added supported compositor $1"
+		SUPPORTED_WMS="${SUPPORTED_WMS}${SUPPORTED_WMS:+|}${1}"
+		echo "Added supported WM $1"
 	else
-		echo "Attempted to add invalid compositor name" >&2
+		echo "Attempted to add invalid WM name" >&2
 		echo "$1" >&2
 		exit 1
 	fi
 }
 
 # load plugins
-# plugins should contain only add_supported_compositor call
+# plugins should contain only add_supported_wm call
 # and specifically named functions
 # example:
-#  add_supported_compositor sway
-#  # function to make arbitrary actions before startup and loading ${COMPOSITOR}/env
+#  add_supported_wm sway
+#  # function to make arbitrary actions before startup and loading ${WM}/env
 #  quirks_sway() {
 #    # here additional vars can be added set for session manager
 #    # like
@@ -93,13 +104,13 @@ add_supported_compositor() {
 #    # or export more vars for session
 #    export I_WANT_THIS_IN_SESSION=yes
 #    # or prepare a config (see waybar plugin)
-#    # or set a var to modify what ${COMPOSITOR}/env will do
+#    # or set a var to modify what ${WM}/env will do
 #    ...
 #  }
-#  # Function to override compositor execution.
-#  # Always define compositor as arguments to compositor_wrapper
-#  run_compositor_sway() {
-#    compositor_wrapper sway --with any args
+#  # Function to override WM execution.
+#  # Always define WM as arguments to wm_wrapper
+#  run_wm_sway() {
+#    wm_wrapper sway --with any args
 #  }
 #  # function to terminate compositor
 #  exit_sway() {
@@ -134,7 +145,7 @@ then
 	exit 0
 fi
 
-COMPOSITOR="${1:?Requires a compositor as first argument: $SUPPORTED_COMPOSITORS}"
+WM="${1:?Requires a compositor as first argument: $SUPPORTED_WMS}"
 MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
 
 CHECKOUT=true
@@ -145,21 +156,21 @@ then
 	CHECKOUT=false
 fi
 
-if ! echo "$COMPOSITOR" | grep -qE "^[a-zA-Z0-9_-]+$"
+if ! echo "$WM" | grep -qE "^[a-zA-Z0-9_-]+$"
 then
-	echo "Got malformed compositor name: $COMPOSITOR" >&2
+	echo "Got malformed compositor name: $WM" >&2
 	CHECKOUT=false
 fi
 
-if ! [ -x "$(which "$COMPOSITOR")" ]
+if ! [ -x "$(which "$WM")" ]
 then
-	echo "$COMPOSITOR is not an executable binary" >&2
+	echo "$WM is not an executable binary" >&2
 	CHECKOUT=false
 fi
 
-if ! echo "$COMPOSITOR" | grep -qE "^(${SUPPORTED_COMPOSITORS})$"
+if ! echo "$WM" | grep -qE "^(${SUPPORTED_WMS})$"
 then
-	echo "Compositor $COMPOSITOR not supported, choose $SUPPORTED_COMPOSITORS" >&2
+	echo "Compositor $WM not supported, choose $SUPPORTED_WMS" >&2
 	CHECKOUT=false
 fi
 
@@ -170,7 +181,7 @@ then
 elif [ "$MODE" = "intstart" ]
 then
 	echo "Doing integrated start"
-	exec systemd-cat -t "wayland-session-${COMPOSITOR}-manager" -- "$0" "$COMPOSITOR" start
+	exec systemd-cat -t "wayland-session-${WM}-manager" -- "$0" "$WM" start
 fi
 
 normalize_varnames_space() {
@@ -185,20 +196,20 @@ normalize_varnames_newline() {
 
 varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
-	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom| head -n 10 | tr -d '\n' )
-	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}"
-	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
-	comm -23 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
-	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
+	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
+	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}"
+	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
+	comm -23 "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
+	rm -f "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
 }
 
 varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
-	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom | head -n 10 | tr -d '\n' )
-	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}"
-	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
-	comm -12 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
-	rm -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_list_2_${RND}"
+	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
+	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}"
+	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
+	comm -12 "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
+	rm -f "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
 }
 
 varnames_union() {
@@ -212,18 +223,34 @@ varnames_union() {
 generate_units() {
 	# injects customized targets bound to systemd special graphical targets
 	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
-	echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target"
+	echo "Placing wayland-wm-env@.service"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=Environment preloader for %I Wayland Window Manager
+		Documentation=man:systemd.service(7)
+		BindsTo=wayland-session-pre@%i.target
+		Before=wayland-session-pre@%i.target
+		StopWhenUnneeded=yes
+		[Service]
+		Type=oneshot
+		RemainAfterExit=yes
+		ExecStart=${WS_EXEC} "%I" prepare
+		ExecStop=${WS_EXEC} "%I" cleanup
+		Restart=no
+	EOF
+	echo "Placing wayland-session-pre@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
-		Description=Session services which should run early before the %I session is brought up
+		Description=Preparation services for session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
 		Requires=basic.target
-		#StopWhenUnneeded=yes
+		StopWhenUnneeded=yes
 		BindsTo=graphical-session-pre.target
 		Before=graphical-session-pre.target
 	EOF
-	echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target"
+	echo "Placing wayland-session@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
@@ -231,59 +258,258 @@ generate_units() {
 		Documentation=man:systemd.special(7)
 		Requires=wayland-session-pre@%i.target
 		After=wayland-session-pre@%i.target
-		#StopWhenUnneeded=yes
+		StopWhenUnneeded=yes
 		BindsTo=graphical-session.target
 		Before=graphical-session.target
 	EOF
-	echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target"
+	echo "Placing wayland-session-xdg-autostart@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
-		Description=XDG Autostart of %I Wayland Window Manager
+		Description=XDG Autostart for session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
 		Requires=wayland-session@%i.target
 		After=wayland-session@%i.target
-		#StopWhenUnneeded=yes
+		StopWhenUnneeded=yes
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
-	#echo "Placing ${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service"
-	#cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
-	#	# injected by $(basename "$0"), do not edit
-	#	[Unit]
-	#	Description=%I Wayland Window Manager
-	#	Documentation=man:systemd.service(7)
-	#	BindsTo=wayland-session@%i.target
-	#	#Before=wayland-session@%i.target
-	#	Wants=wayland-session-pre@%i.target
-	#	After=wayland-session-pre@%i.target
-	#	#StopWhenUnneeded=yes
-	#	[Service]
-	#	Type=notify
-	#	ExecStart=/usr/bin/env %I
-	#	Restart=on-failure
-	#	RestartSec=1
-	#	TimeoutStopSec=10
-	#	NotifyAccess=all
-	#EOF
+	echo "Placing wayland-wm@.service"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=%I Wayland Window Manager
+		Documentation=man:systemd.service(7)
+		BindsTo=wayland-session@%i.target
+		Before=wayland-session@%i.target
+		Requires=wayland-session-pre@%i.target
+		After=wayland-session-pre@%i.target
+		Wants=wayland-session-xdg-autostart@.target
+		Requires=wayland-wm-env@.service
+		After=wayland-wm-env@.service
+		Before=wayland-session-xdg-autostart@.target
+		[Service]
+		# awaits for 'systemd-notify --ready' from WM child
+		Type=notify
+		NotifyAccess=all
+		ExecStart=%I
+		ExecStop=systemctl --user stop app-*@autostart.service
+		Restart=on-failure
+		RestartSec=1
+		TimeoutStopSec=10
+	EOF
+	#	${WM_SERVICE_INCLUDE:-}
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
 }
 
-compositor_wrapper() {
+wm_wrapper() {
 	# receives compositor execution args
 	# wraps compositor into scope
 	# adds stop propagation from -pre target (for shutdown)
 	# wraps into systemd-cat for logging
 	systemd-run --user --scope \
-	  --unit="wayland-session-${COMPOSITOR}" \
-	  --description="Scope for ${COMPOSITOR} wayland compositor and its children" \
+	  --unit="wayland-session-${WM}" \
+	  --description="Scope for ${WM} wayland compositor and its children" \
 	  --send-sighup \
-	  --property="StopPropagatedFrom=wayland-session-pre@${COMPOSITOR}.target" \
+	  --property="StopPropagatedFrom=wayland-session-pre@${WM}.target" \
 	  -- \
-	  systemd-cat -t "wayland-session-${COMPOSITOR}" \
+	  systemd-cat -t "wayland-session-${WM}" \
 	  -- \
 	  "$@"
+}
+
+savepid() {
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
+	then
+		CHECK_PID=$(head -n 1 -c 8 "${__LOCAL_RUNTIME_DIR__}/${WM}_pid")
+		if kill -0 $CHECK_PID 2>/dev/null
+		then
+			echo "Wayland session manager is already running as PID ${CHECK_PID}!" >&2
+			exit 1
+		fi
+	fi
+	echo $$ > "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
+}
+
+prepare_env() {
+	# get current shell env names
+	__ENV_NAMES__=$(
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+	)
+
+	# get systemd user manager env names
+	__SYSTEMD_ENV_NAMES__=$(
+		systemctl --user show-environment | cut -d '=' -f 1 | normalize_varnames_space
+	)
+
+	echo "Importing env difference from systemd user manager"
+	import_back_vars $(
+		echo ${__SYSTEMD_ENV_NAMES__} \
+		| varnames_subtract ${__ENV_NAMES__} \
+		| normalize_varnames_space
+	)
+
+	# take full snapshot of env vars state (zero-delimited)
+	# this will be used for comparisons later
+	env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${WM}_initial_combined_env"
+
+	# collect env names
+	__ENV_NAMES__=$(
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+	)
+
+	#### Basic environment
+	. /etc/profile
+	[ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
+	export PATH
+	export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
+	export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
+	export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
+	export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
+	export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+	export XDG_CURRENT_DESKTOP="${WM}"
+	export XDG_SESSION_DESKTOP="${WM}"
+	export XDG_MENU_PREFIX="${WM}-"
+
+	#### apply quirks
+	if type "quirks_${WM}" >/dev/null
+	then
+		echo "Applying quirks for ${WM}"
+		quirks_${WM}
+	fi
+
+	#### iterate config dirs in increasing importance and source additional ${WM}/env
+	ALL_XDG_CONFIG_DIRS_REV=''
+	OIFS="$IFS"
+	IFS=":"
+	for CD in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
+	do
+		# fill list in revers order
+		ALL_XDG_CONFIG_DIRS_REV="${ALL_XDG_CONFIG_DIRS_REV}${ALL_XDG_CONFIG_DIRS_REV:+:}${CD}"
+	done
+	for CD in ${ALL_XDG_CONFIG_DIRS_REV}
+	do
+		IFS="$OIFS"
+		if [ -r "${CD}/${WM}/env" ]
+		then
+			echo "Loading environment from ${CD}/${WM}/env"
+			#set -a
+			. "${CD}/${WM}/env"
+			#set +a
+		fi
+	done
+	IFS="$OIFS"
+
+	# hardcode unset conflicting vars.
+	# if they were in systemd user manager environment,
+	# they will be automatically unset by the algorithm later
+	unset DISPLAY WAYLAND_DISPLAY
+
+	# take another zero-delimited snapshot of environment for comparison
+	env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${WM}_final_env"
+
+	# collect env names
+	__ENV_NAMES_AFTER__=$(
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+	)
+
+	# finalize export vars:
+	__ENV_NAMES_FOR_EXPORT__=$(
+		{
+			# names of vars modified since initial combined environment
+			comm -z -13 \
+			  "${__LOCAL_RUNTIME_DIR__}/${WM}_initial_combined_env" \
+			  "${__LOCAL_RUNTIME_DIR__}/${WM}_final_env" \
+			| cut -z -d '=' -f 1 \
+			| tr '\0' '\n'
+
+			# add defined subset of ${ALWAYS_EXPORT_VARS}
+			echo ${ALWAYS_EXPORT_VARS} \
+			| normalize_varnames_space \
+			| varnames_intersect ${__ENV_NAMES_AFTER__} \
+			| normalize_varnames_newline
+			# exclude ${NEVER_EXPORT_VARS}
+		} | varnames_subtract ${NEVER_EXPORT_VARS} | normalize_varnames_space
+	)
+
+	# finalize unset vars:
+	# env vars that were in intial combined environment, but were explicitly unset since
+	__ENV_NAMES_FOR_UNSET__=$(
+		echo ${__ENV_NAMES__} \
+		| varnames_subtract ${__ENV_NAMES_AFTER__} \
+		| normalize_varnames_space
+	)
+
+	# generate list of vars for cleanup after exit
+	__ENV_NAMES_FOR_CLEANUP__=$(
+		{
+			# names of env vars not yet present in systemd user manager, but going to
+			echo ${__ENV_NAMES_FOR_EXPORT__} \
+			  | varnames_subtract ${__SYSTEMD_ENV_NAMES__}
+			# also add ${ALWAYS_CLEANUP_VARS}
+			echo ${ALWAYS_CLEANUP_VARS}
+			# then subtract ${NEVER_CLEANUP_VARS}
+		} | normalize_varnames_space \
+		  | varnames_subtract ${NEVER_CLEANUP_VARS} \
+		  | normalize_varnames_space
+	)
+
+	# cleanup temp files
+	rm -f \
+	  ${__LOCAL_RUNTIME_DIR__}/${WM}_initial_combined_env \
+	  ${__LOCAL_RUNTIME_DIR__}/${WM}_final_env
+
+	# save cleanup list
+	echo ${__ENV_NAMES_FOR_CLEANUP__} \
+	  | normalize_varnames_newline \
+	  > "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
+
+	__HAS_VARS__=false
+	echo "Exporting vars to systemd user manager:"
+	for VAR in ${__ENV_NAMES_FOR_EXPORT__}
+	do
+		__HAS_VARS__=true
+		echo "  $VAR"
+	done
+
+	if [ "${__HAS_VARS__}" = "true" ]
+	then
+		systemctl --user import-environment ${__ENV_NAMES_FOR_EXPORT__}
+	else
+		echo "  No vars"
+	fi
+
+	__HAS_VARS__=false
+	echo "Unsetting vars from systemd user manager:"
+	for VAR in ${__ENV_NAMES_FOR_UNSET__}
+	do
+		__HAS_VARS__=true
+		echo "  $VAR"
+	done
+
+	if [ "${__HAS_VARS__}" = "true" ]
+	then
+		systemctl --user unset-environment ${__ENV_NAMES_FOR_UNSET__}
+	else
+		echo "  No vars"
+	fi
+
+	__HAS_VARS__=false
+	echo "Vars to be cleaned up from systemd user manager after exit:"
+	for VAR in ${__ENV_NAMES_FOR_CLEANUP__}
+	do
+		__HAS_VARS__=true
+		echo "  $VAR"
+	done
+	if [ "${__HAS_VARS__}" = "true" ]
+	then
+		true
+	else
+		echo "  No vars"
+	fi
 }
 
 list_active_part_of() {
@@ -295,6 +521,24 @@ list_active_part_of() {
 		then
 			echo "$unit"
 		fi
+	done
+}
+
+smart_reset_failed() {
+	# From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
+	# robustness: if the previous graphical session left some failed units,
+	# reset them so that they don't break this startup
+	for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f 1 -d ' ')
+	do
+		partof="$(systemctl --user show -p PartOf --value -- "$unit")"
+		for target in wayland-session@${WM}.target graphical-session.target
+		do
+			if [ "$partof" = "$target" ]
+			then
+				systemctl --user reset-failed "$unit"
+				break
+			fi
+		done
 	done
 }
 
@@ -356,7 +600,7 @@ import_back_vars() {
 }
 
 cleanup_vars() {
-	# take var names from "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
+	# take var names from "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
 	# and ${ALWAYS_CLEANUP_VARS}
 	# exclude ${NEVER_CLEANUP_VARS}
 	# and remove them from systemd user manager
@@ -364,8 +608,8 @@ cleanup_vars() {
 	local __ENV_NAMES_FOR_CLEANUP__=$(
 		{
 			# saved cleanup list if exists
-			[ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names" ] \
-			  && cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
+			[ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names" ] \
+			  && cat "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
 			# vars to always cleanup
 			echo ${ALWAYS_CLEANUP_VARS}
 			# subtract vars to never cleanup
@@ -386,8 +630,8 @@ cleanup_vars() {
 		echo "  No vars"
 		CLEANUP_RC=0
 	fi
-	[ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names" ] \
-	  && rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
+	[ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names" ] \
+	  && rm "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
 	return $CLEANUP_RC
 }
 
@@ -422,63 +666,63 @@ shutdown_and_check() {
 
 shutdown() {
 	# TODO, replace pidfile with checking ExecMainStatus of a unit if we go with service
-	echo "Shutting down $COMPOSITOR session"
+	echo "Shutting down $WM session"
 	# stop autostart target
-	shutdown_and_check "wayland-session-xdg-autostart@${COMPOSITOR}.target" xdg-desktop-autostart.target
+	shutdown_and_check "wayland-session-xdg-autostart@${WM}.target" xdg-desktop-autostart.target
 
 	# stop graphical target
-	shutdown_and_check "wayland-session@${COMPOSITOR}.target" graphical-session.target
+	shutdown_and_check "wayland-session@${WM}.target" graphical-session.target
 
 	# if haven't caught compositor RC yet, try to kill it
-	if [ -z "$COMPOSITOR_RC" ]
+	if [ -z "$WM_RC" ]
 	then
-		if kill -0 $COMPOSITOR_PID 2>/dev/null
+		if kill -0 $WM_PID 2>/dev/null
 		then
 			# kill compositor via function if exists
-			if type "exit_${COMPOSITOR}" >/dev/null
+			if type "exit_${WM}" >/dev/null
 			then
-				"exit_${COMPOSITOR}"
-				EXIT_COMPOSITOR_RC=$?
-				if [ "$EXIT_COMPOSITOR_RC" != "0" ]
+				"exit_${WM}"
+				EXIT_WM_RC=$?
+				if [ "$EXIT_WM_RC" != "0" ]
 				then
-					echo "Compositor exit function returned $EXIT_COMPOSITOR_RC" >&2
+					echo "Compositor exit function returned $EXIT_WM_RC" >&2
 				fi
 			else
-				kill $COMPOSITOR_PID
-				KILL_COMPOSITOR_RC=$?
-				if [ "$KILL_COMPOSITOR_RC" != "0" ]
+				kill $WM_PID
+				KILL_WM_RC=$?
+				if [ "$KILL_WM_RC" != "0" ]
 				then
-					echo "Killing compositor returned $KILL_COMPOSITOR_RC" >&2
+					echo "Killing compositor returned $KILL_WM_RC" >&2
 				fi
 			fi
 		else
 			echo "Compositor is already dead"
 		fi
-		wait $COMPOSITOR_PID
-		COMPOSITOR_RC=$?
+		wait $WM_PID
+		WM_RC=$?
 	fi
-	if [ "$COMPOSITOR_RC" != "0" ]
+	if [ "$WM_RC" != "0" ]
 	then
-		echo "Compositor exited with RC $COMPOSITOR_RC" >&2
+		echo "Compositor exited with RC $WM_RC" >&2
 	fi
 
-	shutdown_and_check "wayland-session-pre@${COMPOSITOR}.target" graphical-session-pre.target
+	shutdown_and_check "wayland-session-pre@${WM}.target" graphical-session-pre.target
 
 	# check and terminate compositor scope
-	if systemctl --user is-active -q "wayland-session-${COMPOSITOR}.scope"
+	if systemctl --user is-active -q "wayland-session-${WM}.scope"
 	then
-		echo "wayland-session-${COMPOSITOR}.scope is still active, terminating"
-		shutdown_and_check "wayland-session-${COMPOSITOR}.scope"
+		echo "wayland-session-${WM}.scope is still active, terminating"
+		shutdown_and_check "wayland-session-${WM}.scope"
 	fi
 
 	cleanup_vars
 
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
 	then
-		rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+		rm "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
 	fi
 
-	exit "$COMPOSITOR_RC"
+	exit "$WM_RC"
 }
 
 #### dir for saving var states
@@ -488,15 +732,15 @@ __LOCAL_RUNTIME_DIR__="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 if [ "$MODE" = "check" ]
 then
 	# exit successfully after supported compositors check
-	echo "Checked for compositor ${COMPOSITOR}"
+	echo "Checked for compositor ${WM}"
 	exit 0
 
-elif [ "$MODE" = "cleanup" ]
+elif [ "$MODE" = "cleanup_DISABLED" ]
 then
 	# abort cleanup if main process is still running
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
 	then
-		MAINPID=$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid")
+		MAINPID=$(cat "${__LOCAL_RUNTIME_DIR__}/${WM}_pid")
 		if kill -0 $MAINPID 2>/dev/null
 		then
 			echo "Main process $MAINPID is still running, cleanup aborted" >&2
@@ -508,294 +752,112 @@ then
 	cleanup_vars
 	exit
 
+elif [ "$MODE" = "cleanup" ]
+then
+	cleanup_vars
+	exit
+
 elif [ "$MODE" = "stop" ]
 then
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
 	then
-		MAIN_PID=$(cat "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid")
+		MAIN_PID=$(cat "${__LOCAL_RUNTIME_DIR__}/${WM}_pid")
 		echo Killing process $MAIN_PID
 		kill $MAIN_PID
 		KILL_RC=$?
 		if [ "$KILL_RC" = "0" ]
 		then
-			rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+			rm "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
 			exit 0
 		else
 			echo "Kill returned $KILL_RC, cleaning up vars instead"
 			cleanup_vars
-			rm "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
+			rm "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
 			exit $CLEANUP_RC
 		fi
 	else
-		echo "Pidfile ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid not found, cleaning up vars instead"
+		echo "Pidfile ${__LOCAL_RUNTIME_DIR__}/${WM}_pid not found, cleaning up vars instead"
 		cleanup_vars
 		exit $CLEANUP_RC
 	fi
-fi
 
-#### continue with "start" mode
-# check and save main pid
-if [ -f "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid" ]
+elif [ "$MODE" = "unitgen" ]
 then
-	CHECK_PID=$(head -n 1 -c 8 "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid")
-	if kill -0 $CHECK_PID 2>/dev/null
+	generate_units
+
+elif [ "$MODE" = "prepare" ]
+then
+	# this mode prepares environment and resets failed graphical units
+	prepare_env
+	smart_reset_failed
+
+elif [ "$MODE" = "start" ]
+then
+	# not-entirely-systemd startup mode
+	savepid
+
+	echo "Wayland session manager ($$) initiates startup sequence for ${WM}"
+
+	# create runtime targets
+	generate_units
+
+	#### begin env voodoo
+	prepare_env
+
+	#### startup sequence
+	# rig gracefull shutdown on signals
+	trap shutdown HUP TERM INT EXIT QUIT
+
+	smart_reset_failed
+
+	echo "Declaring graphical-pre target"
+	start_and_check "wayland-session-pre@${WM}.target" graphical-session-pre.target
+
+	# early import back for stuff like ssh agents
+	import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
+
+	echo "Executing ${WM} compositor"
+	if type "run_wm_${WM}" > /dev/null 2> /dev/null
 	then
-		echo "Wayland session manager is already running as PID ${CHECK_PID}!" >&2
-		exit 1
+		"run_wm_${WM}" &
+		WM_PID=$!
+	else
+		wm_wrapper "${WM}" &
+		WM_PID=$!
 	fi
-fi
-echo $$ > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_pid"
 
-echo "Wayland session manager ($$) initiates startup sequence for ${COMPOSITOR}"
-
-# create runtime targets
-generate_units
-
-#### begin env voodoo
-# get current shell env names
-__ENV_NAMES__=$(
-	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
-)
-
-# get systemd user manager env names
-__SYSTEMD_ENV_NAMES__=$(
-	systemctl --user show-environment | cut -d '=' -f 1 | normalize_varnames_space
-)
-
-echo "Importing env difference from systemd user manager"
-import_back_vars $(
-	echo ${__SYSTEMD_ENV_NAMES__} \
-	| varnames_subtract ${__ENV_NAMES__} \
-	| normalize_varnames_space
-)
-
-# take full snapshot of env vars state (zero-delimited)
-# this will be used for comparisons later
-env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env"
-
-# collect env names
-__ENV_NAMES__=$(
-	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
-)
-
-#### Basic environment
-. /etc/profile
-[ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
-export PATH
-export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
-export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
-export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
-export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
-export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-
-export XDG_CURRENT_DESKTOP="${COMPOSITOR}"
-export XDG_SESSION_DESKTOP="${COMPOSITOR}"
-export XDG_MENU_PREFIX="${COMPOSITOR}-"
-
-#### apply quirks
-if type "quirks_${COMPOSITOR}" >/dev/null
-then
-	echo "Applying quirks for ${COMPOSITOR}"
-	quirks_${COMPOSITOR}
-fi
-
-#### iterate config dirs in increasing importance and source additional ${COMPOSITOR}/env
-ALL_XDG_CONFIG_DIRS_REV=''
-OIFS="$IFS"
-IFS=":"
-for CD in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
-do
-	# fill list in revers order
-	ALL_XDG_CONFIG_DIRS_REV="${ALL_XDG_CONFIG_DIRS_REV}${ALL_XDG_CONFIG_DIRS_REV:+:}${CD}"
-done
-for CD in ${ALL_XDG_CONFIG_DIRS_REV}
-do
-	IFS="$OIFS"
-	if [ -r "${CD}/${COMPOSITOR}/env" ]
-	then
-		echo "Loading environment from ${CD}/${COMPOSITOR}/env"
-		#set -a
-		. "${CD}/${COMPOSITOR}/env"
-		#set +a
-	fi
-done
-IFS="$OIFS"
-
-# hardcode unset conflicting vars.
-# if they were in systemd user manager environment,
-# they will be automatically unset by the algorithm later
-unset DISPLAY WAYLAND_DISPLAY
-
-# take another zero-delimited snapshot of environment for comparison
-env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env"
-
-# collect env names
-__ENV_NAMES_AFTER__=$(
-	env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
-)
-
-# finalize export vars:
-__ENV_NAMES_FOR_EXPORT__=$(
-	{
-		# names of vars modified since initial combined environment
-		comm -z -13 \
-		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env" \
-		  "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env" \
-		| cut -z -d '=' -f 1 \
-		| tr '\0' '\n'
-
-		# add defined subset of ${ALWAYS_EXPORT_VARS}
-		echo ${ALWAYS_EXPORT_VARS} \
-		| normalize_varnames_space \
-		| varnames_intersect ${__ENV_NAMES_AFTER__} \
-		| normalize_varnames_newline
-	} | sort -u | normalize_varnames_space
-)
-
-# finalize unset vars:
-# env vars that were in intial combined environment, but were explicitly unset since
-__ENV_NAMES_FOR_UNSET__=$(
-	echo ${__ENV_NAMES__} \
-	| varnames_subtract ${__ENV_NAMES_AFTER__} \
-	| normalize_varnames_space
-)
-
-# generate list of vars for cleanup after exit
-__ENV_NAMES_FOR_CLEANUP__=$(
-	{
-		# names of env vars not yet present in systemd user manager, but going to
-		echo ${__ENV_NAMES_FOR_EXPORT__} \
-		  | varnames_subtract ${__SYSTEMD_ENV_NAMES__}
-		# also add ${ALWAYS_CLEANUP_VARS}
-		echo ${ALWAYS_CLEANUP_VARS}
-		# then subtract ${NEVER_CLEANUP_VARS}
-	} | normalize_varnames_space \
-	  | varnames_subtract ${NEVER_CLEANUP_VARS} \
-	  | normalize_varnames_space
-)
-
-# cleanup temp files
-rm -f \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_initial_combined_env \
-  ${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_final_env
-
-# save cleanup list
-echo ${__ENV_NAMES_FOR_CLEANUP__} \
-  | normalize_varnames_newline \
-  > "${__LOCAL_RUNTIME_DIR__}/${COMPOSITOR}_for_cleanup_env_names"
-
-__HAS_VARS__=false
-echo "Exporting vars to systemd user manager:"
-for VAR in ${__ENV_NAMES_FOR_EXPORT__}
-do
-	__HAS_VARS__=true
-	echo "  $VAR"
-done
-
-if [ "${__HAS_VARS__}" = "true" ]
-then
-	systemctl --user import-environment ${__ENV_NAMES_FOR_EXPORT__}
-else
-	echo "  No vars"
-fi
-
-__HAS_VARS__=false
-echo "Unsetting vars from systemd user manager:"
-for VAR in ${__ENV_NAMES_FOR_UNSET__}
-do
-	__HAS_VARS__=true
-	echo "  $VAR"
-done
-
-if [ "${__HAS_VARS__}" = "true" ]
-then
-	systemctl --user unset-environment ${__ENV_NAMES_FOR_UNSET__}
-else
-	echo "  No vars"
-fi
-
-__HAS_VARS__=false
-echo "Vars to be cleaned up from systemd user manager after exit:"
-for VAR in ${__ENV_NAMES_FOR_CLEANUP__}
-do
-	__HAS_VARS__=true
-	echo "  $VAR"
-done
-if [ "${__HAS_VARS__}" = "true" ]
-then
-	true
-else
-	echo "  No vars"
-fi
-
-#### startup sequence
-# rig gracefull shutdown on signals
-trap shutdown HUP TERM INT EXIT QUIT
-
-# From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
-# robustness: if the previous graphical session left some failed units,
-# reset them so that they don't break this startup
-for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f 1 -d ' ')
-do
-	partof="$(systemctl --user show -p PartOf --value -- "$unit")"
-	for target in wayland-session@${COMPOSITOR}.target graphical-session.target
+	# wait for DISPLAY or WAYLAND_DISPLAY to appear in systemd user manager env
+	# or for compositor to exit early
+	# compositor should run systemctl --user import-environment {DISPLAY|WAYLAND_DISPLAY}
+	echo "Waiting for environment injection from compositor"
+	COUNTER=${START_STOP_RETRIES}
+	while true
 	do
-		if [ "$partof" = "$target" ]
+		sleep 1
+		if ! kill -0 $WM_PID 2>/dev/null || [ "$COUNTER" -le "0" ]
 		then
-			systemctl --user reset-failed "$unit"
+			echo "Compositor did not start or exited early, shutting down"
+			shutdown
+			break
+		elif systemctl --user show-environment | grep -qE '^(DISPLAY|WAYLAND_DISPLAY)='
+		then
+			echo "Environment injection confirmed"
 			break
 		fi
+		echo "Retries left: $COUNTER"
+		COUNTER=$(( $COUNTER - 1 ))
 	done
-done
 
-echo "Declaring graphical-pre target"
-start_and_check "wayland-session-pre@${COMPOSITOR}.target" graphical-session-pre.target
+	echo "Declaring graphical target"
+	start_and_check "wayland-session@${WM}.target" graphical-session.target
 
-# early import back for stuff like ssh agents
-import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
+	import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
 
-echo "Executing ${COMPOSITOR} compositor"
-if type "run_compositor_${COMPOSITOR}" > /dev/null 2> /dev/null
-then
-	"run_compositor_${COMPOSITOR}" &
-	COMPOSITOR_PID=$!
-else
-	compositor_wrapper "${COMPOSITOR}" &
-	COMPOSITOR_PID=$!
+	echo "Declaring autostart target"
+	start_and_check "wayland-session-xdg-autostart@${WM}.target" xdg-desktop-autostart.target
+
+	echo "All session startup tasks completed"
+	wait $WM_PID
+	WM_RC=$!
+	shutdown
 fi
-
-# wait for DISPLAY or WAYLAND_DISPLAY to appear in systemd user manager env
-# or for compositor to exit early
-# compositor should run systemctl --user import-environment {DISPLAY|WAYLAND_DISPLAY}
-echo "Waiting for environment injection from compositor"
-COUNTER=${START_STOP_RETRIES}
-while true
-do
-	sleep 1
-	if ! kill -0 $COMPOSITOR_PID 2>/dev/null || [ "$COUNTER" -le "0" ]
-	then
-		echo "Compositor did not start or exited early, shutting down"
-		shutdown
-		break
-	elif systemctl --user show-environment | grep -qE '^(DISPLAY|WAYLAND_DISPLAY)='
-	then
-		echo "Environment injection confirmed"
-		break
-	fi
-	echo "Retries left: $COUNTER"
-	COUNTER=$(( $COUNTER - 1 ))
-done
-
-echo "Declaring graphical target"
-start_and_check "wayland-session@${COMPOSITOR}.target" graphical-session.target
-
-import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
-
-echo "Declaring autostart target"
-start_and_check "wayland-session-xdg-autostart@${COMPOSITOR}.target" xdg-desktop-autostart.target
-
-echo "All session startup tasks completed"
-wait $COMPOSITOR_PID
-COMPOSITOR_RC=$!
-shutdown
