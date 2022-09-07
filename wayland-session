@@ -253,13 +253,18 @@ generate_units() {
 	#	[Unit]
 	#	Description=%I Wayland Window Manager
 	#	Documentation=man:systemd.service(7)
-	#	Requires=wayland-session@%i.target
-	#	Before=wayland-session@%i.target
+	#	BindsTo=wayland-session@%i.target
+	#	#Before=wayland-session@%i.target
+	#	Wants=wayland-session-pre@%i.target
 	#	After=wayland-session-pre@%i.target
 	#	#StopWhenUnneeded=yes
 	#	[Service]
 	#	Type=notify
 	#	ExecStart=/usr/bin/env %I
+	#	Restart=on-failure
+	#	RestartSec=1
+	#	TimeoutStopSec=10
+	#	NotifyAccess=all
 	#EOF
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
@@ -393,6 +398,8 @@ shutdown_and_check() {
 	if systemctl --user is-active -q "$1"
 	then
 		systemctl --user stop "$1"
+	else
+		echo "$1 is already inactive"
 	fi
 
 	echo "Waiting for depending units of ${1:-$2} to go down"
@@ -414,6 +421,7 @@ shutdown_and_check() {
 }
 
 shutdown() {
+	# TODO, replace pidfile with checking ExecMainStatus of a unit if we go with service
 	echo "Shutting down $COMPOSITOR session"
 	# stop autostart target
 	shutdown_and_check "wayland-session-xdg-autostart@${COMPOSITOR}.target" xdg-desktop-autostart.target
@@ -581,8 +589,8 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-export XDG_CURRENT_DESKTOP="$COMPOSITOR"
-export XDG_SESSION_DESKTOP="$COMPOSITOR"
+export XDG_CURRENT_DESKTOP="${COMPOSITOR}"
+export XDG_SESSION_DESKTOP="${COMPOSITOR}"
 export XDG_MENU_PREFIX="${COMPOSITOR}-"
 
 #### apply quirks
@@ -615,7 +623,8 @@ done
 IFS="$OIFS"
 
 # hardcode unset conflicting vars.
-# if they were in systemd user manager environment, they will be automatically unset by the algorithm later
+# if they were in systemd user manager environment,
+# they will be automatically unset by the algorithm later
 unset DISPLAY WAYLAND_DISPLAY
 
 # take another zero-delimited snapshot of environment for comparison
