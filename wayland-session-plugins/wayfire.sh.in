@@ -37,11 +37,20 @@ quirks_wayfire() {
 		then
 			cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
 		fi
-		# if local config is missing or has the same content as stage, update
-		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}" -o "$(cat "${WAYFIRE_LOCAL_CONFIG}.upstream")" = "$(cat "${WAYFIRE_LOCAL_CONFIG}")" ]
+
+		# if local config is missing
+		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}" ]
 		then
-			cp -av "${WAYFIRE_LOCAL_CONFIG}.upstream" "$WAYFIRE_LOCAL_CONFIG"
+			echo "Generating local wayfire config from upstream"
+			cp -av "${WAYFIRE_GLOBAL_CONFIG}" "$WAYFIRE_LOCAL_CONFIG"
+		elif [ "$(cat "${WAYFIRE_LOCAL_CONFIG}.upstream" | md5sum)" = "$(cat "${WAYFIRE_LOCAL_CONFIG}" | md5sum)" ]
+		then
+			echo "Updating local wayfire config from upstream"
+			cat "${WAYFIRE_GLOBAL_CONFIG}" > "$WAYFIRE_LOCAL_CONFIG"
+		else
+			echo "Local wayfire config differs from upstream, skipping update"
 		fi
+
 		# update stage
 		cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
 	fi
@@ -69,8 +78,8 @@ generate_units_wayfire() {
 	echo "Placing wayfire service tweak wayland-wm@wayfire.service.d/tweak.conf"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d/tweak.conf" <<- EOF
 		[Service]
-		ExecStart=-
-		ExecStart=wayfire -c "${WAYFIRE_LOCAL_CONFIG}"
+		ExecStart=
+		ExecStart=wayfire -c "\${WAYFIRE_LOCAL_CONFIG}"
 	EOF
 }
 

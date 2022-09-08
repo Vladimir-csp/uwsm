@@ -136,6 +136,9 @@ add_supported_wm() {
 #    # or set a var to modify what ${WM}/env in the next stage will do
 #    ...
 #  }
+#  load_wm_env_my_cool_wm() {
+#    # wm-specific loading of env (or a stub)
+#  }
 #  generate_units_my_cool_wm() {
 #    # place some units or fragments specifically for my-cool-wm
 #    # reloading is handled by main script
@@ -452,6 +455,35 @@ get_session_by_vt() {
 	fi
 }
 
+load_wm_env() {
+	#### iterate config dirs in increasing importance and source additional ${WM}/env
+	__ALL_XDG_CONFIG_DIRS_REV__=''
+	OIFS="$IFS"
+	IFS=":"
+	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
+	do
+		IFS="$OIFS"
+		# fill list in revers order
+		if [ -n "${__CONFIG_DIR__}" ]
+		then
+			__ALL_XDG_CONFIG_DIRS_REV__="${__ALL_XDG_CONFIG_DIRS_REV__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__CONFIG_DIR__}"
+		fi
+	done
+	IFS=":"
+	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}
+	do
+		IFS="$OIFS"
+		if [ -r "${__CONFIG_DIR__}/${WM}/env" ]
+		then
+			echo "Loading environment from ${__CONFIG_DIR__}/${WM}/env"
+			#set -a
+			. "${__CONFIG_DIR__}/${WM}/env"
+			#set +a
+		fi
+	done
+	IFS="$OIFS"
+}
+
 prepare_env() {
 	# hopefully smartly prepares the environment and updates systemd user manager
 	local __CONFIG_DIR__=''
@@ -523,32 +555,13 @@ prepare_env() {
 		quirks_${WM_FNAME}
 	fi
 
-	#### iterate config dirs in increasing importance and source additional ${WM}/env
-	__ALL_XDG_CONFIG_DIRS_REV__=''
-	OIFS="$IFS"
-	IFS=":"
-	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
-	do
-		IFS="$OIFS"
-		# fill list in revers order
-		if [ -n "${__CONFIG_DIR__}" ]
-		then
-			__ALL_XDG_CONFIG_DIRS_REV__="${__ALL_XDG_CONFIG_DIRS_REV__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__CONFIG_DIR__}"
-		fi
-	done
-	IFS=":"
-	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}
-	do
-		IFS="$OIFS"
-		if [ -r "${__CONFIG_DIR__}/${WM}/env" ]
-		then
-			echo "Loading environment from ${__CONFIG_DIR__}/${WM}/env"
-			#set -a
-			. "${__CONFIG_DIR__}/${WM}/env"
-			#set +a
-		fi
-	done
-	IFS="$OIFS"
+	if type "load_wm_env_${WM_FNAME}" >/dev/null
+	then
+		echo "WM-specific environment loading"
+		load_wm_env_${WM_FNAME}
+	else
+		load_wm_env
+	fi
 
 	# hardcode unset conflicting vars.
 	# if they were in systemd user manager environment,
