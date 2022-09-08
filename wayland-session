@@ -11,6 +11,7 @@ PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
 
+# this is for testing
 WS_EXEC="$(realpath -s "$0")"
 
 START_STOP_RETRIES=10
@@ -232,7 +233,7 @@ then
 elif [ "$MODE" = "intstart" ]
 then
 	echo "Doing integrated start"
-	exec systemd-cat -t "wayland-session-${WM}-manager" -- "$0" "$WM" start
+	exec systemd-cat -t "wayland-session-${WM}" -- "$0" "$WM" start
 fi
 
 # functions for operating on lists of variable names
@@ -393,12 +394,12 @@ wm_wrapper() {
 	# adds stop propagation from -pre target (for shutdown)
 	# wraps into systemd-cat for logging
 	systemd-run --user --scope \
-	  --unit="wayland-session-${WM}" \
+	  --unit="wayland-wm-${WM}" \
 	  --description="Scope for ${WM} wayland compositor and its children" \
 	  --send-sighup \
 	  --property="StopPropagatedFrom=wayland-session-pre@${WM}.target" \
 	  -- \
-	  systemd-cat -t "wayland-session-${WM}" \
+	  systemd-cat -t "wayland-wm-${WM}" \
 	  -- \
 	  "$@"
 }

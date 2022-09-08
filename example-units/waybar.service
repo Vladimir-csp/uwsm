@@ -1,0 +1,18 @@
+[Unit]
+Description=Highly customizable Wayland bar for Sway and Wlroots based compositors.
+Documentation=https://github.com/Alexays/Waybar/wiki/
+# order startup after WM
+After=wayland-wm@sway.service wayland-wm@wayfire.service
+# Make sure to receive stop when WM stops
+# Stop before WM stops due to After= ordering above
+StopPropagatedFrom=wayland-wm@sway.service wayland-wm@wayfire.service
+
+[Service]
+ExecStart=/usr/bin/waybar
+ExecReload=kill -SIGUSR2 $MAINPID
+Restart=on-failure
+
+[Install]
+# Get started via specific WMs
+WantedBy=wayland-wm@sway.service
+WantedBy=wayland-wm@wayfire.service
