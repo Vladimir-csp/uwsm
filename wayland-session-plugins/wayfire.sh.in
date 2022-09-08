@@ -46,6 +46,15 @@ quirks_wayfire() {
 		cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
 	fi
 
+	if [ -r "$WAYFIRE_LOCAL_CONFIG" ]
+	then
+		export WAYFIRE_LOCAL_CONFIG
+	else
+		echo "Could not create local config in expected location:" >&2
+		echo "  $WAYFIRE_LOCAL_CONFIG"
+		exit 1
+	fi
+
 	# detect disabled xwayland
 	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${WAYFIRE_LOCAL_CONFIG}"
 	then
@@ -55,6 +64,20 @@ quirks_wayfire() {
 	fi
 }
 
+generate_units_wayfire() {
+	mkdir -pv "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d"
+	echo "Placing wayfire service tweak wayland-wm@wayfire.service.d/tweak.conf"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d/tweak.conf" <<- EOF
+		[Service]
+		ExecStart=-
+		ExecStart=wayfire -c "${WAYFIRE_LOCAL_CONFIG}"
+	EOF
+}
+
+remove_units_wayfire() {
+	rm -rv "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d"
+}
+
 run_wm_wayfire() {
-	wm_wrapper "${WM}" -c "$WAYFIRE_LOCAL_CONFIG"
+	wm_wrapper wayfire -c "$WAYFIRE_LOCAL_CONFIG"
 }

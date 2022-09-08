@@ -127,7 +127,7 @@ add_supported_wm() {
 #  quirks_my_cool_wm() {
 #    # here additional vars can be added set for session manager
 #    # like
-#    IMPORT_BACK_VARS="${IMPORT_BACK_VARS} SWAYSOCK I3SOCK"
+#    IMPORT_BACK_VARS="${IMPORT_BACK_VARS} MY_WM_SOCKET"
 #    ALWAYS_EXPORT_VARS="${ALWAYS_EXPORT_VARS} SOME OTHER VARS"
 #    ALWAYS_CLEANUP_VARS"${ALWAYS_CLEANUP_VARS} SOME OTHER VARS"
 #    # or export more vars for session
@@ -137,7 +137,7 @@ add_supported_wm() {
 #    ...
 #  }
 #  generate_units_my_cool_wm() {
-#    # place some units or fragments specifically for sway
+#    # place some units or fragments specifically for my-cool-wm
 #    # reloading is handled by main script
 #  }
 #  remove_units_my_cool_wm() {
@@ -148,12 +148,12 @@ add_supported_wm() {
 #  # Always define WM as arguments to wm_wrapper
 #  # if needed to modify execution in full systemd mode, add dropin in generate_units_my_cool_wm()
 #  run_wm_my_cool_wm() {
-#    wm_wrapper sway --with any args
+#    wm_wrapper my-cool-wm --with any args
 #  }
 #  # function to terminate compositor
 #  exit_my_cool_wm() {
-#    # requires SWAYSOCK in IMPORT_BACK_VARS
-#    swaymsg exit
+#    # requires MY_WM_SOCKET in IMPORT_BACK_VARS
+#    my-cool-wm-communicate exit
 #  }
 
 OIFS="$IFS"
