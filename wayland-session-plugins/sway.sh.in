@@ -1,0 +1,22 @@
+#!/bin/false
+
+add_supported_wm sway
+
+quirks_sway() {
+	IMPORT_BACK_VARS="${IMPORT_BACK_VARS} I3SOCK SWAYSOCK"
+	ALWAYS_CLEANUP_VARS="${IMPORT_BACK_VARS} I3SOCK SWAYSOCK"
+	WM_SERVICE_INCLUDE="ExecStop=/usr/bin/env swaymsg exit"
+
+	# detect disabled xwayland
+	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config"
+	then
+		XWAYLAND=false
+	else
+		XWAYLAND=true
+	fi
+}
+
+exit_sway() {
+	# requires SWAYSOCK in IMPORT_BACK_VARS
+	swaymsg exit
+}

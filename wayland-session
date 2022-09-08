@@ -9,6 +9,7 @@ SUPPORTED_WMS=''
 SUPPORTED_MODES='unitgen|unitrm|prepare|start|intstart|stop|stcleanup|cleanup|check'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
+PLUGIN_NAME_PATTERN='*.sh.in'
 
 WS_EXEC="$(realpath -s "$0")"
 
@@ -16,6 +17,7 @@ START_STOP_RETRIES=10
 
 # variables that will always be exported to systemd user manager during startup
 ALWAYS_EXPORT_VARS="XDG_SESSION_ID
+XDG_VTNR
 XDG_CURRENT_DESKTOP
 XDG_SESSION_DESKTOP
 XDG_MENU_PREFIX
@@ -44,6 +46,7 @@ SSH_AGENT_PID"
 ALWAYS_CLEANUP_VARS="DISPLAY
 WAYLAND_DISPLAY
 XDG_SESSION_ID
+XDG_VTNR
 XDG_CURRENT_DESKTOP
 XDG_SESSION_DESKTOP
 XDG_MENU_PREFIX
@@ -115,9 +118,13 @@ add_supported_wm() {
 # all dashes replaced by underscores and underscores singled
 # $(echo "$WM" | tr '-' '_' | tr -s '_')
 # example:
-#  add_supported_wm sway
+#
+#  #!/bin/false
+#
+#  add_supported_wm my-cool-wm
+#
 #  # function to make arbitrary actions before loading ${WM}/env
-#  quirks_sway() {
+#  quirks_my_cool_wm() {
 #    # here additional vars can be added set for session manager
 #    # like
 #    IMPORT_BACK_VARS="${IMPORT_BACK_VARS} SWAYSOCK I3SOCK"
@@ -129,21 +136,22 @@ add_supported_wm() {
 #    # or set a var to modify what ${WM}/env in the next stage will do
 #    ...
 #  }
-#  generate_units_sway() {
+#  generate_units_my_cool_wm() {
 #    # place some units or fragments specifically for sway
 #    # reloading is handled by main script
 #  }
-#  remove_units_sway() {
+#  remove_units_my_cool_wm() {
 #    # remove the same units
 #    # reloading is handled by main script
 #  }
-#  # Function to override WM execution.
+#  # Function to override WM execution in start|intstart mode
 #  # Always define WM as arguments to wm_wrapper
-#  run_wm_sway() {
+#  # if needed to modify execution in full systemd mode, add dropin in generate_units_my_cool_wm()
+#  run_wm_my_cool_wm() {
 #    wm_wrapper sway --with any args
 #  }
 #  # function to terminate compositor
-#  exit_sway() {
+#  exit_my_cool_wm() {
 #    # requires SWAYSOCK in IMPORT_BACK_VARS
 #    swaymsg exit
 #  }
@@ -152,14 +160,15 @@ OIFS="$IFS"
 IFS=":"
 for PLUGIN_PREFIX_PATH in $PLUGIN_PREFIX_PATHS
 do
-	if [ -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
+	echo DEBUG trying "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/$PLUGIN_NAME_PATTERN"
+	if [ -n "$PLUGIN_PREFIX_PATH" -a -n "$PLUGIN_DIR_NAME" -a -n "$PLUGIN_NAME_PATTERN" -a -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
 	then
 		IFS="
 "
 		for PFILE in $(
-			find "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/"\
+			find -L "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/"\
 			  -mindepth 1 -maxdepth 1 \
-			  -type f -name "*.plugin.sh"
+			  -type f -name "$PLUGIN_NAME_PATTERN"
 		)
 		do
 			echo "Loading plugin: $PFILE"
@@ -444,6 +453,17 @@ get_session_by_vt() {
 }
 
 prepare_env() {
+	# hopefully smartly prepares the environment and updates systemd user manager
+	local __CONFIG_DIR__=''
+	local __ALL_XDG_CONFIG_DIRS_REV__=''
+	local __ENV_NAMES__=''
+	local __SYSTEMD_ENV_NAMES__=''
+	local __ENV_NAMES_AFTER__=''
+	local __ENV_NAMES_FOR_EXPORT__=''
+	local __ENV_NAMES_FOR_UNSET__=''
+	local __ENV_NAMES_FOR_CLEANUP__=''
+	local __HAS_VARS__=''
+
 	# get current shell env names
 	__ENV_NAMES__=$(
 		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
@@ -455,6 +475,7 @@ prepare_env() {
 	)
 
 	echo "Importing env difference from systemd user manager"
+	# this should have no effect when launched by a service with 'prepare', but still...
 	import_back_vars $(
 		echo ${__SYSTEMD_ENV_NAMES__} \
 		| varnames_subtract ${__ENV_NAMES__} \
@@ -477,7 +498,7 @@ prepare_env() {
 	fi
 	if [ -n "${XDG_VTNR}" -a -z "${XDG_SESSION_ID}" ]
 	then
-		XDG_SESSION_ID=$(get_session_by_vt) && export XDG_SESSION_ID
+		XDG_SESSION_ID=$(get_session_by_vt $XDG_VTNR) && export XDG_SESSION_ID
 	fi
 
 	#### Basic environment
@@ -503,22 +524,27 @@ prepare_env() {
 	fi
 
 	#### iterate config dirs in increasing importance and source additional ${WM}/env
-	ALL_XDG_CONFIG_DIRS_REV=''
+	__ALL_XDG_CONFIG_DIRS_REV__=''
 	OIFS="$IFS"
 	IFS=":"
-	for CD in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
-	do
-		# fill list in revers order
-		ALL_XDG_CONFIG_DIRS_REV="${ALL_XDG_CONFIG_DIRS_REV}${ALL_XDG_CONFIG_DIRS_REV:+:}${CD}"
-	done
-	for CD in ${ALL_XDG_CONFIG_DIRS_REV}
+	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
 	do
 		IFS="$OIFS"
-		if [ -r "${CD}/${WM}/env" ]
+		# fill list in revers order
+		if [ -n "${__CONFIG_DIR__}" ]
 		then
-			echo "Loading environment from ${CD}/${WM}/env"
+			__ALL_XDG_CONFIG_DIRS_REV__="${__ALL_XDG_CONFIG_DIRS_REV__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__CONFIG_DIR__}"
+		fi
+	done
+	IFS=":"
+	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}
+	do
+		IFS="$OIFS"
+		if [ -r "${__CONFIG_DIR__}/${WM}/env" ]
+		then
+			echo "Loading environment from ${__CONFIG_DIR__}/${WM}/env"
 			#set -a
-			. "${CD}/${WM}/env"
+			. "${__CONFIG_DIR__}/${WM}/env"
 			#set +a
 		fi
 	done

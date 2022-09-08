@@ -1,0 +1,60 @@
+#!/bin/false
+
+add_supported_wm wayfire
+
+quirks_wayfire() {
+	#### find global config and make updateable default out of it
+	# initial point from docs example
+	WAYFIRE_GLOBAL_CONFIG=/usr/share/doc/wayfire/examples/wayfire.ini
+	WAYFIRE_LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire/wayfire.ini"
+
+	mkdir -p "$(dirname "$WAYFIRE_LOCAL_CONFIG")"
+
+	# iterate in $XDG_CONFIG_DIRS in default (decreasing) importance
+	# get first found config
+	OIFS="$IFS"
+	IFS=":"
+	for CD in ${XDG_CONFIG_DIRS}
+	do
+		IFS="$OIFS"
+		if [ -f "${CD}/wayfire/wayfire.ini" ]
+		then
+			WAYFIRE_GLOBAL_CONFIG="${CD}/wayfire/wayfire.ini"
+			break
+		fi
+		if [ -f "${CD}/wayfire.ini" ]
+		then
+			WAYFIRE_GLOBAL_CONFIG="${CD}/wayfire.ini"
+			break
+		fi
+	done
+	IFS="$OIFS"
+
+	if [ -n "$WAYFIRE_GLOBAL_CONFIG" ]
+	then
+		# copy global config to stage location if not already there
+		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}.upstream" ]
+		then
+			cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
+		fi
+		# if local config is missing or has the same content as stage, update
+		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}" -o "$(cat "${WAYFIRE_LOCAL_CONFIG}.upstream")" = "$(cat "${WAYFIRE_LOCAL_CONFIG}")" ]
+		then
+			cp -av "${WAYFIRE_LOCAL_CONFIG}.upstream" "$WAYFIRE_LOCAL_CONFIG"
+		fi
+		# update stage
+		cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
+	fi
+
+	# detect disabled xwayland
+	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${WAYFIRE_LOCAL_CONFIG}"
+	then
+		XWAYLAND=false
+	else
+		XWAYLAND=true
+	fi
+}
+
+run_wm_wayfire() {
+	wm_wrapper "${WM}" -c "$WAYFIRE_LOCAL_CONFIG"
+}
