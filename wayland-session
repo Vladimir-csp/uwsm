@@ -164,7 +164,6 @@ OIFS="$IFS"
 IFS=":"
 for PLUGIN_PREFIX_PATH in $PLUGIN_PREFIX_PATHS
 do
-	echo DEBUG trying "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/$PLUGIN_NAME_PATTERN"
 	if [ -n "$PLUGIN_PREFIX_PATH" -a -n "$PLUGIN_DIR_NAME" -a -n "$PLUGIN_NAME_PATTERN" -a -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
 	then
 		IFS="
@@ -434,7 +433,7 @@ get_session_by_vt() {
 	local VT="$1"
 	if [ -n "$VT" ]
 	then
-		for SESSION in $(loginctl list-sessions)
+		for SESSION in $(loginctl list-sessions --no-legend | tr -s ' ' | cut -d ' ' -f 1)
 		do
 			if [ \
 			  "$(loginctl show-session ${SESSION} --property Name --value)" = "${USER}" \
@@ -527,11 +526,17 @@ prepare_env() {
 	# deal with vt and session vars
 	if [ -z "${XDG_VTNR}" ]
 	then
-		XDG_VTNR=$(get_vt) && export XDG_VTNR
+		XDG_VTNR=$(get_vt) && {
+			echo "Guessed XDG_VTNR=$XDG_VTNR"
+			export XDG_VTNR
+		}
 	fi
 	if [ -n "${XDG_VTNR}" -a -z "${XDG_SESSION_ID}" ]
 	then
-		XDG_SESSION_ID=$(get_session_by_vt $XDG_VTNR) && export XDG_SESSION_ID
+		XDG_SESSION_ID=$(get_session_by_vt $XDG_VTNR) && {
+			echo "Guessed XDG_SESSION_ID=$XDG_SESSION_ID"
+			export XDG_SESSION_ID
+		}
 	fi
 
 	#### Basic environment
