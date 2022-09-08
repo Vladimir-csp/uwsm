@@ -47,6 +47,7 @@ XDG_SESSION_ID
 XDG_CURRENT_DESKTOP
 XDG_SESSION_DESKTOP
 XDG_MENU_PREFIX
+PATH
 XCURSOR_THEME
 XCURSOR_SIZE
 LANG"
@@ -175,6 +176,8 @@ then
 fi
 
 WM="${1:?Requires a compositor as first argument: $SUPPORTED_WMS}"
+# replace dashes with underscores for function names
+WM_FNAME=$(echo "$WM" | tr '-' '_' | tr -s '_')
 MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
 
 CHECKOUT=true
@@ -203,8 +206,11 @@ then
 	CHECKOUT=false
 fi
 
-# replace dashes with underscores for function names
-WM_FNAME=$(echo "$WM" | tr '-' '_' | tr -s '_')
+if [ -z "$XDG_RUNTIME_DIR" ]
+then
+	echo "\$XDG_RUNTIME_DIR is not set, something is wrong with your environment" >&2
+	CHECKOUT=false
+fi
 
 # exit with error on failed checks
 if [ "$CHECKOUT" = "false" ]
@@ -231,19 +237,19 @@ normalize_varnames_newline() {
 varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
 	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
-	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}"
-	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
-	comm -23 "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
-	rm -f "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
+	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}"
+	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
+	comm -23 "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
+	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
 }
 
 varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
 	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
-	normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}"
-	echo $* | normalize_varnames_newline > "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
-	comm -12 "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
-	rm -f "${__LOCAL_RUNTIME_DIR__}/${WM}_list_1_${RND}" "${__LOCAL_RUNTIME_DIR__}/${WM}_list_2_${RND}"
+	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}"
+	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
+	comm -12 "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
+	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
 }
 
 varnames_union() {
@@ -328,6 +334,7 @@ generate_units() {
 		Type=notify
 		NotifyAccess=all
 		ExecStart=%I
+		# terminate autostart units before self
 		ExecStop=systemctl --user stop app-*@autostart.service
 		Restart=on-failure
 		RestartSec=1
@@ -385,16 +392,55 @@ wm_wrapper() {
 }
 
 savepid() {
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
+	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
 	then
-		CHECK_PID=$(head -n 1 -c 8 "${__LOCAL_RUNTIME_DIR__}/${WM}_pid")
+		CHECK_PID=$(head -n 1 -c 8 "${XDG_RUNTIME_DIR}/${WM}_pid")
 		if kill -0 $CHECK_PID 2>/dev/null
 		then
 			echo "Wayland session manager is already running as PID ${CHECK_PID}!" >&2
 			exit 1
 		fi
 	fi
-	echo $$ > "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
+	echo $$ > "${XDG_RUNTIME_DIR}/${WM}_pid"
+}
+
+get_vt() {
+	# echoes current vt
+	if fgconsole
+	then
+		return 0
+	else
+		echo "Could not get current VT" >&2
+		return 1
+	fi
+}
+
+get_session_by_vt() {
+	# takes VT number, echoes session ID bound to it
+	local SESSION
+	local VT="$1"
+	if [ -n "$VT" ]
+	then
+		for SESSION in $(loginctl list-sessions)
+		do
+			if [ \
+			  "$(loginctl show-session ${SESSION} --property Name --value)" = "${USER}" \
+			  -a \
+			  "$(loginctl show-session ${SESSION} --property VTNr --value)" = "$VT" \
+			]
+			then
+				echo $SESSION
+				return 0
+			else
+				continue
+			fi
+		done
+		echo "Could not find session for VT $VT" >&2
+		return 1
+	else
+		echo "get_session_by_vt requires VT number" >&2
+		return 1
+	fi
 }
 
 prepare_env() {
@@ -417,12 +463,22 @@ prepare_env() {
 
 	# take full snapshot of env vars state (zero-delimited)
 	# this will be used for comparisons later
-	env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${WM}_initial_combined_env"
+	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${WM}_initial_combined_env"
 
 	# collect env names
 	__ENV_NAMES__=$(
 		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
 	)
+
+	# deal with vt and session vars
+	if [ -z "${XDG_VTNR}" ]
+	then
+		XDG_VTNR=$(get_vt) && export XDG_VTNR
+	fi
+	if [ -n "${XDG_VTNR}" -a -z "${XDG_SESSION_ID}" ]
+	then
+		XDG_SESSION_ID=$(get_session_by_vt) && export XDG_SESSION_ID
+	fi
 
 	#### Basic environment
 	. /etc/profile
@@ -474,7 +530,7 @@ prepare_env() {
 	unset DISPLAY WAYLAND_DISPLAY
 
 	# take another zero-delimited snapshot of environment for comparison
-	env -0 | sort -z > "${__LOCAL_RUNTIME_DIR__}/${WM}_final_env"
+	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${WM}_final_env"
 
 	# collect env names
 	__ENV_NAMES_AFTER__=$(
@@ -486,8 +542,8 @@ prepare_env() {
 		{
 			# names of vars modified since initial combined environment
 			comm -z -13 \
-			  "${__LOCAL_RUNTIME_DIR__}/${WM}_initial_combined_env" \
-			  "${__LOCAL_RUNTIME_DIR__}/${WM}_final_env" \
+			  "${XDG_RUNTIME_DIR}/${WM}_initial_combined_env" \
+			  "${XDG_RUNTIME_DIR}/${WM}_final_env" \
 			| cut -z -d '=' -f 1 \
 			| tr '\0' '\n'
 
@@ -524,13 +580,13 @@ prepare_env() {
 
 	# cleanup temp files
 	rm -f \
-	  ${__LOCAL_RUNTIME_DIR__}/${WM}_initial_combined_env \
-	  ${__LOCAL_RUNTIME_DIR__}/${WM}_final_env
+	  ${XDG_RUNTIME_DIR}/${WM}_initial_combined_env \
+	  ${XDG_RUNTIME_DIR}/${WM}_final_env
 
 	# save cleanup list
 	echo ${__ENV_NAMES_FOR_CLEANUP__} \
 	  | normalize_varnames_newline \
-	  > "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
+	  > "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names"
 
 	__HAS_VARS__=false
 	echo "Exporting vars to systemd user manager:"
@@ -665,7 +721,7 @@ import_back_vars() {
 }
 
 cleanup_vars() {
-	# take var names from "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
+	# take var names from "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names"
 	# and ${ALWAYS_CLEANUP_VARS}
 	# exclude ${NEVER_CLEANUP_VARS}
 	# and remove them from systemd user manager
@@ -673,8 +729,8 @@ cleanup_vars() {
 	local __ENV_NAMES_FOR_CLEANUP__=$(
 		{
 			# saved cleanup list if exists
-			[ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names" ] \
-			  && cat "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
+			[ -f "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names" ] \
+			  && cat "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names"
 			# vars to always cleanup
 			echo ${ALWAYS_CLEANUP_VARS}
 			# subtract vars to never cleanup
@@ -695,8 +751,8 @@ cleanup_vars() {
 		echo "  No vars"
 		CLEANUP_RC=0
 	fi
-	[ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names" ] \
-	  && rm "${__LOCAL_RUNTIME_DIR__}/${WM}_for_cleanup_env_names"
+	[ -f "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names" ] \
+	  && rm "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names"
 	return $CLEANUP_RC
 }
 
@@ -782,17 +838,13 @@ shutdown() {
 
 	cleanup_vars
 
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
+	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
 	then
-		rm "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
+		rm "${XDG_RUNTIME_DIR}/${WM}_pid"
 	fi
 
 	exit "$WM_RC"
 }
-
-#### dir for saving var states
-# (var is used just in this script for consistency in case of later overrides)
-__LOCAL_RUNTIME_DIR__="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
 if [ "$MODE" = "check" ]
 then
@@ -803,9 +855,9 @@ then
 elif [ "$MODE" = "stcleanup" ]
 then
 	# abort cleanup if main process is still running
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
+	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
 	then
-		MAINPID=$(cat "${__LOCAL_RUNTIME_DIR__}/${WM}_pid")
+		MAINPID=$(cat "${XDG_RUNTIME_DIR}/${WM}_pid")
 		if kill -0 $MAINPID 2>/dev/null
 		then
 			echo "Main process $MAINPID is still running, cleanup aborted" >&2
@@ -824,24 +876,24 @@ then
 
 elif [ "$MODE" = "stop" ]
 then
-	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
+	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
 	then
-		MAIN_PID=$(cat "${__LOCAL_RUNTIME_DIR__}/${WM}_pid")
+		MAIN_PID=$(cat "${XDG_RUNTIME_DIR}/${WM}_pid")
 		echo Killing process $MAIN_PID
 		kill $MAIN_PID
 		KILL_RC=$?
 		if [ "$KILL_RC" = "0" ]
 		then
-			rm "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
+			rm "${XDG_RUNTIME_DIR}/${WM}_pid"
 			exit 0
 		else
 			echo "Kill returned $KILL_RC, cleaning up vars instead"
 			cleanup_vars
-			rm "${__LOCAL_RUNTIME_DIR__}/${WM}_pid"
+			rm "${XDG_RUNTIME_DIR}/${WM}_pid"
 			exit $CLEANUP_RC
 		fi
 	else
-		echo "Pidfile ${__LOCAL_RUNTIME_DIR__}/${WM}_pid not found, cleaning up vars instead"
+		echo "Pidfile ${XDG_RUNTIME_DIR}/${WM}_pid not found, cleaning up vars instead"
 		cleanup_vars
 		exit $CLEANUP_RC
 	fi
@@ -849,6 +901,10 @@ then
 elif [ "$MODE" = "unitgen" ]
 then
 	generate_units
+
+elif [ "$MODE" = "unitrm" ]
+then
+	remove_units
 
 elif [ "$MODE" = "prepare" ]
 then
