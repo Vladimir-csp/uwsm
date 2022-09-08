@@ -6,7 +6,7 @@
 # Inspired by and uses some parts from https://github.com/xdbob/sway-services
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='unitgen|prepare|start|intstart|stop|cleanup|check'
+SUPPORTED_MODES='unitgen|unitrm|prepare|start|intstart|stop|stcleanup|cleanup|check'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 
@@ -56,20 +56,38 @@ show_help() {
 		
 		Generic wayland session manager with systemd integration
 		Usage:
-		  $(basename $0) ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
+		  $(basename "$0") ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
 		
 		$(basename $0) manages session for selected wayland WM.
-		Modes:
-		  unitgen:   generates systemd unit files in runtime hierarchy
-		  start:     starts session of selected WM from current shell inside a scope with logging
-		  intstart:  reexec self inside a scope with logging in start mode not just WM
-		  stop:      cleanly shuts down session or cleans up environment
-		             just killing main session manager process is also supported
-		  cleanup:   cleans up environment from systemd user manager if main process is not running
-		  check:     checks supported arguments
+		Supported modes:
+		    check:     checks supported arguments
+		
+		  For full systemd operation (via units):
+		    unitgen:   generates systemd unit files in runtime hierarchy
+		    unitrm:    removes systemd unit files from runtime hierarchy
+		    prepare:   prepares environment for WM in systemd user manager
+		               (for use in ExecStart of wayland-wm-env@.service)
+		    cleanup:   cleans up environment from systemd user manager
+		               (for use in ExecStop of wayland-wm-env@.service)
+		
+		    to start WM in this way:
+		        $(basename "$0") \${WM} unitgen
+		        exec systemctl --user --wait start wayland-wm@\${WM}.service
+		
+		  For direct login session start and partial systemd operation:
+		    start:     starts session of selected WM from current shell inside a scope with logging
+		    intstart:  reexec self inside a scope with logging in start mode not just WM
+		    stop:      cleanly shuts down session or cleans up environment
+		               just killing main session manager process is also supported
+		    stcleanup: cleans up environment from systemd user manager if main process is not running
+		
+		    to start WM in this way:
+		        $(basename "$0") \${WM} start
 		
 		Session manager also loads environment from \${WM}/env files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
+		
+		
 		
 		See code comments for documentation on plugins.
 	EOF
@@ -92,9 +110,12 @@ add_supported_wm() {
 # load plugins
 # plugins should contain only add_supported_wm call
 # and specifically named functions
+# function name suffix is expected to be WM name with
+# all dashes replaced by underscores and underscores singled
+# $(echo "$WM" | tr '-' '_' | tr -s '_')
 # example:
 #  add_supported_wm sway
-#  # function to make arbitrary actions before startup and loading ${WM}/env
+#  # function to make arbitrary actions before loading ${WM}/env
 #  quirks_sway() {
 #    # here additional vars can be added set for session manager
 #    # like
@@ -104,8 +125,16 @@ add_supported_wm() {
 #    # or export more vars for session
 #    export I_WANT_THIS_IN_SESSION=yes
 #    # or prepare a config (see waybar plugin)
-#    # or set a var to modify what ${WM}/env will do
+#    # or set a var to modify what ${WM}/env in the next stage will do
 #    ...
+#  }
+#  generate_units_sway() {
+#    # place some units or fragments specifically for sway
+#    # reloading is handled by main script
+#  }
+#  remove_units_sway() {
+#    # remove the same units
+#    # reloading is handled by main script
 #  }
 #  # Function to override WM execution.
 #  # Always define WM as arguments to wm_wrapper
@@ -174,16 +203,21 @@ then
 	CHECKOUT=false
 fi
 
+# replace dashes with underscores for function names
+WM_FNAME=$(echo "$WM" | tr '-' '_' | tr -s '_')
+
 # exit with error on failed checks
 if [ "$CHECKOUT" = "false" ]
 then
 	exit 1
+
 elif [ "$MODE" = "intstart" ]
 then
 	echo "Doing integrated start"
 	exec systemd-cat -t "wayland-session-${WM}-manager" -- "$0" "$WM" start
 fi
 
+# functions for operating on lists of variable names
 normalize_varnames_space() {
 	# pipe var names to get sorted, uniqued, normalized space-separated output
 	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u | tr '\n' ' ' | sed 's/^ \+\| \+$//g'
@@ -221,7 +255,8 @@ varnames_union() {
 }
 
 generate_units() {
-	# injects customized targets bound to systemd special graphical targets
+	# places customized targets bound to systemd special graphical targets
+	# in runtime systemd hierarchy
 	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
 	echo "Placing wayland-wm-env@.service"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
@@ -298,7 +333,37 @@ generate_units() {
 		RestartSec=1
 		TimeoutStopSec=10
 	EOF
-	#	${WM_SERVICE_INCLUDE:-}
+	if type generate_units_${WM_FNAME} >/dev/null
+	then
+		echo "Placing custom untis for $WM"
+		generate_units_${WM_FNAME}
+	fi
+	echo Reloading systemd user manager
+	systemctl --user daemon-reload
+}
+
+remove_units() {
+	# removes units from runtime hierarchy
+	local UNIT
+	for UNIT in \
+	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" \
+	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" \
+	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" \
+	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" \
+	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service"
+	do
+		if [ -f "$UNIT" ]
+		then
+			echo "Removing $(basename "$UNIT")"
+			rm "$UNIT"
+		else
+			echo "$(basename "$UNIT") is already gone"
+		fi
+	done
+	if type remove_units_${WM_FNAME} >/dev/null
+	then
+		remove_units_${WM_FNAME}
+	fi
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
 }
@@ -375,10 +440,10 @@ prepare_env() {
 	export XDG_MENU_PREFIX="${WM}-"
 
 	#### apply quirks
-	if type "quirks_${WM}" >/dev/null
+	if type "quirks_${WM_FNAME}" >/dev/null
 	then
 		echo "Applying quirks for ${WM}"
-		quirks_${WM}
+		quirks_${WM_FNAME}
 	fi
 
 	#### iterate config dirs in increasing importance and source additional ${WM}/env
@@ -679,9 +744,9 @@ shutdown() {
 		if kill -0 $WM_PID 2>/dev/null
 		then
 			# kill compositor via function if exists
-			if type "exit_${WM}" >/dev/null
+			if type "exit_${WM_FNAME}" >/dev/null
 			then
-				"exit_${WM}"
+				"exit_${WM_FNAME}"
 				EXIT_WM_RC=$?
 				if [ "$EXIT_WM_RC" != "0" ]
 				then
@@ -735,7 +800,7 @@ then
 	echo "Checked for compositor ${WM}"
 	exit 0
 
-elif [ "$MODE" = "cleanup_DISABLED" ]
+elif [ "$MODE" = "stcleanup" ]
 then
 	# abort cleanup if main process is still running
 	if [ -f "${__LOCAL_RUNTIME_DIR__}/${WM}_pid" ]
@@ -817,9 +882,9 @@ then
 	import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
 
 	echo "Executing ${WM} compositor"
-	if type "run_wm_${WM}" > /dev/null 2> /dev/null
+	if type "run_wm_${WM_FNAME}" > /dev/null 2> /dev/null
 	then
-		"run_wm_${WM}" &
+		"run_wm_${WM_FNAME}" &
 		WM_PID=$!
 	else
 		wm_wrapper "${WM}" &
