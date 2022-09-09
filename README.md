@@ -34,9 +34,26 @@ Run `wayland-session ${wm} unitgen` to populate `${XDG_RUNTIME_DIR}` with them.
 After that: `systemctl --user start --wait wayland-wm@${wm}.service` to start WM.
 
 Then to stop: `systemctl --user stop "wayland-wm@*.service"` (no need to specify WM here).
-If start command was run with `exec`, (i.e. from login shell on a tty or via `.profile`), this stop command is also a logout command.
+If start command was run with `exec`, (i.e. from login shell on a tty or via `.profile`),
+this stop command also doubles as a logout command.
 
-`wayland-session` is smart enough to find login session associated with current TTY and add (and cleanup) `$XDG_SESSION_ID`, `$XDG_VTNR` to user manager environment. (I really do not know it this is a good idea, but since there can be only one graphical session per user with systemd, seems like such) 
+`wayland-session` is smart enough to find login session associated with current TTY
+and export (and later cleanup) `$XDG_SESSION_ID`, `$XDG_VTNR` to user manager environment.
+Even though when started as a service it does not have those vars at immediate disposal.
+(I really do not know it this is a good idea, but since there can be only one graphical session
+per user with systemd, seems like such).
+
+Example snippet for `~/.profile`:
+
+    WM=sway
+    if [ "${0}" != "${0#-}" ] \
+      && systemctl is-active -q graphical.target \
+      && ! systemctl --user is-active -q wayland-wm@${WM}.service
+    then
+        wayland-session ${WM} unitgen
+        echo Starting ${WM} WM
+        exec systemctl --user start --wait wayland-wm@${WM}.service
+    fi
 
 Pros:
 
@@ -45,7 +62,8 @@ Pros:
 Cons:
 
 - Pro#1 can be a con depending on your philosophy. I honestly understand both sides of this.
-- (Probably counts as such) WM and its descendants are not a part of login session. In recommended way of starting graphical session is to exec `systemctl --user start --wait ...` then this command will be the sole occupant of login session apart from `/bin/login`.
+- (Probably counts as such) WM and its descendants are not a part of login session.
+  If recommended way of starting graphical session is to exec `systemctl --user start --wait ...` then this command will be the sole occupant of login session apart from `/bin/login`.
 
 ## Partial systemd operation
 
