@@ -1,12 +1,16 @@
 #!/bin/sh
 
-# Universal wayland desktop session manager
+# Universal Wayland Desktop Session Manager
 # Runs selected WM with plugin-extendable tweaks
 # Manages systemd environment and targets along the way
-# Inspired by and uses some parts from https://github.com/xdbob/sway-services
+# Inspired by and uses some techniques from:
+#  https://github.com/xdbob/sway-services
+#  https://github.com/alebastr/sway-systemd
+#  https://github.com/swaywm/sway
+#  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='unitgen|unitrm|prepare|shell-start|shell-intstart|shell-stop|shell-cleanup|cleanup|check'
+SUPPORTED_MODES='check|unitgen|prepare|cleanup|unitrm|shell-start|shell-intstart|shell-stop|shell-cleanup'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -69,11 +73,11 @@ show_help() {
 		
 		  For full systemd operation (via units):
 		    unitgen:   generates systemd unit files in runtime hierarchy
-		    unitrm:    removes systemd unit files from runtime hierarchy
 		    prepare:   prepares environment for WM in systemd user manager
 		               (for use in ExecStart of wayland-wm-env@.service)
 		    cleanup:   cleans up environment from systemd user manager
 		               (for use in ExecStop of wayland-wm-env@.service)
+		    unitrm:    removes systemd unit files from runtime hierarchy
 		
 		    to start WM in this way:
 		        $(basename "$0") \${WM} unitgen

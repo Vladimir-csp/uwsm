@@ -67,11 +67,17 @@ Cons:
 
 ## Partial systemd operation
 
-In this mode WM is launched directly from the script, and the script manages startup, targets, and eventual cleanup.
+In this mode WM is launched directly from the script, and the script manages
+startup, targets, and eventual cleanup.
 
-`wayland-session $wm start` to start WM, In this mode WM is put into diretly descendant scope with logging to jouranl (unit: `wayland-wm-${WM}.scope`, log identifier: `wayland-wm-${WM}`
+`wayland-session $wm shell-start` to start WM, In this mode WM is put into
+diretly-descendant scope with logging to jouranl
+(unit: `wayland-wm-${WM}.scope`, log identifier: `wayland-wm-${WM}`)
 
-`wayland-session $wm intstart` also reexec the script itself with logging to journald (log identifier: `wayland-session-${WM}`)
+`wayland-session $wm shell-intstart` also reexec the script itself with
+logging to journald (log identifier: `wayland-session-${WM}`)
+
+To stop wm either run `wayland-sesion $wm shell-stop` or just kill already running script instance.
 
 Pros:
 
