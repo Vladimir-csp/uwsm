@@ -6,7 +6,7 @@
 # Inspired by and uses some parts from https://github.com/xdbob/sway-services
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='unitgen|unitrm|prepare|start|intstart|stop|stcleanup|cleanup|check'
+SUPPORTED_MODES='unitgen|unitrm|prepare|shell-start|shell-intstart|shell-stop|shell-cleanup|cleanup|check'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -80,14 +80,17 @@ show_help() {
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
 		  For direct login session start and partial systemd operation:
-		    start:     starts session of selected WM from current shell inside a scope with logging
-		    intstart:  reexec self inside a scope with logging in start mode not just WM
-		    stop:      cleanly shuts down session or cleans up environment
-		               just killing main session manager process is also supported
-		    stcleanup: cleans up environment from systemd user manager if main process is not running
+		    shell-start:     starts session of selected WM from
+		                     current shell inside a scope with logging
+		    shell-intstart:  reexec self with systemd-logging not just WM
+		                     and do shell-start
+		    shell-stop:      cleanly shuts down session or cleans up environment
+		                     analogous to just killing the main $(basename "$0") process
+		    shell-cleanup:   cleans up environment from systemd user manager
+		                     if main process is not running
 		
 		    to start WM in this way:
-		        $(basename "$0") \${WM} start
+		        $(basename "$0") \${WM} shell-start
 		
 		Session manager also loads environment from \${WM}/env files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
@@ -148,7 +151,7 @@ add_supported_wm() {
 #    # remove the same units
 #    # reloading is handled by main script
 #  }
-#  # Function to override WM execution in start|intstart mode
+#  # Function to override WM execution in shell-start|shell-intstart mode
 #  # Always define WM as arguments to wm_wrapper
 #  # if needed to modify execution in full systemd mode, add dropin in generate_units_my_cool_wm()
 #  run_wm_my_cool_wm() {
@@ -229,10 +232,10 @@ if [ "$CHECKOUT" = "false" ]
 then
 	exit 1
 
-elif [ "$MODE" = "intstart" ]
+elif [ "$MODE" = "shell-intstart" ]
 then
 	echo "Doing integrated start"
-	exec systemd-cat -t "wayland-session-${WM}" -- "$0" "$WM" start
+	exec systemd-cat -t "wayland-session-${WM}" -- "$0" "$WM" shell-start
 fi
 
 # functions for operating on lists of variable names
@@ -897,7 +900,7 @@ then
 	echo "Checked for compositor ${WM}"
 	exit 0
 
-elif [ "$MODE" = "stcleanup" ]
+elif [ "$MODE" = "shell-cleanup" ]
 then
 	# abort cleanup if main process is still running
 	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
@@ -919,7 +922,7 @@ then
 	cleanup_vars
 	exit
 
-elif [ "$MODE" = "stop" ]
+elif [ "$MODE" = "shell-stop" ]
 then
 	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
 	then
@@ -957,7 +960,7 @@ then
 	prepare_env
 	smart_reset_failed
 
-elif [ "$MODE" = "start" ]
+elif [ "$MODE" = "shell-start" ]
 then
 	# not-entirely-systemd startup mode
 	savepid
