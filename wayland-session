@@ -10,7 +10,7 @@
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='check|unitgen|prepare|cleanup|unitrm|shell-start|shell-intstart|shell-stop|shell-cleanup'
+SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup|unitrm|shell-start|shell-intstart|shell-stop|shell-cleanup'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -72,14 +72,19 @@ show_help() {
 		    check:     checks supported arguments
 		
 		  For full systemd operation (via units):
-		    unitgen:   generates systemd unit files in runtime hierarchy
-		    prepare:   prepares environment for WM in systemd user manager
-		               (for use in ExecStart of wayland-wm-env@.service)
-		    cleanup:   cleans up environment from systemd user manager
-		               (for use in ExecStop of wayland-wm-env@.service)
-		    unitrm:    removes systemd unit files from runtime hierarchy
+		    sd-start:     does all unit preparations and starts WM via a service
+		                  with --wait to bind to its life
+		    sd-stop:      stops wm
 		
-		    to start WM in this way:
+		    If more control needed: more grained modes available:
+		    unitgen:      generates systemd unit files in runtime hierarchy
+		    prepare-env:  prepares environment for WM in systemd user manager
+		                  (for use in ExecStart of wayland-wm-env@.service)
+		    cleanup:      cleans up environment from systemd user manager
+		                  (for use in ExecStop of wayland-wm-env@.service)
+		    unitrm:       removes systemd unit files from runtime hierarchy
+		
+		    WM can be started this way:
 		        $(basename "$0") \${WM} unitgen
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
@@ -295,7 +300,7 @@ generate_units() {
 		[Service]
 		Type=oneshot
 		RemainAfterExit=yes
-		ExecStart=${WS_EXEC} "%I" prepare
+		ExecStart=${WS_EXEC} "%I" prepare-env
 		ExecStop=${WS_EXEC} "%I" cleanup
 		Restart=no
 	EOF
@@ -514,7 +519,7 @@ prepare_env() {
 	)
 
 	echo "Importing env difference from systemd user manager"
-	# this should have no effect when launched by a service with 'prepare', but still...
+	# this should have no effect when launched by a service with 'prepare-env', but still...
 	import_back_vars $(
 		echo ${__SYSTEMD_ENV_NAMES__} \
 		| varnames_subtract ${__ENV_NAMES__} \
@@ -898,6 +903,8 @@ shutdown() {
 	exit "$WM_RC"
 }
 
+#### Mode decisions
+
 if [ "$MODE" = "check" ]
 then
 	# exit successfully after supported compositors check
@@ -958,11 +965,33 @@ elif [ "$MODE" = "unitrm" ]
 then
 	remove_units
 
-elif [ "$MODE" = "prepare" ]
+elif [ "$MODE" = "prepare-env" ]
 then
 	# this mode prepares environment and resets failed graphical units
 	prepare_env
 	smart_reset_failed
+
+elif [ "$MODE" = "sd-start" ]
+then
+	# all in one go systemd start
+	generate_units
+	if systemctl --user is-active -q wayland-wm@${WM}.service
+	then
+		echo "wayland-wm@${WM}.service is already running"
+		exit 0
+	else
+		exec systemctl --user start --wait wayland-wm@${WM}.service
+	fi
+
+elif [ "$MODE" = "sd-stop" ]
+then
+	if systemctl --user is-active -q wayland-wm@${WM}.service
+	then
+		exec systemctl --user stopt wayland-wm@${WM}.service
+	else
+		echo "wayland-wm@${WM}.service is not running"
+		exit 0
+	fi
 
 elif [ "$MODE" = "shell-start" ]
 then
