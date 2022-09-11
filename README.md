@@ -10,11 +10,11 @@ WIP. Use at your onw risk.
 - WM-specific behavior is handled by plugins
     - currently supported: sway, wayfire
 - Systemd units are treated with hierarchy and universality in mind:
+    - use specifiers
     - named from common to specific: `wayland-${category}@${wm}.${unit_type}`
-    - WM-specific part is abstracted to `@${wm}` part
     - allow for high-level `name-.d` drop-ins
 - Idempotently (well, best-effort-idempotently) handle environment:
-    - On startup environment is prepared and exported into systemd user manager
+    - On startup environment is prepared and the difference is exported into systemd user manager
     - Special variables are imported back from systemd user manager at various stages of startup
     - On shutdown variables that were exported are unset from systemd user manager
     - Lists of variables for export import-back and cleanup are determined algorithmically by:
@@ -26,6 +26,11 @@ WIP. Use at your onw risk.
 - Written in POSIX shell (a smidgen of masochism went into this code)
 
 ## Full systemd service operation
+
+Short story: `wayland-session ${wm} sd-start`, then either:
+`wayland-session ${wm} sd-stop` or `systemctl --user stop "wayland-wm@*.service"`
+
+Longer story:
 
 (At least for now) Units are provided by built-in runtime generator.
 
