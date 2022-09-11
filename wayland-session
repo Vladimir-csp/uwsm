@@ -117,10 +117,11 @@ add_supported_wm() {
 	then
 		SUPPORTED_WMS="${SUPPORTED_WMS}${SUPPORTED_WMS:+|}${1}"
 		echo "Added supported WM $1"
+		return 0
 	else
 		echo "Attempted to add invalid WM name" >&2
 		echo "$1" >&2
-		exit 1
+		return 1
 	fi
 }
 
@@ -196,7 +197,7 @@ IFS="$OIFS"
 if echo "$*" | grep -qE '(^| )(--help|-h)( |$)'
 then
 	show_help
-	exit 0
+	return 0 2>/dev/null || exit 0
 fi
 
 WM="${1:?Requires a compositor as first argument: $SUPPORTED_WMS}"
@@ -236,11 +237,16 @@ then
 	CHECKOUT=false
 fi
 
-# exit with error on failed checks
+# exit/return with error on failed checks
 if [ "$CHECKOUT" = "false" ]
 then
-	exit 1
+	return 1 2>/dev/null || exit 1
 
+elif [ "$MODE" = "check" ]
+then
+	# exit successfully after supported compositors check
+	echo "Checked for compositor ${WM}"
+	return 0 2>/dev/null || exit 0
 elif [ "$MODE" = "shell-intstart" ]
 then
 	echo "Doing integrated start"
@@ -416,16 +422,19 @@ wm_wrapper() {
 }
 
 savepid() {
+	# saves PID file to runtime dir
+	# used in shell-start
 	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
 	then
 		CHECK_PID=$(head -n 1 -c 8 "${XDG_RUNTIME_DIR}/${WM}_pid")
 		if kill -0 $CHECK_PID 2>/dev/null
 		then
 			echo "Wayland session manager is already running as PID ${CHECK_PID}!" >&2
-			exit 1
+			return 1
 		fi
 	fi
 	echo $$ > "${XDG_RUNTIME_DIR}/${WM}_pid"
+	return 0
 }
 
 get_vt() {
@@ -469,7 +478,8 @@ get_session_by_vt() {
 
 load_wm_env() {
 	#### iterate config dirs in increasing importance and source additional ${WM}/env
-	__ALL_XDG_CONFIG_DIRS_REV__=''
+	local __ALL_XDG_CONFIG_DIRS_REV__=''
+	local __CONFIG_DIR__=''
 	OIFS="$IFS"
 	IFS=":"
 	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
@@ -494,12 +504,12 @@ load_wm_env() {
 		fi
 	done
 	IFS="$OIFS"
+	return 0
 }
 
 prepare_env() {
 	# hopefully smartly prepares the environment and updates systemd user manager
-	local __CONFIG_DIR__=''
-	local __ALL_XDG_CONFIG_DIRS_REV__=''
+	# has no failure processing yet
 	local __ENV_NAMES__=''
 	local __SYSTEMD_ENV_NAMES__=''
 	local __ENV_NAMES_AFTER__=''
@@ -570,15 +580,15 @@ prepare_env() {
 	if type "quirks_${WM_FNAME}" >/dev/null
 	then
 		echo "Applying quirks for ${WM}"
-		quirks_${WM_FNAME}
+		quirks_${WM_FNAME} || return $?
 	fi
 
 	if type "load_wm_env_${WM_FNAME}" >/dev/null
 	then
 		echo "WM-specific environment loading"
-		load_wm_env_${WM_FNAME}
+		load_wm_env_${WM_FNAME} || return $?
 	else
-		load_wm_env
+		load_wm_env || return $?
 	fi
 
 	# hardcode unset conflicting vars.
@@ -782,7 +792,9 @@ cleanup_vars() {
 	# and ${ALWAYS_CLEANUP_VARS}
 	# exclude ${NEVER_CLEANUP_VARS}
 	# and remove them from systemd user manager
-	local __VAR__
+	local CLEANUP_RC=''
+	local __VAR__=''
+	local __HAS_VARS__=''
 	local __ENV_NAMES_FOR_CLEANUP__=$(
 		{
 			# saved cleanup list if exists
@@ -815,6 +827,7 @@ cleanup_vars() {
 
 shutdown_and_check() {
 	# stop target and wait for children of it or arg 2 to die
+	# used in shell- modes
 	local COUNTER=${START_STOP_RETRIES}
 	echo "Shutting down $1"
 	if systemctl --user is-active -q "$1"
@@ -844,6 +857,7 @@ shutdown_and_check() {
 
 shutdown() {
 	# TODO, replace pidfile with checking ExecMainStatus of a unit if we go with service
+	# used in shell- modes
 	echo "Shutting down $WM session"
 	# stop autostart target
 	shutdown_and_check "wayland-session-xdg-autostart@${WM}.target" xdg-desktop-autostart.target
@@ -900,18 +914,12 @@ shutdown() {
 		rm "${XDG_RUNTIME_DIR}/${WM}_pid"
 	fi
 
-	exit "$WM_RC"
+	exit $WM_RC
 }
 
-#### Mode decisions
+#### More mode decisions
 
-if [ "$MODE" = "check" ]
-then
-	# exit successfully after supported compositors check
-	echo "Checked for compositor ${WM}"
-	exit 0
-
-elif [ "$MODE" = "shell-cleanup" ]
+if [ "$MODE" = "shell-cleanup" ]
 then
 	# abort cleanup if main process is still running
 	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
@@ -920,18 +928,20 @@ then
 		if kill -0 $MAINPID 2>/dev/null
 		then
 			echo "Main process $MAINPID is still running, cleanup aborted" >&2
-			exit 1
+			return 1 2>/dev/null || exit 1
 		fi
 	fi
 
 	# remove previously added environment vars and exit
 	cleanup_vars
-	exit
+	CLEANUP_RC=$?
+	return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
 
 elif [ "$MODE" = "cleanup" ]
 then
 	cleanup_vars
-	exit
+	CLEANUP_RC=$?
+	return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
 
 elif [ "$MODE" = "shell-stop" ]
 then
@@ -944,42 +954,53 @@ then
 		if [ "$KILL_RC" = "0" ]
 		then
 			rm "${XDG_RUNTIME_DIR}/${WM}_pid"
-			exit 0
+			return 0 2>/dev/null || exit 0
 		else
 			echo "Kill returned $KILL_RC, cleaning up vars instead"
 			cleanup_vars
+			CLEANUP_RC=$?
 			rm "${XDG_RUNTIME_DIR}/${WM}_pid"
-			exit $CLEANUP_RC
+			return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
 		fi
 	else
 		echo "Pidfile ${XDG_RUNTIME_DIR}/${WM}_pid not found, cleaning up vars instead"
 		cleanup_vars
-		exit $CLEANUP_RC
+		CLEANUP_RC=$?
+		return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
 	fi
 
 elif [ "$MODE" = "unitgen" ]
 then
 	generate_units
+	GU_RC=$?
+	return $GU_RC 2>/dev/null || exit $GU_RC
 
 elif [ "$MODE" = "unitrm" ]
 then
 	remove_units
+	RU_RC=$?
+	return $RU_RC 2>/dev/null || exit $RU_RC
 
 elif [ "$MODE" = "prepare-env" ]
 then
-	# this mode prepares environment and resets failed graphical units
+	# for use by wayland-wm-env@.service
+	# this mode prepares environment, exports it to systemd user manager
+	# no failure processing yet
 	prepare_env
+	# and resets failed units bound to graphical targets
 	smart_reset_failed
 
 elif [ "$MODE" = "sd-start" ]
 then
-	# all in one go systemd start
-	generate_units
-	if systemctl --user is-active -q wayland-wm@${WM}.service
+	# all in one go systemd start, supports sourcing from login shell
+	# start if no WM is running
+	if systemctl --user is-active -q 'wayland-wm@*.service'
 	then
-		echo "wayland-wm@${WM}.service is already running"
-		exit 0
+		echo "wayland-wm@*.service is already running"
+		# we can be sourced
+		return 0 2>/dev/null || exit 0
 	else
+		generate_units
 		exec systemctl --user start --wait wayland-wm@${WM}.service
 	fi
 
@@ -987,10 +1008,11 @@ elif [ "$MODE" = "sd-stop" ]
 then
 	if systemctl --user is-active -q wayland-wm@${WM}.service
 	then
-		exec systemctl --user stopt wayland-wm@${WM}.service
+		systemctl --user stop wayland-wm@${WM}.service
 	else
 		echo "wayland-wm@${WM}.service is not running"
-		exit 0
+		# we can be sourced
+		return 0 2>/dev/null || exit 0
 	fi
 
 elif [ "$MODE" = "shell-start" ]

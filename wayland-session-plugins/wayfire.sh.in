@@ -1,6 +1,6 @@
 #!/bin/false
 
-add_supported_wm wayfire
+add_supported_wm wayfire || return $?
 
 quirks_wayfire() {
 	#### find global config and make updateable default out of it

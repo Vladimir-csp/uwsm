@@ -36,7 +36,13 @@ Longer story:
 
 Run `wayland-session ${wm} unitgen` to populate `${XDG_RUNTIME_DIR}` with them.
 
-After that: `systemctl --user start --wait wayland-wm@${wm}.service` to start WM.
+After that: `systemctl --user start wayland-wm@${wm}.service` to start WM.
+
+Add `--wait` to hold terminal until session ends.
+
+`exec` it from login shell to bind to login session:
+
+`exec systemctl --user start --wait wayland-wm@${wm}.service`
 
 Then to stop: `systemctl --user stop "wayland-wm@*.service"` (no need to specify WM here).
 If start command was run with `exec`, (i.e. from login shell on a tty or via `.profile`),
@@ -53,7 +59,7 @@ Example snippet for `~/.profile`:
     WM=sway
     if [ "${0}" != "${0#-}" ] \
       && systemctl is-active -q graphical.target \
-      && ! systemctl --user is-active -q wayland-wm@${WM}.service
+      && ! systemctl --user is-active -q wayland-wm@*.service
     then
         wayland-session ${WM} unitgen
         echo Starting ${WM} WM
