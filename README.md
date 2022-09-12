@@ -20,10 +20,17 @@ WIP. Use at your onw risk.
     - Lists of variables for export import-back and cleanup are determined algorithmically by:
         - comparing environment before and after preparation procedures
         - boolean operations with predefined lists (tweakable by plugins)
+- Better control of XDG autostart apps:
+    - Propagate Stop from xdg-desktop-autostart.target via a drop-in
 - Two (and a half) modes of operation:
     - Starting a service
     - Running from shell (with two choices of scope)
 - Written in POSIX shell (a smidgen of masochism went into this code)
+
+## Installation
+
+Put `wayland-session` somewhere in `$PATH`.
+Put `wayland-session-plugins` somewhere in `/lib:/usr/lib:${HOME}/.local/lib`
 
 ## Full systemd service operation
 
@@ -54,7 +61,14 @@ Even though when started as a service it does not have those vars at immediate d
 (I really do not know it this is a good idea, but since there can be only one graphical session
 per user with systemd, seems like such).
 
-Example snippet for `~/.profile`:
+Short snippet for `~/.profile`:
+
+    if [ "${0}" != "${0#-}" ]
+    then
+        exec wayland-session sway sd-start
+    fi
+
+Extended snippet for `~/.profile`:
 
     WM=sway
     if [ "${0}" != "${0#-}" ] \

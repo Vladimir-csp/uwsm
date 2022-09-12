@@ -17,6 +17,8 @@ PLUGIN_NAME_PATTERN='*.sh.in'
 
 # this is for testing
 WS_EXEC="$(realpath -s "$0")"
+# since script can be sourced, $0 is not reliable
+WS_SELF=wayland-session
 
 START_STOP_RETRIES=10
 
@@ -65,7 +67,7 @@ show_help() {
 		
 		Generic wayland session manager with systemd integration
 		Usage:
-		  $(basename "$0") ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
+		  ${WS_SELF} ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
 		
 		$(basename $0) manages session for selected wayland WM.
 		Supported modes:
@@ -85,7 +87,7 @@ show_help() {
 		    unitrm:       removes systemd unit files from runtime hierarchy
 		
 		    WM can be started this way:
-		        $(basename "$0") \${WM} unitgen
+		        ${WS_SELF} \${WM} unitgen
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
 		  For direct login session start and partial systemd operation:
@@ -94,12 +96,12 @@ show_help() {
 		    shell-intstart:  reexec self with systemd-logging not just WM
 		                     and do shell-start
 		    shell-stop:      cleanly shuts down session or cleans up environment
-		                     analogous to just killing the main $(basename "$0") process
+		                     analogous to just killing the main ${WS_SELF} process
 		    shell-cleanup:   cleans up environment from systemd user manager
 		                     if main process is not running
 		
 		    to start WM in this way:
-		        $(basename "$0") \${WM} shell-start
+		        ${WS_SELF} \${WM} shell-start
 		
 		Session manager also loads environment from \${WM}/env files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
@@ -115,8 +117,13 @@ add_supported_wm() {
 	# takes simple executable name
 	if echo "$1" | grep -qE "^[a-zA-Z0-9_-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
 	then
-		SUPPORTED_WMS="${SUPPORTED_WMS}${SUPPORTED_WMS:+|}${1}"
-		echo "Added supported WM $1"
+		if echo "$1" | grep -qe "^(${SUPPORTED_WMS})\$"
+		then
+			echo "WM $1 is already supported"
+		else
+			SUPPORTED_WMS="${SUPPORTED_WMS}${SUPPORTED_WMS:+|}${1}"
+			echo "Added supported WM $1"
+		fi
 		return 0
 	else
 		echo "Attempted to add invalid WM name" >&2
@@ -207,7 +214,7 @@ MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
 
 CHECKOUT=true
 
-if ! echo "$MODE" | grep -qE "^(${SUPPORTED_MODES})$"
+if ! echo "$MODE" | grep -qE "^(${SUPPORTED_MODES})\$"
 then
 	echo "Mode $MODE not supported, choose $SUPPORTED_MODES" >&2
 	CHECKOUT=false
@@ -296,7 +303,7 @@ generate_units() {
 	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
 	echo "Placing wayland-session-pre@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
-		# injected by $(basename "$0"), do not edit
+		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Preparation for session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
@@ -307,7 +314,7 @@ generate_units() {
 	EOF
 	echo "Placing wayland-session@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- EOF
-		# injected by $(basename "$0"), do not edit
+		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
@@ -319,7 +326,7 @@ generate_units() {
 	EOF
 	echo "Placing wayland-session-xdg-autostart@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
-		# injected by $(basename "$0"), do not edit
+		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=XDG Autostart for session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
@@ -331,7 +338,7 @@ generate_units() {
 	EOF
 	echo "Placing wayland-wm-env@.service"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
-		# injected by $(basename "$0"), do not edit
+		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Environment preloader for %I Wayland Window Manager
 		Documentation=man:systemd.service(7)
@@ -341,13 +348,13 @@ generate_units() {
 		[Service]
 		Type=oneshot
 		RemainAfterExit=yes
-		ExecStart=${WS_EXEC} "%I" prepare-env
-		ExecStop=${WS_EXEC} "%I" cleanup
+		ExecStart=${WS_SELF} "%I" prepare-env
+		ExecStop=${WS_SELF} "%I" cleanup
 		Restart=no
 	EOF
 	echo "Placing wayland-wm@.service"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
-		# injected by $(basename "$0"), do not edit
+		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=%I Wayland Window Manager
 		Documentation=man:systemd.service(7)
@@ -371,7 +378,7 @@ generate_units() {
 	echo "Placing app-@autostart.service.d/stop-tweak.conf"
 	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
-		# injected by $(basename "$0"), do not edit
+		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		StopPropagatedFrom=xdg-desktop-autostart.target
 	EOF
