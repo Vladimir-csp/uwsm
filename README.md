@@ -32,6 +32,26 @@ WIP. Use at your onw risk.
 Put `wayland-session` somewhere in `$PATH`.
 Put `wayland-session-plugins` somewhere in `/lib:/usr/lib:${HOME}/.local/lib`
 
+Ensure your WM exports `WAYLAND_DISPLAY` and runs `systemd-notify --ready` after that
+
+Example snippet for sway:
+
+    exec dbus-update-activation-environment --systemd \
+    					SWAYSOCK \
+    					DISPLAY \
+    					I3SOCK \
+    					WAYLAND_DISPLAY \
+    					XCURSOR_SIZE \
+    					XCURSOR_THEME \
+    	&& systemctl --user import-environment \
+    					SWAYSOCK \
+    					DISPLAY \
+    					I3SOCK \
+    					WAYLAND_DISPLAY \
+    					XCURSOR_SIZE \
+    					XCURSOR_THEME \
+    	&& systemd-notify --ready
+
 ## Full systemd service operation
 
 Short story: `wayland-session ${wm} sd-start`, then either:
@@ -115,6 +135,12 @@ Cons:
 ## WM-specific actions
 
 Plugins provide WM support and associated functions. See `wayland-session-plugins/*.sh.in` for examples.
+
+## TODO
+
+- work on dbus-update-activation-environment side. It can not unset vars, maybe set them empty on cleanup.
+- more plugins
+- maybe drop partial operation altogether
 
 ## Compliments
 
