@@ -387,6 +387,16 @@ generate_units() {
 		# make autostart apps stoppable by target
 		StopPropagatedFrom=xdg-desktop-autostart.target
 	EOF
+	echo "Placing xdg-desktop-portal-.service.d/stop-tweak.conf"
+	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
+		# injected by ${WS_SELF}, do not edit
+		[Unit]
+		# make xdg-desktop-portal-* services stoppable by target
+		StopPropagatedFrom=graphical-session.target
+	EOF
+
+	# units from plugins
 	if type generate_units_${WM_FNAME} >/dev/null
 	then
 		echo "Placing custom untis for $WM"
