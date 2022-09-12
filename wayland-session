@@ -15,10 +15,14 @@ PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
 
-# this is for testing
+#### this is for testing
 WS_EXEC="$(realpath -s "$0")"
 # since script can be sourced, $0 is not reliable
 WS_SELF=wayland-session
+# wayland-wm-env@.service needs full path in case wayland-session is in ${USER}/.local/bin
+# which most likely is not in PATH of systemd user manager yet
+WS_SELF_FULL=$(which "$WS_SELF")
+####
 
 START_STOP_RETRIES=10
 
@@ -348,8 +352,8 @@ generate_units() {
 		[Service]
 		Type=oneshot
 		RemainAfterExit=yes
-		ExecStart=${WS_SELF} "%I" prepare-env
-		ExecStop=${WS_SELF} "%I" cleanup
+		ExecStart=${WS_SELF_FULL} "%I" prepare-env
+		ExecStop=${WS_SELF_FULL} "%I" cleanup
 		Restart=no
 	EOF
 	echo "Placing wayland-wm@.service"
@@ -380,6 +384,7 @@ generate_units() {
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
+		# make autostart apps stoppable by target
 		StopPropagatedFrom=xdg-desktop-autostart.target
 	EOF
 	if type generate_units_${WM_FNAME} >/dev/null
