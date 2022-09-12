@@ -10,7 +10,7 @@
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup|unitrm|shell-start|shell-intstart|shell-stop|shell-cleanup'
+SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup-env|unitrm|shell-start|shell-intstart|shell-stop|shell-cleanup'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -86,7 +86,7 @@ show_help() {
 		    unitgen:      generates systemd unit files in runtime hierarchy
 		    prepare-env:  prepares environment for WM in systemd user manager
 		                  (for use in ExecStart of wayland-wm-env@.service)
-		    cleanup:      cleans up environment from systemd user manager
+		    cleanup-env:  cleans up environment from systemd user manager
 		                  (for use in ExecStop of wayland-wm-env@.service)
 		    unitrm:       removes systemd unit files from runtime hierarchy
 		
@@ -304,7 +304,7 @@ varnames_union() {
 generate_units() {
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
-	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
+	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/"
 	echo "Placing wayland-session-pre@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
@@ -353,7 +353,7 @@ generate_units() {
 		Type=oneshot
 		RemainAfterExit=yes
 		ExecStart=${WS_SELF_FULL} "%I" prepare-env
-		ExecStop=${WS_SELF_FULL} "%I" cleanup
+		ExecStop=${WS_SELF_FULL} "%I" cleanup-env
 		Restart=no
 	EOF
 	echo "Placing wayland-wm@.service"
@@ -380,7 +380,7 @@ generate_units() {
 		TimeoutStopSec=10
 	EOF
 	echo "Placing app-@autostart.service.d/stop-tweak.conf"
-	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
+	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
@@ -410,12 +410,10 @@ remove_units() {
 	do
 		if [ -f "$UNIT" ]
 		then
-			echo "Removing $(basename "$UNIT")"
-			rm "$UNIT"
+			rm -v "$UNIT"
 		elif [ -d "$UNIT" ]
 		then
-			echo "Removing $(basename "$UNIT")"
-			rmdir "$UNIT"
+			rmdir -v "$UNIT"
 		else
 			echo "$(basename "$UNIT") is already gone"
 		fi
@@ -960,7 +958,7 @@ then
 	CLEANUP_RC=$?
 	return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
 
-elif [ "$MODE" = "cleanup" ]
+elif [ "$MODE" = "cleanup-env" ]
 then
 	cleanup_vars
 	CLEANUP_RC=$?
@@ -1000,9 +998,15 @@ then
 
 elif [ "$MODE" = "unitrm" ]
 then
-	remove_units
-	RU_RC=$?
-	return $RU_RC 2>/dev/null || exit $RU_RC
+	if systemctl --user is-active -q 'wayland-wm@*.service'
+	then
+		echo 'wayland-wm@*.service is still active, will not remove units' >&2
+		return 1 2>/dev/null || exit 1
+	else
+		remove_units
+		RU_RC=$?
+		return $RU_RC 2>/dev/null || exit $RU_RC
+	fi
 
 elif [ "$MODE" = "prepare-env" ]
 then
