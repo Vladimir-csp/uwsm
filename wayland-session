@@ -294,27 +294,11 @@ generate_units() {
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
 	mkdir -p "${XDG_RUNTIME_DIR}/systemd/user/"
-	echo "Placing wayland-wm-env@.service"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
-		# injected by $(basename "$0"), do not edit
-		[Unit]
-		Description=Environment preloader for %I Wayland Window Manager
-		Documentation=man:systemd.service(7)
-		BindsTo=wayland-session-pre@%i.target
-		Before=wayland-session-pre@%i.target
-		StopWhenUnneeded=yes
-		[Service]
-		Type=oneshot
-		RemainAfterExit=yes
-		ExecStart=${WS_EXEC} "%I" prepare-env
-		ExecStop=${WS_EXEC} "%I" cleanup
-		Restart=no
-	EOF
 	echo "Placing wayland-session-pre@.target"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
 		# injected by $(basename "$0"), do not edit
 		[Unit]
-		Description=Preparation services for session of %I Wayland Window Manager
+		Description=Preparation for session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
 		Requires=basic.target
 		StopWhenUnneeded=yes
@@ -345,6 +329,22 @@ generate_units() {
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
+	echo "Placing wayland-wm-env@.service"
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
+		# injected by $(basename "$0"), do not edit
+		[Unit]
+		Description=Environment preloader for %I Wayland Window Manager
+		Documentation=man:systemd.service(7)
+		BindsTo=wayland-session-pre@%i.target
+		Before=wayland-session-pre@%i.target
+		StopWhenUnneeded=yes
+		[Service]
+		Type=oneshot
+		RemainAfterExit=yes
+		ExecStart=${WS_EXEC} "%I" prepare-env
+		ExecStop=${WS_EXEC} "%I" cleanup
+		Restart=no
+	EOF
 	echo "Placing wayland-wm@.service"
 	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
 		# injected by $(basename "$0"), do not edit
@@ -355,9 +355,9 @@ generate_units() {
 		Before=wayland-session@%i.target
 		Requires=wayland-session-pre@%i.target
 		After=wayland-session-pre@%i.target
-		Wants=wayland-session-xdg-autostart@.target
 		Requires=wayland-wm-env@.service
 		After=wayland-wm-env@.service
+		Wants=wayland-session-xdg-autostart@.target
 		Before=wayland-session-xdg-autostart@.target
 		[Service]
 		# awaits for 'systemd-notify --ready' from WM child
@@ -993,11 +993,19 @@ then
 elif [ "$MODE" = "sd-start" ]
 then
 	# all in one go systemd start, supports sourcing from login shell
-	# start if no WM is running
+	# start if no WM is running and if system is at graphical.target
 	if systemctl --user is-active -q 'wayland-wm@*.service'
 	then
 		echo "wayland-wm@*.service is already running"
 		# we can be sourced
+		return 0 2>/dev/null || exit 0
+	elif systemctl --user is-active -q wayland-wm-*.scope
+		echo "wayland-wm-*.scope is already running, do not mix shell and systemd start"
+		# we can be sourced
+		return 1 2>/dev/null || exit 1
+	elif ! systemctl is-active -q graphical.target
+	then
+		echo "System is not at graphical.target"
 		return 0 2>/dev/null || exit 0
 	else
 		generate_units
