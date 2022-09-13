@@ -370,6 +370,8 @@ generate_units() {
 		After=wayland-wm-env@%i.service
 		Wants=wayland-session-xdg-autostart@%i.target
 		Before=wayland-session-xdg-autostart@%i.target
+		# second hand Requires= between targets is not enough to stop this in time
+		PropagatesStopTo=xdg-desktop-autostart.target
 		[Service]
 		# awaits for 'systemd-notify --ready' from WM child
 		Type=notify
@@ -389,10 +391,11 @@ generate_units() {
 	EOF
 	echo "Placing xdg-desktop-portal-.service.d/stop-tweak.conf"
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
+	cat > "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/stop-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		# make xdg-desktop-portal-* services stoppable by target
+		After=graphical-session.target
 		StopPropagatedFrom=graphical-session.target
 	EOF
 
@@ -416,7 +419,9 @@ remove_units() {
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
+	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/" \
+	  "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/stop-tweak.conf" \
+	  "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/"
 	do
 		if [ -f "$UNIT" ]
 		then
