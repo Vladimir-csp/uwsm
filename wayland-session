@@ -41,7 +41,7 @@ INVOCATION_ID
 SHLVL
 SHELL"
 
-# variables that will be imported back from systemd user manager during startup
+# variables that will be imported back from systemd user manager during startup (shell mode)
 IMPORT_BACK_VARS="DISPLAY
 WAYLAND_DISPLAY
 SSH_AGENT_LAUNCHER
@@ -301,12 +301,26 @@ varnames_union() {
 	} | sort -u
 }
 
+update_unit() {
+	# takes content on stdin, stages it, copies to desitnation $1 if differs
+	local RC=0
+	cat > "${XDG_RUNTIME_DIR}/${WM}_staged_content"
+	if [ ! -f "$1" -o "$(cat "${XDG_RUNTIME_DIR}/${WM}_staged_content" | md5sum)" != "$(cat "$1" | md5sum)" ]
+	then
+		cp -av "${XDG_RUNTIME_DIR}/${WM}_staged_content" "$1"
+		RC=$?
+		rm "${XDG_RUNTIME_DIR}/${WM}_staged_content"
+		UNITS_UPDATED=true
+	fi
+	return $RC
+}
+
 generate_units() {
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
+	UNITS_UPDATED=false
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/"
-	echo "Placing wayland-session-pre@.target"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Preparation for session of %I Wayland Window Manager
@@ -316,8 +330,7 @@ generate_units() {
 		BindsTo=graphical-session-pre.target
 		Before=graphical-session-pre.target
 	EOF
-	echo "Placing wayland-session@.target"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Session of %I Wayland Window Manager
@@ -328,8 +341,7 @@ generate_units() {
 		BindsTo=graphical-session.target
 		Before=graphical-session.target
 	EOF
-	echo "Placing wayland-session-xdg-autostart@.target"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=XDG Autostart for session of %I Wayland Window Manager
@@ -340,8 +352,7 @@ generate_units() {
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
-	echo "Placing wayland-wm-env@.service"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Environment preloader for %I Wayland Window Manager
@@ -356,8 +367,7 @@ generate_units() {
 		ExecStop=${WS_SELF_FULL} "%I" cleanup-env
 		Restart=no
 	EOF
-	echo "Placing wayland-wm@.service"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=%I Wayland Window Manager
@@ -381,20 +391,19 @@ generate_units() {
 		RestartSec=1
 		TimeoutStopSec=10
 	EOF
-	echo "Placing app-@autostart.service.d/stop-tweak.conf"
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		# make autostart apps stoppable by target
 		StopPropagatedFrom=xdg-desktop-autostart.target
 	EOF
-	echo "Placing xdg-desktop-portal-.service.d/stop-tweak.conf"
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/stop-tweak.conf" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/stop-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		# make xdg-desktop-portal-* services stoppable by target
+		# for some reason this does not cause it to stop before graphical-session.target
 		After=graphical-session.target
 		StopPropagatedFrom=graphical-session.target
 	EOF
@@ -402,11 +411,16 @@ generate_units() {
 	# units from plugins
 	if type generate_units_${WM_FNAME} >/dev/null
 	then
-		echo "Placing custom untis for $WM"
 		generate_units_${WM_FNAME}
 	fi
-	echo Reloading systemd user manager
-	systemctl --user daemon-reload
+	if [ "$UNITS_UPDATED" = "true" ]
+	then
+		echo Reloading systemd user manager
+		systemctl --user daemon-reload
+	else
+		echo All units are up to date
+	fi
+	unset UNITS_UPDATED
 }
 
 remove_units() {

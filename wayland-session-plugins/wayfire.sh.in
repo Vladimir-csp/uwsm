@@ -75,8 +75,7 @@ quirks_wayfire() {
 
 generate_units_wayfire() {
 	mkdir -pv "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d"
-	echo "Placing wayfire service tweak wayland-wm@wayfire.service.d/tweak.conf"
-	cat > "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d/tweak.conf" <<- EOF
+	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d/tweak.conf" <<- EOF
 		[Service]
 		ExecStart=
 		ExecStart=wayfire -c "\${WAYFIRE_LOCAL_CONFIG}"

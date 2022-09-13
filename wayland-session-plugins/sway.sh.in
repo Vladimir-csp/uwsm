@@ -5,7 +5,6 @@ add_supported_wm sway || return $?
 quirks_sway() {
 	IMPORT_BACK_VARS="${IMPORT_BACK_VARS} I3SOCK SWAYSOCK"
 	ALWAYS_CLEANUP_VARS="${IMPORT_BACK_VARS} I3SOCK SWAYSOCK"
-wn
 	# detect disabled xwayland
 	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config"
 	then
