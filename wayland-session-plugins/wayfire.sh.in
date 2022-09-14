@@ -85,7 +85,3 @@ generate_units_wayfire() {
 remove_units_wayfire() {
 	rm -rv "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d"
 }
-
-run_wm_wayfire() {
-	wm_wrapper wayfire -c "$WAYFIRE_LOCAL_CONFIG"
-}

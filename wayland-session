@@ -10,7 +10,7 @@
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup-env|unitrm|shell-start|shell-intstart|shell-stop|shell-cleanup'
+SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup-env|unitrm'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -20,7 +20,7 @@ WS_EXEC="$(realpath -s "$0")"
 # since script can be sourced, $0 is not reliable
 WS_SELF=wayland-session
 # wayland-wm-env@.service needs full path in case wayland-session is in ${USER}/.local/bin
-# which most likely is not in PATH of systemd user manager yet
+# which most likely is not in PATH of systemd user manager when wayland-wm-env@.service starts
 WS_SELF_FULL=$(which "$WS_SELF")
 ####
 
@@ -40,13 +40,6 @@ LS_COLORS
 INVOCATION_ID
 SHLVL
 SHELL"
-
-# variables that will be imported back from systemd user manager during startup (shell mode)
-IMPORT_BACK_VARS="DISPLAY
-WAYLAND_DISPLAY
-SSH_AGENT_LAUNCHER
-SSH_AUTH_SOCK
-SSH_AGENT_PID"
 
 # variables that will never be cleaned up from systemd user manager during shutdown
 NEVER_CLEANUP_VARS="SSH_AGENT_LAUNCHER
@@ -77,7 +70,6 @@ show_help() {
 		Supported modes:
 		    check:     checks supported arguments
 		
-		  For full systemd operation (via units):
 		    sd-start:     does all unit preparations and starts WM via a service
 		                  with --wait to bind to its life
 		    sd-stop:      stops wm
@@ -94,23 +86,8 @@ show_help() {
 		        ${WS_SELF} \${WM} unitgen
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
-		  For direct login session start and partial systemd operation:
-		    shell-start:     starts session of selected WM from
-		                     current shell inside a scope with logging
-		    shell-intstart:  reexec self with systemd-logging not just WM
-		                     and do shell-start
-		    shell-stop:      cleanly shuts down session or cleans up environment
-		                     analogous to just killing the main ${WS_SELF} process
-		    shell-cleanup:   cleans up environment from systemd user manager
-		                     if main process is not running
-		
-		    to start WM in this way:
-		        ${WS_SELF} \${WM} shell-start
-		
 		Session manager also loads environment from \${WM}/env files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
-		
-		
 		
 		See code comments for documentation on plugins.
 	EOF
@@ -258,10 +235,6 @@ then
 	# exit successfully after supported compositors check
 	echo "Checked for compositor ${WM}"
 	return 0 2>/dev/null || exit 0
-elif [ "$MODE" = "shell-intstart" ]
-then
-	echo "Doing integrated start"
-	exec systemd-cat -t "wayland-session-${WM}" -- "$0" "$WM" shell-start
 fi
 
 # functions for operating on lists of variable names
@@ -442,38 +415,6 @@ remove_units() {
 	fi
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
-}
-
-wm_wrapper() {
-	# receives compositor execution args
-	# wraps compositor into scope
-	# adds stop propagation from -pre target (for shutdown)
-	# wraps into systemd-cat for logging
-	systemd-run --user --scope \
-	  --unit="wayland-wm-${WM}" \
-	  --description="Scope for ${WM} wayland compositor and its children" \
-	  --send-sighup \
-	  --property="StopPropagatedFrom=wayland-session-pre@${WM}.target" \
-	  -- \
-	  systemd-cat -t "wayland-wm-${WM}" \
-	  -- \
-	  "$@"
-}
-
-savepid() {
-	# saves PID file to runtime dir
-	# used in shell-start
-	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
-	then
-		CHECK_PID=$(head -n 1 -c 8 "${XDG_RUNTIME_DIR}/${WM}_pid")
-		if kill -0 $CHECK_PID 2>/dev/null
-		then
-			echo "Wayland session manager is already running as PID ${CHECK_PID}!" >&2
-			return 1
-		fi
-	fi
-	echo $$ > "${XDG_RUNTIME_DIR}/${WM}_pid"
-	return 0
 }
 
 get_vt() {
@@ -739,93 +680,6 @@ prepare_env() {
 	fi
 }
 
-list_active_part_of() {
-	# find active units that are PartOf $1, echo back
-	for unit in $(systemctl --user --no-legend --plain list-units --state=active | cut -d ' ' -f 1)
-	do
-		partof="$(systemctl --user show -p PartOf --value -- "$unit")"
-		if [ "$partof" = "$1" ]
-		then
-			echo "$unit"
-		fi
-	done
-}
-
-smart_reset_failed() {
-	# From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
-	# robustness: if the previous graphical session left some failed units,
-	# reset them so that they don't break this startup
-	for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f 1 -d ' ')
-	do
-		partof="$(systemctl --user show -p PartOf --value -- "$unit")"
-		for target in wayland-session@${WM}.target graphical-session.target
-		do
-			if [ "$partof" = "$target" ]
-			then
-				systemctl --user reset-failed "$unit"
-				break
-			fi
-		done
-	done
-}
-
-start_and_check() {
-	# starts systemd unit and waits until it or second argument is up
-	local COUNTER=${START_STOP_RETRIES}
-	echo "Starting $1"
-	systemctl --user start "$1"
-	echo "Checking status of ${2:-$1}"
-	while true
-	do
-		if [ "$COUNTER" -le "0" ]
-		then
-			echo Timed Out
-			return 1
-		else
-			systemctl --user is-active "${2:-$1}" && return 0
-		fi
-		echo "Retries left: $COUNTER"
-		sleep 1
-		COUNTER=$(( $COUNTER - 1 ))
-	done
-}
-
-import_back_vars() {
-	# takes specific vars from systemd user manager environment and exports locally
-	local __SC_ENV__=$(systemctl --user show-environment)
-	local __VAR__=''
-	local __VALUE__=''
-	for __VAR__ in $*
-	do
-		local __VALUE__=$(
-			printf %s "${__SC_ENV__}" \
-			  | grep -E "^${__VAR__}=" \
-		)
-		if [ -n "${__VALUE__}" ]
-		then
-			# leave just value
-			__VALUE__="${__VALUE__#*=}"
-		else
-			# var is not defined, skip
-			continue
-		fi
-		echo "Importing back var ${__VAR__}"
-		if printf %s "${__VALUE__}" | grep -qE "^\$'"
-		then
-			# we are probably in dash, so we have to expand a complex value
-			__VALUE__="${__VALUE__#??}"
-			__VALUE__="${__VALUE__%?}"
-			__VALUE__=$(printf %b "${__VALUE__}")
-		fi
-		if export "${__VAR__}=${__VALUE__}"
-		then
-			echo "Imported ${__VAR__}"
-		else
-			echo "Failed importing ${__VAR__}" >&2
-		fi
-	done
-}
-
 cleanup_vars() {
 	# take var names from "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names"
 	# and ${ALWAYS_CLEANUP_VARS}
@@ -864,149 +718,13 @@ cleanup_vars() {
 	return $CLEANUP_RC
 }
 
-shutdown_and_check() {
-	# stop target and wait for children of it or arg 2 to die
-	# used in shell- modes
-	local COUNTER=${START_STOP_RETRIES}
-	echo "Shutting down $1"
-	if systemctl --user is-active -q "$1"
-	then
-		systemctl --user stop "$1"
-	else
-		echo "$1 is already inactive"
-	fi
-
-	echo "Waiting for depending units of ${1:-$2} to go down"
-	while true
-	do
-		if  [ -z "$(list_active_part_of "${1:-$2}")" ] && ! systemctl --user is-active -q "${1:-$2}"
-		then
-			echo "${1:-$2} is down"
-			return 0
-		elif [ "$COUNTER" -le "0" ]
-		then
-			echo "timed out waiting for children of ${1:-$2} to die" >&2
-			return 1
-		fi
-		echo "Retries left: $COUNTER"
-		sleep 1
-		COUNTER=$(( $COUNTER - 1))
-	done
-}
-
-shutdown() {
-	# TODO, replace pidfile with checking ExecMainStatus of a unit if we go with service
-	# used in shell- modes
-	echo "Shutting down $WM session"
-	# stop autostart target
-	shutdown_and_check "wayland-session-xdg-autostart@${WM}.target" xdg-desktop-autostart.target
-
-	# stop graphical target
-	shutdown_and_check "wayland-session@${WM}.target" graphical-session.target
-
-	# if haven't caught compositor RC yet, try to kill it
-	if [ -z "$WM_RC" ]
-	then
-		if kill -0 $WM_PID 2>/dev/null
-		then
-			# kill compositor via function if exists
-			if type "exit_${WM_FNAME}" >/dev/null
-			then
-				"exit_${WM_FNAME}"
-				EXIT_WM_RC=$?
-				if [ "$EXIT_WM_RC" != "0" ]
-				then
-					echo "Compositor exit function returned $EXIT_WM_RC" >&2
-				fi
-			else
-				kill $WM_PID
-				KILL_WM_RC=$?
-				if [ "$KILL_WM_RC" != "0" ]
-				then
-					echo "Killing compositor returned $KILL_WM_RC" >&2
-				fi
-			fi
-		else
-			echo "Compositor is already dead"
-		fi
-		wait $WM_PID
-		WM_RC=$?
-	fi
-	if [ "$WM_RC" != "0" ]
-	then
-		echo "Compositor exited with RC $WM_RC" >&2
-	fi
-
-	shutdown_and_check "wayland-session-pre@${WM}.target" graphical-session-pre.target
-
-	# check and terminate compositor scope
-	if systemctl --user is-active -q "wayland-session-${WM}.scope"
-	then
-		echo "wayland-session-${WM}.scope is still active, terminating"
-		shutdown_and_check "wayland-session-${WM}.scope"
-	fi
-
-	cleanup_vars
-
-	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
-	then
-		rm "${XDG_RUNTIME_DIR}/${WM}_pid"
-	fi
-
-	exit $WM_RC
-}
-
 #### More mode decisions
 
-if [ "$MODE" = "shell-cleanup" ]
-then
-	# abort cleanup if main process is still running
-	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
-	then
-		MAINPID=$(cat "${XDG_RUNTIME_DIR}/${WM}_pid")
-		if kill -0 $MAINPID 2>/dev/null
-		then
-			echo "Main process $MAINPID is still running, cleanup aborted" >&2
-			return 1 2>/dev/null || exit 1
-		fi
-	fi
-
-	# remove previously added environment vars and exit
-	cleanup_vars
-	CLEANUP_RC=$?
-	return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
-
-elif [ "$MODE" = "cleanup-env" ]
+if [ "$MODE" = "cleanup-env" ]
 then
 	cleanup_vars
 	CLEANUP_RC=$?
 	return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
-
-elif [ "$MODE" = "shell-stop" ]
-then
-	if [ -f "${XDG_RUNTIME_DIR}/${WM}_pid" ]
-	then
-		MAIN_PID=$(cat "${XDG_RUNTIME_DIR}/${WM}_pid")
-		echo Killing process $MAIN_PID
-		kill $MAIN_PID
-		KILL_RC=$?
-		if [ "$KILL_RC" = "0" ]
-		then
-			rm "${XDG_RUNTIME_DIR}/${WM}_pid"
-			return 0 2>/dev/null || exit 0
-		else
-			echo "Kill returned $KILL_RC, cleaning up vars instead"
-			cleanup_vars
-			CLEANUP_RC=$?
-			rm "${XDG_RUNTIME_DIR}/${WM}_pid"
-			return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
-		fi
-	else
-		echo "Pidfile ${XDG_RUNTIME_DIR}/${WM}_pid not found, cleaning up vars instead"
-		cleanup_vars
-		CLEANUP_RC=$?
-		return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
-	fi
 
 elif [ "$MODE" = "unitgen" ]
 then
@@ -1032,8 +750,6 @@ then
 	# this mode prepares environment, exports it to systemd user manager
 	# no failure processing yet
 	prepare_env
-	# and resets failed units bound to graphical targets
-	smart_reset_failed
 
 elif [ "$MODE" = "sd-start" ]
 then
@@ -1068,74 +784,4 @@ then
 		# we can be sourced
 		return 0 2>/dev/null || exit 0
 	fi
-
-elif [ "$MODE" = "shell-start" ]
-then
-	# not-entirely-systemd startup mode
-	savepid
-
-	echo "Wayland session manager ($$) initiates startup sequence for ${WM}"
-
-	# create runtime targets
-	generate_units
-
-	#### begin env voodoo
-	prepare_env
-
-	#### startup sequence
-	# rig gracefull shutdown on signals
-	trap shutdown HUP TERM INT EXIT QUIT
-
-	smart_reset_failed
-
-	echo "Declaring graphical-pre target"
-	start_and_check "wayland-session-pre@${WM}.target" graphical-session-pre.target
-
-	# early import back for stuff like ssh agents
-	import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
-
-	echo "Executing ${WM} compositor"
-	if type "run_wm_${WM_FNAME}" > /dev/null 2> /dev/null
-	then
-		"run_wm_${WM_FNAME}" &
-		WM_PID=$!
-	else
-		wm_wrapper "${WM}" &
-		WM_PID=$!
-	fi
-
-	# wait for DISPLAY or WAYLAND_DISPLAY to appear in systemd user manager env
-	# or for compositor to exit early
-	# compositor should run systemctl --user import-environment {DISPLAY|WAYLAND_DISPLAY}
-	echo "Waiting for environment injection from compositor"
-	COUNTER=${START_STOP_RETRIES}
-	while true
-	do
-		sleep 1
-		if ! kill -0 $WM_PID 2>/dev/null || [ "$COUNTER" -le "0" ]
-		then
-			echo "Compositor did not start or exited early, shutting down"
-			shutdown
-			break
-		elif systemctl --user show-environment | grep -qE '^(DISPLAY|WAYLAND_DISPLAY)='
-		then
-			echo "Environment injection confirmed"
-			break
-		fi
-		echo "Retries left: $COUNTER"
-		COUNTER=$(( $COUNTER - 1 ))
-	done
-
-	echo "Declaring graphical target"
-	start_and_check "wayland-session@${WM}.target" graphical-session.target
-
-	import_back_vars $(echo ${IMPORT_BACK_VARS} | normalize_varnames_space)
-
-	echo "Declaring autostart target"
-	start_and_check "wayland-session-xdg-autostart@${WM}.target" xdg-desktop-autostart.target
-
-	echo "All session startup tasks completed"
-	wait $WM_PID
-	WM_RC=$!
-	shutdown
 fi

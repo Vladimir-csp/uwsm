@@ -9,9 +9,7 @@ WIP. Use at your onw risk.
 
 - WM-specific behavior is handled by plugins
     - currently supported: sway, wayfire
-- Two (and a half) modes of operation:
-    - Starting a service
-    - Running from shell (with two choices of scopes)
+- Maximum use of systemd units and dependencies for startup, operation and shutdown
 - Systemd units are treated with hierarchy and universality in mind:
     - use specifiers
     - named from common to specific: `wayland-${category}@${wm}.${unit_type}`
@@ -19,9 +17,8 @@ WIP. Use at your onw risk.
 - Idempotently (well, best-effort-idempotently) handle environment:
     - On startup environment is prepared by sourcing shell profile and ${wm}/env files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
     - Difference between inital state and prepared environment is exported into systemd user manager
-    - Special variables are imported back from systemd user manager at various stages of startup (in shell mode)
     - On shutdown variables that were exported are unset from systemd user manager
-    - Lists of variables for export import-back and cleanup are determined algorithmically by:
+    - Lists of variables for export and cleanup are determined algorithmically by:
         - comparing environment before and after preparation procedures
         - boolean operations with predefined lists (tweakable by plugins)
 - Better control of XDG autostart apps:
@@ -110,38 +107,6 @@ Extended snippet for `~/.profile`:
         exec systemctl --user start --wait wayland-wm@${WM}.service
     fi
 
-Pros:
-
-- Everything happens automagcally, maximum usage of systemd features
-
-Cons:
-
-- Pro#1 can be a con depending on your philosophy. I honestly understand both sides of this.
-- (Probably counts as such) WM and its descendants are not a part of login session.
-  If recommended way of starting graphical session is to exec `systemctl --user start --wait ...` then this command will be the sole occupant of login session apart from `/bin/login`.
-
-## Partial systemd operation
-
-In this mode WM is launched directly from the script, and the script manages
-startup, targets, and eventual cleanup.
-
-`wayland-session $wm shell-start` to start WM, In this mode WM is put into
-diretly-descendant scope with logging to jouranl
-(unit: `wayland-wm-${WM}.scope`, log identifier: `wayland-wm-${WM}`)
-
-`wayland-session $wm shell-intstart` also reexec the script itself with
-logging to journald (log identifier: `wayland-session-${WM}`)
-
-To stop wm either run `wayland-sesion $wm shell-stop` or just kill already running script instance.
-
-Pros:
-
-- (probably counts as such) WM and its descendants are a direct part of login session.
-
-Cons:
-
-- This mode is kinda semi-abandoned ATM.
-
 ## WM-specific actions
 
 Plugins provide WM support and associated functions. See `wayland-session-plugins/*.sh.in` for examples.
@@ -150,7 +115,6 @@ Plugins provide WM support and associated functions. See `wayland-session-plugin
 
 - more plugins
 - invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
-- maybe drop shell mode altogether
 
 ## Compliments
 
