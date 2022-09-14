@@ -535,7 +535,7 @@ load_wm_env() {
 	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
 	do
 		IFS="$OIFS"
-		# fill list in revers order
+		# fill list in reverse order
 		if [ -n "${__CONFIG_DIR__}" ]
 		then
 			__ALL_XDG_CONFIG_DIRS_REV__="${__ALL_XDG_CONFIG_DIRS_REV__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__CONFIG_DIR__}"
