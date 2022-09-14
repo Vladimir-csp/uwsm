@@ -148,9 +148,8 @@ Plugins provide WM support and associated functions. See `wayland-session-plugin
 
 ## TODO
 
-- work on dbus-update-activation-environment side. It can not unset vars, maybe set them empty on cleanup.
 - more plugins
-- maybe drop partial operation altogether
+- maybe drop shell mode altogether
 
 ## Compliments
 
