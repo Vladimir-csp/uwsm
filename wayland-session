@@ -398,15 +398,6 @@ generate_units() {
 		# make autostart apps stoppable by target
 		StopPropagatedFrom=xdg-desktop-autostart.target
 	EOF
-	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/"
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/stop-tweak.conf" <<- EOF
-		# injected by ${WS_SELF}, do not edit
-		[Unit]
-		# make xdg-desktop-portal-* services stoppable by target
-		# for some reason this does not cause it to stop before graphical-session.target
-		After=graphical-session.target
-		StopPropagatedFrom=graphical-session.target
-	EOF
 
 	# units from plugins
 	if type generate_units_${WM_FNAME} >/dev/null
@@ -433,9 +424,7 @@ remove_units() {
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/stop-tweak.conf" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/xdg-desktop-portal-.service.d/"
+	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
 	do
 		if [ -f "$UNIT" ]
 		then

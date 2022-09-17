@@ -149,6 +149,7 @@ Plugins provide WM support and associated functions. See `wayland-session-plugin
 ## TODO
 
 - more plugins
+- invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
 - maybe drop shell mode altogether
 
 ## Compliments
