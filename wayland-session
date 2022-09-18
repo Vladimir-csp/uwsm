@@ -86,7 +86,7 @@ show_help() {
 		        ${WS_SELF} \${WM} unitgen
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
-		Session manager also loads environment from \${WM}/env files in
+		Session manager also loads environment from "wayland-session-env" and "\${WM}/env" files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
 		
 		See code comments for documentation on plugins.
@@ -470,8 +470,8 @@ get_session_by_vt() {
 	fi
 }
 
-load_wm_env() {
-	#### iterate config dirs in increasing importance and source additional ${WM}/env
+load_config_env() {
+	#### iterate config dirs in increasing importance and source additional env from relative path in $1
 	local __ALL_XDG_CONFIG_DIRS_REV__=''
 	local __CONFIG_DIR__=''
 	OIFS="$IFS"
@@ -489,16 +489,24 @@ load_wm_env() {
 	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}
 	do
 		IFS="$OIFS"
-		if [ -r "${__CONFIG_DIR__}/${WM}/env" ]
+		if [ -r "${__CONFIG_DIR__}/${1}" ]
 		then
-			echo "Loading environment from ${__CONFIG_DIR__}/${WM}/env"
+			echo "Loading environment from ${__CONFIG_DIR__}/${1}"
 			#set -a
-			. "${__CONFIG_DIR__}/${WM}/env"
+			. "${__CONFIG_DIR__}/${1}"
 			#set +a
 		fi
 	done
 	IFS="$OIFS"
 	return 0
+}
+
+load_common_env() {
+	load_config_env "wayland-session-env"
+}
+
+load_wm_env() {
+	load_config_env "${WM}/env"
 }
 
 prepare_env() {
@@ -568,6 +576,8 @@ prepare_env() {
 		echo "Applying quirks for ${WM}"
 		quirks_${WM_FNAME} || return $?
 	fi
+
+	load_common_env || return $?
 
 	if type "load_wm_env_${WM_FNAME}" >/dev/null
 	then
