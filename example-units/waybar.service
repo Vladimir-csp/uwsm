@@ -16,3 +16,4 @@ Restart=on-failure
 # Get started via specific WMs
 WantedBy=wayland-wm@sway.service
 WantedBy=wayland-wm@wayfire.service
+WantedBy=wayland-wm@labwc.service
