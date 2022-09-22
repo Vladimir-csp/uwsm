@@ -8,14 +8,17 @@ WIP. Use at your onw risk.
 ## Concepts and features
 
 - WM-specific behavior is handled by plugins
-    - currently supported: sway, wayfire
-- Maximum use of systemd units and dependencies for startup, operation and shutdown
+    - currently supported: sway, wayfire, labwc
+- Maximum use of systemd units and dependencies for startup, operation, and shutdown
 - Systemd units are treated with hierarchy and universality in mind:
     - use specifiers
     - named from common to specific: `wayland-${category}@${wm}.${unit_type}`
     - allow for high-level `name-.d` drop-ins
 - Idempotently (well, best-effort-idempotently) handle environment:
-    - On startup environment is prepared by sourcing shell profile and ${wm}/env files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
+    - On startup environment is prepared by:
+        - sourcing shell profile
+        - sourcing common `wayland-session-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
+        - sourcing `${wm}/env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
     - Difference between inital state and prepared environment is exported into systemd user manager
     - On shutdown variables that were exported are unset from systemd user manager
     - Lists of variables for export and cleanup are determined algorithmically by:
@@ -29,7 +32,7 @@ WIP. Use at your onw risk.
 ## Installation
 
 Put `wayland-session` script somewhere in `$PATH`.
-Put `wayland-session-plugins` dir somewhere in `/lib:/usr/lib:${HOME}/.local/lib`
+Put `wayland-session-plugins` dir somewhere in `/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib`
 
 Ensure your WM does this sequentially upon startup:
 

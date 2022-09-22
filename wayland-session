@@ -11,7 +11,7 @@
 
 SUPPORTED_WMS=''
 SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup-env|unitrm'
-PLUGIN_PREFIX_PATHS="/lib:/usr/lib:${HOME}/.local/lib"
+PLUGIN_PREFIX_PATHS="/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
 
