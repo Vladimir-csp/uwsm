@@ -278,7 +278,7 @@ update_unit() {
 	# takes content on stdin, stages it, copies to desitnation $1 if differs
 	local RC=0
 	cat > "${XDG_RUNTIME_DIR}/${WM}_staged_content"
-	if [ ! -f "$1" -o "$(cat "${XDG_RUNTIME_DIR}/${WM}_staged_content" | md5sum)" != "$(cat "$1" | md5sum)" ]
+	if [ ! -f "$1" ] || [ "$(cat "${XDG_RUNTIME_DIR}/${WM}_staged_content" | md5sum)" != "$(cat "$1" | md5sum)" ]
 	then
 		cp -av "${XDG_RUNTIME_DIR}/${WM}_staged_content" "$1"
 		RC=$?
