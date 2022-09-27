@@ -250,7 +250,7 @@ normalize_varnames_newline() {
 
 varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
-	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
+	local RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
 	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}"
 	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
 	comm -23 "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
@@ -259,7 +259,7 @@ varnames_subtract() {
 
 varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
-	RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
+	local RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
 	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}"
 	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
 	comm -12 "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
@@ -646,6 +646,11 @@ prepare_env() {
 	if [ "${__HAS_VARS__}" = "true" ]
 	then
 		systemctl --user import-environment ${__ENV_NAMES_FOR_EXPORT__}
+		if [ "$?" != "0" ]
+		then
+			echo "Could not export environment to systemd user session" >&2
+			exit 1
+		fi
 	else
 		echo "  No vars"
 	fi
