@@ -76,6 +76,9 @@ quirks_wayfire() {
 		exit 1
 	fi
 
+	ALWAYS_EXPORT_VARS="${ALWAYS_EXPORT_VARS} WAYFIRE_LOCAL_CONFIG"
+	ALWAYS_CLEANUP_VARS="${ALWAYS_CLEANUP_VARS} WAYFIRE_LOCAL_CONFIG"
+
 	# detect disabled xwayland
 	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${WAYFIRE_LOCAL_CONFIG}"
 	then
