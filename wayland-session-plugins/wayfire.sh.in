@@ -4,13 +4,19 @@ add_supported_wm wayfire || return $?
 
 quirks_wayfire() {
 	#### find global config and make updateable default out of it
-	# initial point from docs example
-	WAYFIRE_GLOBAL_CONFIG=/usr/share/doc/wayfire/examples/wayfire.ini
 	WAYFIRE_LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire/wayfire.ini"
+
+	# initial point from docs example if exists
+	if [ -r /usr/share/doc/wayfire/examples/wayfire.ini ]
+	then
+		WAYFIRE_GLOBAL_CONFIG=/usr/share/doc/wayfire/examples/wayfire.ini
+	else
+		WAYFIRE_GLOBAL_CONFIG=''
+	fi
 
 	mkdir -p "$(dirname "$WAYFIRE_LOCAL_CONFIG")"
 
-	# iterate in $XDG_CONFIG_DIRS in default (decreasing) importance
+	# iterate $XDG_CONFIG_DIRS in default (decreasing) importance
 	# get first found config
 	OIFS="$IFS"
 	IFS=":"
@@ -30,7 +36,13 @@ quirks_wayfire() {
 	done
 	IFS="$OIFS"
 
-	if [ -n "$WAYFIRE_GLOBAL_CONFIG" ]
+	if [ -z "$WAYFIRE_GLOBAL_CONFIG" -o ! -r "$WAYFIRE_GLOBAL_CONFIG" ] && [ -r "${XDG_CONFIG_HOME}/wayfire.ini" ]
+	then
+		# last ditch, get config from wayfire-specific user config location
+		WAYFIRE_GLOBAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
+	fi
+
+	if [ -n "$WAYFIRE_GLOBAL_CONFIG" -a -r "$WAYFIRE_GLOBAL_CONFIG" ]
 	then
 		# copy global config to stage location if not already there
 		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}.upstream" ]
