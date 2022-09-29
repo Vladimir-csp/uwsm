@@ -264,6 +264,20 @@ then
 fi
 
 # functions for operating on lists of variable names
+filter_varnames(){
+	# leave only vars with valid names, some shells or tools can inject illegal chars, i.e. env-modules
+	local __VAR__
+	for __VAR__ in $(cat)
+	do
+		if echo "${__VAR__}" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_]*$'
+		then
+			echo ${__VAR__}
+		else
+			echo "Encountered illegal var name ${__VAR__}, check your shell environment" >&2
+		fi
+	done
+}
+
 normalize_varnames_space() {
 	# pipe var names to get sorted, uniqued, normalized space-separated output
 	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u | tr '\n' ' ' | sed 's/^ \+\| \+$//g'
@@ -566,7 +580,7 @@ prepare_env() {
 
 	# get current shell env names
 	__ENV_NAMES__=$(
-		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | filter_varnames | normalize_varnames_space
 	)
 
 	# get systemd user manager env names
@@ -588,7 +602,7 @@ prepare_env() {
 
 	# collect env names
 	__ENV_NAMES__=$(
-		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | filter_varnames | normalize_varnames_space
 	)
 
 	# deal with vt and session vars
@@ -649,7 +663,7 @@ prepare_env() {
 
 	# collect env names
 	__ENV_NAMES_AFTER__=$(
-		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | normalize_varnames_space
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | filter_varnames | normalize_varnames_space
 	)
 
 	# finalize export vars:
@@ -660,7 +674,8 @@ prepare_env() {
 			  "${XDG_RUNTIME_DIR}/${WM}_initial_combined_env" \
 			  "${XDG_RUNTIME_DIR}/${WM}_final_env" \
 			| cut -z -d '=' -f 1 \
-			| tr '\0' '\n'
+			| tr '\0' '\n' \
+			| filter_varnames
 
 			# add defined subset of ${ALWAYS_EXPORT_VARS}
 			echo ${ALWAYS_EXPORT_VARS} \
