@@ -522,14 +522,6 @@ prepare_env() {
 		systemctl --user show-environment | cut -d '=' -f 1 | normalize_varnames_space
 	)
 
-	echo "Importing env difference from systemd user manager"
-	# this should have no effect when launched by a service with 'prepare-env', but still...
-	import_back_vars $(
-		echo ${__SYSTEMD_ENV_NAMES__} \
-		| varnames_subtract ${__ENV_NAMES__} \
-		| normalize_varnames_space
-	)
-
 	# take full snapshot of env vars state (zero-delimited)
 	# this will be used for comparisons later
 	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${WM}_initial_combined_env"
