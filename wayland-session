@@ -506,7 +506,7 @@ get_session_by_vt() {
 	local VT="$1"
 	if [ -n "$VT" ]
 	then
-		for SESSION in $(loginctl list-sessions --no-legend | tr -s ' ' | cut -d ' ' -f 1)
+		for SESSION in $(loginctl list-sessions --no-legend | sed 's/^[[:space:]]*//; s/[[:space:]].*$//')
 		do
 			if [ \
 			  "$(loginctl show-session ${SESSION} --property Name --value)" = "${USER}" \
