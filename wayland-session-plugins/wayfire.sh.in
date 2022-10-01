@@ -64,7 +64,10 @@ quirks_wayfire() {
 		fi
 
 		# update stage
-		cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
+		if [ "$(cat "${WAYFIRE_GLOBAL_CONFIG}" | md5sum)" != "$(cat "${WAYFIRE_LOCAL_CONFIG}.upstream" | md5sum)" ]
+		then
+			cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
+		fi
 	fi
 
 	if [ -r "$WAYFIRE_LOCAL_CONFIG" ]
