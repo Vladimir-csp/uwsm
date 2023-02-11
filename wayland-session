@@ -89,6 +89,17 @@ show_help() {
 		Session manager also loads environment from "wayland-session-env" and "\${WM}/env" files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
 		
+		If your WM is systemd-aware and supports launching apps explicitly scoped in app.slice,
+		or if you prefixed all app commands launched by WM with:
+		
+		    systemd-run --user --scope --slice=app.slice
+		
+		then you can put WM in session.slice (as recommended by man systemd.special) by setting
+		
+		    UWSM_USE_SESSION_SLICE=true
+		
+		This var affects unitgen phase, Slice= parameter of services.
+		
 		See code comments for documentation on plugins.
 	EOF
 }
@@ -305,6 +316,12 @@ update_unit() {
 generate_units() {
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
+	if [ "${UWSM_USE_SESSION_SLICE:-false}" = "true" ]
+	then
+		WAYLAND_WM_SLICE=session.slice
+	else
+		WAYLAND_WM_SLICE=app.slice
+	fi
 	UNITS_UPDATED=false
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/"
 	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
@@ -353,6 +370,7 @@ generate_units() {
 		ExecStart=${WS_SELF_FULL} "%I" prepare-env
 		ExecStop=${WS_SELF_FULL} "%I" cleanup-env
 		Restart=no
+		Slice=${WAYLAND_WM_SLICE}
 	EOF
 	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
 		# injected by ${WS_SELF}, do not edit
@@ -376,6 +394,7 @@ generate_units() {
 		ExecStart=%I
 		Restart=no
 		TimeoutStopSec=10
+		Slice=${WAYLAND_WM_SLICE}
 	EOF
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
 	update_unit "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF

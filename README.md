@@ -57,6 +57,22 @@ Example snippet for sway:
     					XCURSOR_THEME \
     	&& systemd-notify --ready
 
+### Slices
+
+If your WM of choice is systemd-aware and supports launching apps explicitly scoped in app.slice,
+or if you prefixed all app commands launched by WM with:
+
+    systemd-run --user --scope --slice=app.slice
+
+then you can put WM in session.slice (as recommended by man systemd.special) by setting environment variable
+`UWSM_USE_SESSION_SLICE=true` during `unitgen` phase. This will set `Slice=session.slice` for WM services.
+
+Example snippet for sway on how to explicitly put apps in app.slice:
+
+    set $scoper exec systemd-run --user --scope --slice=app.slice
+    bindsym --to-code $mod+t exec $scoper foot
+    bindsym --to-code $mod+r exec $scoper rofi -show drun
+
 ## Full systemd service operation
 
 ### Short story:
