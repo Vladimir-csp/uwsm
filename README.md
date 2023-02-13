@@ -57,19 +57,19 @@ Example snippet for sway:
     					XCURSOR_THEME \
     	&& systemd-notify --ready
 
-### Slices
+## Slices
 
 If your WM of choice is systemd-aware and supports launching apps explicitly scoped in app.slice,
 or if you prefixed all app commands launched by WM with:
 
-    systemd-run --user --scope --slice=app.slice
+    systemd-run --user -qG --scope --slice=app.slice
 
 then you can put WM in session.slice (as recommended by man systemd.special) by setting environment variable
 `UWSM_USE_SESSION_SLICE=true` during `unitgen` phase. This will set `Slice=session.slice` for WM services.
 
-Example snippet for sway on how to explicitly put apps in app.slice:
+Example snippet for sway on how to explicitly put apps in app.slice, scoped:
 
-    set $scoper exec systemd-run --user --scope --slice=app.slice
+    set $scoper exec systemd-run --user -qG --scope --slice=app.slice
     bindsym --to-code $mod+t exec $scoper foot
     bindsym --to-code $mod+r exec $scoper rofi -show drun
 
@@ -77,7 +77,9 @@ Example snippet for sway on how to explicitly put apps in app.slice:
 
 ### Short story:
 
-Start with `wayland-session ${wm} sd-start`
+Start with `wayland-session ${wm} sd-start` (it will hold while wayland session is running).
+
+Use `exec wayland-session ${wm} sd-start` if you are in a login shell and want to bind login session's life to wayland session.
 
 Stop with either `wayland-session ${wm} sd-stop` or `systemctl --user stop "wayland-wm@*.service"`
 
@@ -122,8 +124,10 @@ Extended snippet for `~/.profile`:
       && ! systemctl --user is-active -q wayland-wm@*.service
     then
         wayland-session ${WM} unitgen
+        trap "systemctl --user --stop wayland-wm@${WM}.service" INT EXIT TERM
         echo Starting ${WM} WM
-        exec systemctl --user start --wait wayland-wm@${WM}.service
+        systemctl --user start --wait wayland-wm@${WM}.service
+        exit
     fi
 
 ## WM-specific actions

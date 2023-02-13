@@ -66,12 +66,12 @@ show_help() {
 		Usage:
 		  ${WS_SELF} ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
 		
-		$(basename $0) manages session for selected wayland WM.
+		${WS_SELF} manages session for selected wayland WM.
 		Supported modes:
 		    check:     checks supported arguments
 		
 		    sd-start:     does all unit preparations and starts WM via a service
-		                  with --wait to bind to its life
+		                  with --wait and a set of traps to bind to its life
 		    sd-stop:      stops wm
 		
 		    If more control needed: more grained modes available:
@@ -86,7 +86,12 @@ show_help() {
 		        ${WS_SELF} \${WM} unitgen
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
-		Session manager also loads environment from "wayland-session-env" and "\${WM}/env" files in
+		    Or binding it both ways to login session:
+		        ${WS_SELF} \${WM} unitgen
+			trap "systemctl --user stop wayland-wm@\${WM}.service" EXIT INT TERM
+		        systemctl --user --wait start wayland-wm@\${WM}.service ; exit
+		
+		${WS_SELF} also loads environment from "wayland-session-env" and "\${WM}/env" files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
 		
 		If your WM is systemd-aware and supports launching apps explicitly scoped in app.slice,
@@ -145,7 +150,7 @@ add_supported_wm() {
 #    ALWAYS_CLEANUP_VARS"${ALWAYS_CLEANUP_VARS} SOME OTHER VARS"
 #    # or export more vars for session
 #    export I_WANT_THIS_IN_SESSION=yes
-#    # or prepare a config (see waybar plugin)
+#    # or prepare a config (see wayfire plugin)
 #    # or set a var to modify what ${WM}/env in the next stage will do
 #    ...
 #  }
@@ -811,7 +816,10 @@ then
 		return 0 2>/dev/null || exit 0
 	else
 		generate_units
-		exec systemctl --user start --wait wayland-wm@${WM}.service
+		# makeshift reverse of --wait to bind ccompositor's life to session
+		trap "systemctl --user stop wayland-wm@${WM}.service" EXIT INT TERM
+		systemctl --user start --wait wayland-wm@${WM}.service
+		exit
 	fi
 
 elif [ "$MODE" = "sd-stop" ]
