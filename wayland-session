@@ -24,8 +24,6 @@ WS_SELF=wayland-session
 WS_SELF_FULL=$(which "$WS_SELF")
 ####
 
-START_STOP_RETRIES=10
-
 # variables that will always be exported to systemd user manager during startup
 ALWAYS_EXPORT_VARS="XDG_SESSION_ID
 XDG_VTNR
@@ -181,7 +179,7 @@ OIFS="$IFS"
 IFS=":"
 for PLUGIN_PREFIX_PATH in $PLUGIN_PREFIX_PATHS
 do
-	if [ -n "$PLUGIN_PREFIX_PATH" -a -n "$PLUGIN_DIR_NAME" -a -n "$PLUGIN_NAME_PATTERN" -a -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
+	if [ -n "$PLUGIN_PREFIX_PATH" ] && [ -n "$PLUGIN_DIR_NAME" ] && [ -n "$PLUGIN_NAME_PATTERN" ] && [ -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
 	then
 		IFS="
 "
@@ -201,7 +199,7 @@ IFS="$OIFS"
 if echo "$*" | grep -qE '(^| )(--help|-h)( |$)'
 then
 	show_help
-	return 0 2>/dev/null || exit 0
+	exit 0
 fi
 
 WM="${1:?Requires a compositor as first argument: $SUPPORTED_WMS}"
@@ -244,19 +242,18 @@ fi
 # exit/return with error on failed checks
 if [ "$CHECKOUT" = "false" ]
 then
-	return 1 2>/dev/null || exit 1
+	exit 1
 
 elif [ "$MODE" = "check" ]
 then
 	# exit successfully after supported compositors check
 	echo "Checked for compositor ${WM}"
-	return 0 2>/dev/null || exit 0
+	exit 0
 fi
 
 # functions for operating on lists of variable names
 filter_varnames(){
 	# leave only vars with valid names, some shells or tools can inject illegal chars, i.e. env-modules
-	local __VAR__
 	for __VAR__ in $(cat)
 	do
 		if echo "${__VAR__}" | grep -qE '^[a-zA-Z_][a-zA-Z0-9_]*$'
@@ -266,6 +263,10 @@ filter_varnames(){
 			echo "Encountered illegal var name ${__VAR__}, check your shell environment" >&2
 		fi
 	done
+}
+
+rnd() {
+	tr -dc 0-9a-f </dev/urandom | head -c 12
 }
 
 normalize_varnames_space() {
@@ -280,20 +281,20 @@ normalize_varnames_newline() {
 
 varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
-	local RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
-	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}"
-	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
-	comm -23 "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
-	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
+	__RND__=$(rnd)
+	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}"
+	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
+	comm -23 "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
+	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
 }
 
 varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
-	local RND=$(grep -ao '[[:xdigit:]]' /dev/urandom 2>/dev/null | head -n 10 | tr -d '\n')
-	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}"
-	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
-	comm -12 "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
-	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${RND}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${RND}"
+	__RND__=$(rnd)
+	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}"
+	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
+	comm -12 "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
+	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
 }
 
 varnames_union() {
@@ -306,16 +307,16 @@ varnames_union() {
 
 update_unit() {
 	# takes content on stdin, stages it, copies to desitnation $1 if differs
-	local RC=0
+	__RC__=0
 	cat > "${XDG_RUNTIME_DIR}/${WM}_staged_content"
-	if [ ! -f "$1" ] || [ "$(cat "${XDG_RUNTIME_DIR}/${WM}_staged_content" | md5sum)" != "$(cat "$1" | md5sum)" ]
+	if [ ! -f "$1" ] || [ "$(md5sum < "${XDG_RUNTIME_DIR}/${WM}_staged_content")" != "$(md5sum < "$1")" ]
 	then
 		cp -av "${XDG_RUNTIME_DIR}/${WM}_staged_content" "$1"
-		RC=$?
+		__RC__=$?
 		rm "${XDG_RUNTIME_DIR}/${WM}_staged_content"
 		UNITS_UPDATED=true
 	fi
-	return $RC
+	return ${__RC__}
 }
 
 generate_units() {
@@ -410,9 +411,9 @@ generate_units() {
 	EOF
 
 	# units from plugins
-	if type generate_units_${WM_FNAME} >/dev/null
+	if type "generate_units_${WM_FNAME}" >/dev/null
 	then
-		generate_units_${WM_FNAME}
+		"generate_units_${WM_FNAME}"
 	fi
 	if [ "$UNITS_UPDATED" = "true" ]
 	then
@@ -426,8 +427,7 @@ generate_units() {
 
 remove_units() {
 	# removes units from runtime hierarchy
-	local UNIT
-	for UNIT in \
+	for __UNIT__ in \
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" \
@@ -436,19 +436,19 @@ remove_units() {
 	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" \
 	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
 	do
-		if [ -f "$UNIT" ]
+		if [ -f "${__UNIT__}" ]
 		then
-			rm -v "$UNIT"
-		elif [ -d "$UNIT" ]
+			rm -v "${__UNIT__}"
+		elif [ -d "${__UNIT__}" ]
 		then
-			rmdir -v "$UNIT"
+			rmdir -v "${__UNIT__}"
 		else
-			echo "$(basename "$UNIT") is already gone"
+			echo "$(basename "${__UNIT__}") is already gone"
 		fi
 	done
-	if type remove_units_${WM_FNAME} >/dev/null
+	if type "remove_units_${WM_FNAME}" >/dev/null
 	then
-		remove_units_${WM_FNAME}
+		"remove_units_${WM_FNAME}"
 	fi
 	echo Reloading systemd user manager
 	systemctl --user daemon-reload
@@ -467,25 +467,23 @@ get_vt() {
 
 get_session_by_vt() {
 	# takes VT number, echoes session ID bound to it
-	local SESSION
-	local VT="$1"
-	if [ -n "$VT" ]
+	__VT__="$1"
+	if [ -n "${__VT__}" ]
 	then
-		for SESSION in $(loginctl list-sessions --no-legend | sed 's/^[[:space:]]*//; s/[[:space:]].*$//')
+		for __SESSION__ in $(loginctl list-sessions --no-legend | sed 's/^[[:space:]]*//; s/[[:space:]].*$//')
 		do
-			if [ \
-			  "$(loginctl show-session ${SESSION} --property Name --value)" = "${USER}" \
-			  -a \
-			  "$(loginctl show-session ${SESSION} --property VTNr --value)" = "$VT" \
-			]
+			if \
+			  [ "$(loginctl show-session ${__SESSION__} --property Name --value)" = "${USER}" ] \
+			  && \
+			  [ "$(loginctl show-session ${__SESSION__} --property VTNr --value)" = "${__VT__}" ]
 			then
-				echo $SESSION
+				echo ${__SESSION__}
 				return 0
 			else
 				continue
 			fi
 		done
-		echo "Could not find session for VT $VT" >&2
+		echo "Could not find session for VT ${__VT__}" >&2
 		return 1
 	else
 		echo "get_session_by_vt requires VT number" >&2
@@ -495,8 +493,8 @@ get_session_by_vt() {
 
 load_config_env() {
 	#### iterate config dirs in increasing importance and source additional env from relative path in $1
-	local __ALL_XDG_CONFIG_DIRS_REV__=''
-	local __CONFIG_DIR__=''
+	__ALL_XDG_CONFIG_DIRS_REV__=''
+	__CONFIG_DIR__=''
 	OIFS="$IFS"
 	IFS=":"
 	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
@@ -535,13 +533,13 @@ load_wm_env() {
 prepare_env() {
 	# hopefully smartly prepares the environment and updates systemd user manager
 	# has no failure processing yet
-	local __ENV_NAMES__=''
-	local __SYSTEMD_ENV_NAMES__=''
-	local __ENV_NAMES_AFTER__=''
-	local __ENV_NAMES_FOR_EXPORT__=''
-	local __ENV_NAMES_FOR_UNSET__=''
-	local __ENV_NAMES_FOR_CLEANUP__=''
-	local __HAS_VARS__=''
+	__ENV_NAMES__=''
+	__SYSTEMD_ENV_NAMES__=''
+	__ENV_NAMES_AFTER__=''
+	__ENV_NAMES_FOR_EXPORT__=''
+	__ENV_NAMES_FOR_UNSET__=''
+	__ENV_NAMES_FOR_CLEANUP__=''
+	__HAS_VARS__=''
 
 	# get current shell env names
 	__ENV_NAMES__=$(
@@ -570,7 +568,7 @@ prepare_env() {
 			export XDG_VTNR
 		}
 	fi
-	if [ -n "${XDG_VTNR}" -a -z "${XDG_SESSION_ID}" ]
+	if [ -n "${XDG_VTNR}" ] && [ -z "${XDG_SESSION_ID}" ]
 	then
 		XDG_SESSION_ID=$(get_session_by_vt $XDG_VTNR) && {
 			echo "Guessed XDG_SESSION_ID=$XDG_SESSION_ID"
@@ -579,7 +577,7 @@ prepare_env() {
 	fi
 
 	#### Basic environment
-	. /etc/profile
+	[ -f /etc/profile ] && . /etc/profile
 	[ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
 	export PATH
 	export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
@@ -597,7 +595,7 @@ prepare_env() {
 	if type "quirks_${WM_FNAME}" >/dev/null
 	then
 		echo "Applying quirks for ${WM}"
-		quirks_${WM_FNAME} || return $?
+		"quirks_${WM_FNAME}" || return $?
 	fi
 
 	load_common_env || return $?
@@ -605,7 +603,7 @@ prepare_env() {
 	if type "load_wm_env_${WM_FNAME}" >/dev/null
 	then
 		echo "WM-specific environment loading"
-		load_wm_env_${WM_FNAME} || return $?
+		"load_wm_env_${WM_FNAME}" || return $?
 	else
 		load_wm_env || return $?
 	fi
@@ -667,8 +665,8 @@ prepare_env() {
 
 	# cleanup temp files
 	rm -f \
-	  ${XDG_RUNTIME_DIR}/${WM}_initial_combined_env \
-	  ${XDG_RUNTIME_DIR}/${WM}_final_env
+	  "${XDG_RUNTIME_DIR}/${WM}_initial_combined_env" \
+	  "${XDG_RUNTIME_DIR}/${WM}_final_env"
 
 	# save cleanup list
 	echo ${__ENV_NAMES_FOR_CLEANUP__} \
@@ -685,9 +683,10 @@ prepare_env() {
 
 	if [ "${__HAS_VARS__}" = "true" ]
 	then
-		systemctl --user import-environment ${__ENV_NAMES_FOR_EXPORT__}
-		if [ "$?" != "0" ]
+		if systemctl --user import-environment ${__ENV_NAMES_FOR_EXPORT__}
 		then
+			true
+		else
 			echo "Could not export environment to systemd user session" >&2
 			exit 1
 		fi
@@ -730,10 +729,10 @@ cleanup_vars() {
 	# and ${ALWAYS_CLEANUP_VARS}
 	# exclude ${NEVER_CLEANUP_VARS}
 	# and remove them from systemd user manager
-	local CLEANUP_RC=''
-	local __VAR__=''
-	local __HAS_VARS__=''
-	local __ENV_NAMES_FOR_CLEANUP__=$(
+	__CLEANUP_RC__=''
+	__VAR__=''
+	__HAS_VARS__=''
+	__ENV_NAMES_FOR_CLEANUP__=$(
 		{
 			# saved cleanup list if exists
 			[ -f "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names" ] \
@@ -753,14 +752,14 @@ cleanup_vars() {
 	if [ "${__HAS_VARS__}" = "true" ]
 	then
 		systemctl --user unset-environment ${__ENV_NAMES_FOR_CLEANUP__}
-		CLEANUP_RC=$?
+		__CLEANUP_RC__=$?
 	else
 		echo "  No vars"
-		CLEANUP_RC=0
+		__CLEANUP_RC__=0
 	fi
 	[ -f "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names" ] \
 	  && rm "${XDG_RUNTIME_DIR}/${WM}_for_cleanup_env_names"
-	return $CLEANUP_RC
+	return ${__CLEANUP_RC__}
 }
 
 #### More mode decisions
@@ -768,25 +767,23 @@ cleanup_vars() {
 if [ "$MODE" = "cleanup-env" ]
 then
 	cleanup_vars
-	CLEANUP_RC=$?
-	return $CLEANUP_RC 2>/dev/null || exit $CLEANUP_RC
+	__CLEANUP_RC__=$?
+	exit ${__CLEANUP_RC__}
 
 elif [ "$MODE" = "unitgen" ]
 then
 	generate_units
-	GU_RC=$?
-	return $GU_RC 2>/dev/null || exit $GU_RC
+	exit
 
 elif [ "$MODE" = "unitrm" ]
 then
 	if systemctl --user is-active -q 'wayland-wm@*.service'
 	then
 		echo 'wayland-wm@*.service is still active, will not remove units' >&2
-		return 1 2>/dev/null || exit 1
+		exit 1
 	else
 		remove_units
-		RU_RC=$?
-		return $RU_RC 2>/dev/null || exit $RU_RC
+		exit
 	fi
 
 elif [ "$MODE" = "prepare-env" ]
@@ -803,17 +800,15 @@ then
 	if systemctl --user is-active -q 'wayland-wm@*.service'
 	then
 		echo "wayland-wm@*.service is already running"
-		# we can be sourced
-		return 0 2>/dev/null || exit 0
+		exit 0
 	elif systemctl --user is-active -q wayland-wm-*.scope
 	then
 		echo "wayland-wm-*.scope is already running, do not mix shell and systemd start"
-		# we can be sourced
-		return 1 2>/dev/null || exit 1
+		exit 1
 	elif ! systemctl is-active -q graphical.target
 	then
 		echo "System is not at graphical.target"
-		return 0 2>/dev/null || exit 0
+		exit 0
 	else
 		generate_units
 		# makeshift reverse of --wait to bind ccompositor's life to session
@@ -829,7 +824,6 @@ then
 		systemctl --user stop wayland-wm@${WM}.service
 	else
 		echo "wayland-wm@${WM}.service is not running"
-		# we can be sourced
-		return 0 2>/dev/null || exit 0
+		exit 0
 	fi
 fi
