@@ -10,7 +10,7 @@
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='check|unitgen|prepare-env|sd-start|sd-stop|cleanup-env|unitrm'
+SUPPORTED_MODES='check|unitgen|prepare-env|start|sd-start|stop|sd-stop|cleanup-env|unitrm'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -68,11 +68,12 @@ show_help() {
 		Supported modes:
 		    check:     checks supported arguments
 		
-		    sd-start:     does all unit preparations and starts WM via a service
+		    start:        does all unit preparations and starts WM via a service
 		                  with --wait and a set of traps to bind to its life
-		    sd-stop:      stops wm
+		    stop:         stops wm
 		
-		    If more control needed: more grained modes available:
+		If more control needed: more grained modes available:
+		
 		    unitgen:      generates systemd unit files in runtime hierarchy
 		    prepare-env:  prepares environment for WM in systemd user manager
 		                  (for use in ExecStart of wayland-wm-env@.service)
@@ -86,7 +87,7 @@ show_help() {
 		
 		    Or binding it both ways to the login session:
 		        ${WS_SELF} \${WM} unitgen
-		        trap "if systemctl --user is-active -q wayland-wm@\${WM}.service ; then systemctl --user stop wayland-wm@\${WM}.service ; fi" INT TERM EXIT
+		        trap "if systemctl --user is-active -q wayland-wm@\${WM}.service ; then systemctl --user stop wayland-wm@\${WM}.service ; fi" INT TERM HUP EXIT
 		        systemctl --user --wait start wayland-wm@\${WM}.service &
 		        wait
 		        exit
@@ -317,6 +318,8 @@ update_unit() {
 		__RC__=$?
 		rm "${XDG_RUNTIME_DIR}/${WM}_staged_content"
 		UNITS_UPDATED=true
+	else
+		rm "${XDG_RUNTIME_DIR}/${WM}_staged_content"
 	fi
 	return ${__RC__}
 }
@@ -802,33 +805,41 @@ then
 	# no failure processing yet
 	prepare_env
 
-elif [ "$MODE" = "sd-start" ]
+elif [ "$MODE" = "sd-start" ] || [ "$MODE" = "start" ]
 then
+	[ "$MODE" = "sd-start" ] && echo "'sd-start' is deprecated in favour of simple 'start'"
 	# all in one go systemd start, supports sourcing from login shell
-	# start if no WM is running and if system is at graphical.target
+	# start if no WM is running
 	if systemctl --user is-active -q 'wayland-wm@*.service'
 	then
-		echo "wayland-wm@*.service is already running"
-		exit 0
-	elif systemctl --user is-active -q wayland-wm-*.scope
-	then
-		echo "wayland-wm-*.scope is already running, do not mix shell and systemd start"
-		exit 1
-	elif ! systemctl is-active -q graphical.target
-	then
-		echo "System is not at graphical.target"
+		echo "wayland-wm@*.service is already running:"
+		systemctl --user list-units --state=active --no-legend wayland-wm@*.service
 		exit 0
 	else
+		if ! systemctl is-active -q graphical.target
+		then
+			cat <<- EOM
+			System is not at graphical.target. It might be a good idea to screen for this with:
+			
+			  if systemctl is-active -q graphical.target ; then ...
+			
+			Will continue in 3 seconds...
+			EOM
+			sleep 3
+		fi
 		generate_units
 		# makeshift reverse of --wait to bind ccompositor's life to session
-		trap "trap_exit" INT TERM EXIT
+		# HUP is received when logind terminates session
+		trap trap_exit INT TERM HUP EXIT
+		echo "starting ${WM}..."
 		systemctl --user start --wait wayland-wm@${WM}.service &
 		wait
 		exit
 	fi
 
-elif [ "$MODE" = "sd-stop" ]
+elif [ "$MODE" = "sd-stop" ] || [ "$MODE" = "stop" ]
 then
+	[ "$MODE" = "sd-stop" ] && echo "'sd-stop' is deprecated in favour of simple 'stop'"
 	if systemctl --user is-active -q wayland-wm@${WM}.service
 	then
 		systemctl --user stop wayland-wm@${WM}.service
