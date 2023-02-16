@@ -84,10 +84,12 @@ show_help() {
 		        ${WS_SELF} \${WM} unitgen
 		        exec systemctl --user --wait start wayland-wm@\${WM}.service
 		
-		    Or binding it both ways to login session:
+		    Or binding it both ways to the login session:
 		        ${WS_SELF} \${WM} unitgen
-			trap "systemctl --user stop wayland-wm@\${WM}.service" EXIT INT TERM
-		        systemctl --user --wait start wayland-wm@\${WM}.service ; exit
+		        trap "if systemctl --user is-active -q wayland-wm@\${WM}.service ; then systemctl --user stop wayland-wm@\${WM}.service ; fi" INT TERM EXIT
+		        systemctl --user --wait start wayland-wm@\${WM}.service &
+		        wait
+		        exit
 		
 		${WS_SELF} also loads environment from "wayland-session-env" and "\${WM}/env" files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
@@ -762,6 +764,13 @@ cleanup_vars() {
 	return ${__CLEANUP_RC__}
 }
 
+trap_exit() {
+	if systemctl --user is-active -q wayland-wm@${WM}.service
+	then
+		systemctl --user stop wayland-wm@${WM}.service
+	fi
+}
+
 #### More mode decisions
 
 if [ "$MODE" = "cleanup-env" ]
@@ -812,8 +821,9 @@ then
 	else
 		generate_units
 		# makeshift reverse of --wait to bind ccompositor's life to session
-		trap "systemctl --user stop wayland-wm@${WM}.service" EXIT INT TERM
-		systemctl --user start --wait wayland-wm@${WM}.service
+		trap "trap_exit" INT TERM EXIT
+		systemctl --user start --wait wayland-wm@${WM}.service &
+		wait
 		exit
 	fi
 

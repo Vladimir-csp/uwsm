@@ -124,9 +124,10 @@ Extended snippet for `~/.profile`:
       && ! systemctl --user is-active -q wayland-wm@*.service
     then
         wayland-session ${WM} unitgen
-        trap "systemctl --user --stop wayland-wm@${WM}.service" INT EXIT TERM
+        trap "if systemctl --user is-active -q wayland-wm@${WM}.service ; then systemctl --user --stop wayland-wm@${WM}.service ; fi" INT EXIT TERM
         echo Starting ${WM} WM
-        systemctl --user start --wait wayland-wm@${WM}.service
+        systemctl --user start --wait wayland-wm@${WM}.service &
+        wait
         exit
     fi
 
