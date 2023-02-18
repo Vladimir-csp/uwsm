@@ -89,7 +89,15 @@ Stop with either `wayland-session ${wm} stop` or `systemctl --user stop "wayland
 
 Run `wayland-session ${wm} unitgen` to populate `${XDG_RUNTIME_DIR}` with them.
 
-After that: `systemctl --user start wayland-wm@${wm}.service` to start WM.
+The first argument may also contain the full literal command line for the WM with arguments, i.e.:
+
+`wayland-session "${wm} --some-arg \"quoted arg\"" unitgen`
+
+In this case full WM commandline will be stored in a unit override file for specific WM.
+This commandline should also be specified for `start` action as unit generation also happens there.
+Needless to say, it should be compatible with unit `ExecStart=` attribute.
+
+After units are generated, WM can be started by: `systemctl --user start wayland-wm@${wm}.service`
 
 Add `--wait` to hold terminal until session ends.
 
@@ -103,7 +111,7 @@ To also bind it the other way around, use traps:
 
 `trap "if systemctl --user is-active -q wayland-wm@${WM}.service ; then systemctl --user --stop wayland-wm@${WM}.service ; fi" INT EXIT HUP TERM`
 
-Then the end of login shell will also trigger the end of wayland session.
+Then the end of login shell will also be the end of wayland session.
 
 #### Stop
 
@@ -155,7 +163,9 @@ Plugins provide WM support and associated functions. See `wayland-session-plugin
 - more plugins
 - invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
 - maybe do some integration with `/usr/share/wayland-sessions/*.desktop`
-- python inclusions and whiptail for desktop entry parser and chooser
+  - [x] WM argument support
+  - [ ] python inclusions and whiptail for desktop entry parser and chooser
+- maybe drop requirement for unified `~/.config/${wm}/` and checks for supported WMs, argument support now allows to just run anything.
 
 ## Compliments
 

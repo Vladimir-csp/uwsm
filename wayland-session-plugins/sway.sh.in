@@ -14,7 +14,14 @@ quirks_sway() {
 	fi
 }
 
-exit_sway() {
+generate_units_sway() {
 	# requires SWAYSOCK in IMPORT_BACK_VARS
-	swaymsg exit
+	update_unit "wayland-wm@sway.service.d/exit.conf" <<- EOF
+		[Service]
+		ExecStop=swaymsg exit
+	EOF
+}
+
+remove_units_sway() {
+	remove_unit "wayland-wm@sway.service.d/exit.conf"
 }

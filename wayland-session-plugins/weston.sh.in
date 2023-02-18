@@ -1,0 +1,3 @@
+#!/bin/false
+
+add_supported_wm weston || return $?

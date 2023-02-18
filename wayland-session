@@ -62,7 +62,9 @@ show_help() {
 		
 		Generic wayland session manager with systemd integration
 		Usage:
-		  ${WS_SELF} ${SUPPORTED_WMS:-supported_wm} ${SUPPORTED_MODES}
+		  ${WS_SELF} wm|'wm --with-args="any args"' ${SUPPORTED_MODES}
+		
+		Supported VMs: ${SUPPORTED_WMS:-No supported WMs}
 		
 		${WS_SELF} manages session for selected wayland WM.
 		Supported modes:
@@ -133,9 +135,9 @@ add_supported_wm() {
 # load plugins
 # plugins should contain only add_supported_wm call
 # and specifically named functions
-# function name suffix is expected to be WM name with
-# all dashes replaced by underscores and underscores singled
-# $(echo "$WM" | tr '-' '_' | tr -s '_')
+# function name suffix is expected to be WM executable name with
+# all dashes and dots replaced by underscores and underscores singled
+# $(echo "$WM" | tr '.-' '__' | tr -s '_')
 # example:
 #
 #  #!/bin/false
@@ -155,26 +157,32 @@ add_supported_wm() {
 #    # or set a var to modify what ${WM}/env in the next stage will do
 #    ...
 #  }
+#
 #  load_wm_env_my_cool_wm() {
-#    # wm-specific loading of env (or a stub)
+#    # custom mechanism for loading of env (or a stub)
+#    # completely replaces loading from ${WM}/env in config dirs
 #  }
+#
 #  generate_units_my_cool_wm() {
 #    # place some units or fragments specifically for my-cool-wm
+#    # use update_unit function
 #    # reloading is handled by main script
 #  }
+#
 #  remove_units_my_cool_wm() {
 #    # remove the same units
+#    # use remove_unit function
 #    # reloading is handled by main script
 #  }
-#  # Function to override WM execution in shell-start|shell-intstart mode
-#  # Always define WM as arguments to wm_wrapper
-#  # if needed to modify execution in full systemd mode, add dropin in generate_units_my_cool_wm()
-#  run_wm_my_cool_wm() {
-#    wm_wrapper my-cool-wm --with any args
-#  }
-#  # function to terminate compositor
-#  exit_my_cool_wm() {
-#    # requires MY_WM_SOCKET in IMPORT_BACK_VARS
+#
+#  # function to add/replace args for WM command
+#  inject_args_my_cool_wm() {
+#    # prepend some args before original args
+#    WM_ARGS_PREPEND='-s --logmsg="foo bar"'
+#    # on second thought, drop original args
+#    WM_ARGS=''
+#    # and append a bunch more
+#    WM_ARGS_APPEND='--lifetime 1h'
 #    my-cool-wm-communicate exit
 #  }
 
@@ -205,11 +213,23 @@ then
 	exit 0
 fi
 
-WM="${1:?Requires a compositor as first argument: $SUPPORTED_WMS}"
-# replace dashes with underscores for function names
-WM_FNAME=$(echo "$WM" | tr '-' '_' | tr -s '_')
+WM_CMD="${1:?Requires a compositor command line as first argument: $SUPPORTED_WMS}"
 MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
 
+## Rough processing of wm command line
+# get executable name ($0)
+WM=$(printf '%s' "$WM_CMD" | xargs sh -c 'echo "$1"' arg_snip)
+# get the rest of arguments
+# cut executable name from beginning
+WM_ARGS="${WM_CMD#"${WM}"}"
+# trim spaces
+WM_ARGS="${WM_ARGS%"${WM_ARGS##*[![:space:]]}"}"
+WM_ARGS="${WM_ARGS#"${WM_ARGS%%[![:space:]]*}"}"
+#"
+# replace dashes with underscores for function names
+WM_FNAME=$(echo "$WM" | tr '.-' '__' | tr -s '_')
+
+## Sanity checks
 CHECKOUT=true
 
 if ! echo "$MODE" | grep -qE "^(${SUPPORTED_MODES})\$"
@@ -309,18 +329,27 @@ varnames_union() {
 }
 
 update_unit() {
-	# takes content on stdin, stages it, copies to desitnation $1 if differs
+	# takes content on stdin, stages it,
+	# copies to desitnation ${XDG_RUNTIME_DIR}/systemd/user/$1 if differs
+	# subdirs created automatically
 	__RC__=0
-	cat > "${XDG_RUNTIME_DIR}/${WM}_staged_content"
-	if [ ! -f "$1" ] || [ "$(md5sum < "${XDG_RUNTIME_DIR}/${WM}_staged_content")" != "$(md5sum < "$1")" ]
+	RND=$(rnd)
+	cat > "${XDG_RUNTIME_DIR}/${RND}_staged_content"
+	if [ ! -f "${XDG_RUNTIME_DIR}/systemd/user/$1" ] || [ "$(md5sum < "${XDG_RUNTIME_DIR}/${RND}_staged_content")" != "$(md5sum < "${XDG_RUNTIME_DIR}/systemd/user/$1")" ]
 	then
-		cp -av "${XDG_RUNTIME_DIR}/${WM}_staged_content" "$1"
+		# create subdir if needed
+		[ "$(dirname "$1")" != "." ] && \
+		  [ ! -d "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")" ] && \
+		  mkdir -pv "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")"
+		# put content in place
+		cp -av "${XDG_RUNTIME_DIR}/${RND}_staged_content" "${XDG_RUNTIME_DIR}/systemd/user/$1"
 		__RC__=$?
-		rm "${XDG_RUNTIME_DIR}/${WM}_staged_content"
+		rm "${XDG_RUNTIME_DIR}/${RND}_staged_content"
 		UNITS_UPDATED=true
 	else
-		rm "${XDG_RUNTIME_DIR}/${WM}_staged_content"
+		rm "${XDG_RUNTIME_DIR}/${RND}_staged_content"
 	fi
+	unset RND
 	return ${__RC__}
 }
 
@@ -335,7 +364,7 @@ generate_units() {
 	fi
 	UNITS_UPDATED=false
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/"
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" <<- EOF
+	update_unit "wayland-session-pre@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Preparation for session of %I Wayland Window Manager
@@ -345,7 +374,7 @@ generate_units() {
 		BindsTo=graphical-session-pre.target
 		Before=graphical-session-pre.target
 	EOF
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" <<- EOF
+	update_unit "wayland-session@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Session of %I Wayland Window Manager
@@ -356,7 +385,7 @@ generate_units() {
 		BindsTo=graphical-session.target
 		Before=graphical-session.target
 	EOF
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" <<- EOF
+	update_unit "wayland-session-xdg-autostart@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=XDG Autostart for session of %I Wayland Window Manager
@@ -367,7 +396,7 @@ generate_units() {
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" <<- EOF
+	update_unit "wayland-wm-env@.service" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=Environment preloader for %I Wayland Window Manager
@@ -383,7 +412,7 @@ generate_units() {
 		Restart=no
 		Slice=${WAYLAND_WM_SLICE}
 	EOF
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" <<- EOF
+	update_unit "wayland-wm@.service" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		Description=%I Wayland Window Manager
@@ -407,56 +436,102 @@ generate_units() {
 		TimeoutStopSec=10
 		Slice=${WAYLAND_WM_SLICE}
 	EOF
-	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" <<- EOF
+	update_unit "app-@autostart.service.d/stop-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		# make autostart apps stoppable by target
 		StopPropagatedFrom=xdg-desktop-autostart.target
 	EOF
 
+	# args from plugins
+	WM_ARGS_PREPEND=''
+	WM_ARGS_APPEND=''
+	if type "inject_args_${WM_FNAME}" >/dev/null
+	then
+		"inject_args_${WM_FNAME}"
+	fi
+
+	# argument treatment
+	if [ -n "$WM_ARGS_PREPEND" ] || [ -n "$WM_ARGS" ] || [ -n "$WM_ARGS_APPEND" ]
+	then
+		update_unit "wayland-wm@${WM}.service.d/args.conf" <<- EOF
+			[Service]
+			ExecStart=
+			ExecStart=${WM}${WM_ARGS_PREPEND:+ }${WM_ARGS_PREPEND} ${WM_ARGS}${WM_ARGS_APPEND:+ }${WM_ARGS_APPEND}
+		EOF
+	elif [ -f "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@${WM}.service.d/args.conf" ]
+	then
+		remove_unit "wayland-wm@${WM}.service.d/args.conf"
+	fi
+
 	# units from plugins
 	if type "generate_units_${WM_FNAME}" >/dev/null
 	then
 		"generate_units_${WM_FNAME}"
 	fi
+
 	if [ "$UNITS_UPDATED" = "true" ]
 	then
 		echo Reloading systemd user manager
 		systemctl --user daemon-reload
 	else
-		echo All units are up to date
+		echo All units are up to date, reload is not needed
 	fi
 	unset UNITS_UPDATED
 }
 
+remove_unit(){
+	# removes ${XDG_RUNTIME_DIR}/systemd/user/$1
+	# removes subdir if empty
+	__RC__=0
+	if [ -f "${XDG_RUNTIME_DIR}/systemd/user/$1" ]
+	then
+		rm -v "${XDG_RUNTIME_DIR}/systemd/user/$1"
+		__RC__=$?
+		UNITS_UPDATED=true
+		# auto remove subdir if empty
+		[ "$(dirname "$1")" != "." ] && \
+		  [ -z "$(ls -A "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")")" ] && \
+		  rmdir -v "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")"
+		#"
+	elif [ -d "${XDG_RUNTIME_DIR}/systemd/user/$1" ]
+	then
+		rmdir "${XDG_RUNTIME_DIR}/systemd/user/$1"
+		__RC__=$?
+	else
+		echo "${XDG_RUNTIME_DIR}/systemd/user/$1 is already gone"
+	fi
+	return ${__RC__}
+}
+
 remove_units() {
 	# removes units from runtime hierarchy
-	for __UNIT__ in \
-	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm-env@.service" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-pre@.target" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session@.target" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-session-xdg-autostart@.target" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@.service" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/stop-tweak.conf" \
-	  "${XDG_RUNTIME_DIR}/systemd/user/app-@autostart.service.d/"
-	do
-		if [ -f "${__UNIT__}" ]
-		then
-			rm -v "${__UNIT__}"
-		elif [ -d "${__UNIT__}" ]
-		then
-			rmdir -v "${__UNIT__}"
-		else
-			echo "$(basename "${__UNIT__}") is already gone"
-		fi
-	done
+	UNITS_UPDATED=false
+	# units from plugins
 	if type "remove_units_${WM_FNAME}" >/dev/null
 	then
 		"remove_units_${WM_FNAME}"
 	fi
-	echo Reloading systemd user manager
-	systemctl --user daemon-reload
+	for __UNIT__ in \
+	  "wayland-wm-env@.service" \
+	  "wayland-session-pre@.target" \
+	  "wayland-session@.target" \
+	  "wayland-session-xdg-autostart@.target" \
+	  "wayland-wm@.service" \
+	  "app-@autostart.service.d/stop-tweak.conf" \
+	  "wayland-wm@${WM}.service.d/args.conf"
+	do
+		remove_unit "${__UNIT__}"
+	done
+
+	if [ "$UNITS_UPDATED" = "true" ]
+	then
+		echo Reloading systemd user manager
+		systemctl --user daemon-reload
+	else
+		echo Units already removed, reload is not needed
+	fi
+	unset UNITS_UPDATED
 }
 
 get_vt() {
@@ -791,7 +866,9 @@ elif [ "$MODE" = "unitrm" ]
 then
 	if systemctl --user is-active -q 'wayland-wm@*.service'
 	then
-		echo 'wayland-wm@*.service is still active, will not remove units' >&2
+		echo "wayland-wm@*.service is already running:" >&2
+		systemctl --user list-units --state=active --no-legend wayland-wm@*.service >&2
+		echo 'Will not remove units' >&2
 		exit 1
 	else
 		remove_units

@@ -91,15 +91,6 @@ quirks_wayfire() {
 	fi
 }
 
-generate_units_wayfire() {
-	mkdir -pv "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d"
-	update_unit "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d/tweak.conf" <<- EOF
-		[Service]
-		ExecStart=
-		ExecStart=wayfire -c "\${WAYFIRE_LOCAL_CONFIG}"
-	EOF
-}
-
-remove_units_wayfire() {
-	rm -rv "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@wayfire.service.d"
+inject_args_wayfire() {
+	WM_ARGS_PREPEND='-c "${WAYFIRE_LOCAL_CONFIG}"'
 }
