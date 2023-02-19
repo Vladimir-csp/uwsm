@@ -121,7 +121,7 @@ show_help() {
 # functions for use in plugins
 add_supported_wm() {
 	# takes simple executable name
-	if echo "$1" | grep -qE "^[a-zA-Z0-9_-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
+	if echo "$1" | grep -qE "^[a-zA-Z0-9_.-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
 	then
 		if echo "$1" | grep -qe "^(${SUPPORTED_WMS})\$"
 		then
@@ -426,7 +426,7 @@ then
 	CHECKOUT=false
 fi
 
-if ! echo "$WM" | grep -qE "^[a-zA-Z0-9_-]+$"
+if ! echo "$WM" | grep -qE "^[a-zA-Z0-9_.-]+$"
 then
 	echo "Got malformed compositor name: $WM" >&2
 	CHECKOUT=false
