@@ -289,7 +289,17 @@ filter_varnames(){
 }
 
 rnd() {
-	tr -dc 0-9a-f </dev/urandom | head -c 12
+	__PRE_RND__=''
+	__RND_C__=0
+	until [ "${#__PRE_RND__}" -ge "10" ]
+	do
+		__PRE_RND__=$(tr -dc 0-9a-f </dev/urandom 2>/dev/null | head -c 12)
+		__RND_C__=$(( ${__RND_C__} + 1 ))
+		[ "${__RND_C__}" -ge "10" ] && { echo RND failure >&2 ; exit 1 ; }
+	done
+	echo "${__PRE_RND__}"
+	unset __PRE_RND__
+	unset __RND_C__
 }
 
 normalize_varnames_space() {
@@ -309,6 +319,7 @@ varnames_subtract() {
 	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
 	comm -23 "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
 	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
+	unset __RND__
 }
 
 varnames_intersect() {
@@ -318,6 +329,7 @@ varnames_intersect() {
 	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
 	comm -12 "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
 	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
+	unset __RND__
 }
 
 varnames_union() {
@@ -333,23 +345,23 @@ update_unit() {
 	# copies to desitnation ${XDG_RUNTIME_DIR}/systemd/user/$1 if differs
 	# subdirs created automatically
 	__RC__=0
-	RND=$(rnd)
-	cat > "${XDG_RUNTIME_DIR}/${RND}_staged_content"
-	if [ ! -f "${XDG_RUNTIME_DIR}/systemd/user/$1" ] || [ "$(md5sum < "${XDG_RUNTIME_DIR}/${RND}_staged_content")" != "$(md5sum < "${XDG_RUNTIME_DIR}/systemd/user/$1")" ]
+	__RND__=$(rnd)
+	cat > "${XDG_RUNTIME_DIR}/${__RND__}_staged_content"
+	if [ ! -f "${XDG_RUNTIME_DIR}/systemd/user/$1" ] || [ "$(md5sum < "${XDG_RUNTIME_DIR}/${__RND__}_staged_content")" != "$(md5sum < "${XDG_RUNTIME_DIR}/systemd/user/$1")" ]
 	then
 		# create subdir if needed
 		[ "$(dirname "$1")" != "." ] && \
 		  [ ! -d "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")" ] && \
 		  mkdir -pv "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")"
 		# put content in place
-		cp -av "${XDG_RUNTIME_DIR}/${RND}_staged_content" "${XDG_RUNTIME_DIR}/systemd/user/$1"
+		cp -av "${XDG_RUNTIME_DIR}/${__RND__}_staged_content" "${XDG_RUNTIME_DIR}/systemd/user/$1"
 		__RC__=$?
-		rm "${XDG_RUNTIME_DIR}/${RND}_staged_content"
+		rm "${XDG_RUNTIME_DIR}/${__RND__}_staged_content"
 		UNITS_UPDATED=true
 	else
-		rm "${XDG_RUNTIME_DIR}/${RND}_staged_content"
+		rm "${XDG_RUNTIME_DIR}/${__RND__}_staged_content"
 	fi
-	unset RND
+	unset __RND__
 	return ${__RC__}
 }
 
