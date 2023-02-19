@@ -2,10 +2,10 @@
 Description=Highly customizable Wayland bar for Sway and Wlroots based compositors.
 Documentation=https://github.com/Alexays/Waybar/wiki/
 # order startup after WM
-After=wayland-wm@sway.service wayland-wm@wayfire.service
+After=graphical-session.target
 # Make sure to receive stop when WM stops
 # Stop before WM stops due to After= ordering above
-StopPropagatedFrom=wayland-wm@sway.service wayland-wm@wayfire.service
+StopPropagatedFrom=graphical-session.target wayland-wm@sway.service wayland-wm@wayfire.service wayland-wm@labwc.service
 
 [Service]
 ExecStart=/usr/bin/waybar
