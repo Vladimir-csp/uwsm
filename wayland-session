@@ -10,7 +10,7 @@
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 SUPPORTED_WMS=''
-SUPPORTED_MODES='check|unitgen|prepare-env|start|sd-start|stop|sd-stop|cleanup-env|unitrm'
+SUPPORTED_MODES='check|unitgen|prepare-env|start|stop|cleanup-env|unitrm'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
 PLUGIN_NAME_PATTERN='*.sh.in'
@@ -65,6 +65,12 @@ show_help() {
 		  ${WS_SELF} wm|'wm --with-args="any args"' ${SUPPORTED_MODES}
 		
 		Supported VMs: ${SUPPORTED_WMS:-No supported WMs}
+		  Special value "select" will bring selection menu to choose from
+		    'wayland-sessions' desktop entries.
+		  Special value "default" will select saved or predefined cmd from
+		    'wayland-session-default-cmd' file in config hierarchy,
+		    or bring selection menu if default is missing or not among
+		    'wayland-sessions' desktop entries.
 		
 		${WS_SELF} manages session for selected wayland WM.
 		Supported modes:
@@ -94,7 +100,7 @@ show_help() {
 		        wait
 		        exit
 		
-		${WS_SELF} also loads environment from "wayland-session-env" and "\${WM}/env" files in
+		${WS_SELF} also loads environment from "wayland-session-env" and "wayland-session-${WM}-env" files in
 		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
 		
 		If your WM is systemd-aware and supports launching apps explicitly scoped in app.slice,
@@ -144,7 +150,7 @@ add_supported_wm() {
 #
 #  add_supported_wm my-cool-wm
 #
-#  # function to make arbitrary actions before loading ${WM}/env
+#  # function to make arbitrary actions before loading wayland-session-${WM}-env
 #  quirks_my_cool_wm() {
 #    # here additional vars can be added set for session manager
 #    # like
@@ -154,13 +160,17 @@ add_supported_wm() {
 #    # or export more vars for session
 #    export I_WANT_THIS_IN_SESSION=yes
 #    # or prepare a config (see wayfire plugin)
-#    # or set a var to modify what ${WM}/env in the next stage will do
+#    # or set a var to modify what wayland-session-${WM}-env in the next stage will do
 #    ...
 #  }
 #
 #  load_wm_env_my_cool_wm() {
 #    # custom mechanism for loading of env (or a stub)
-#    # completely replaces loading from ${WM}/env in config dirs
+#    # completely replaces loading from wayland-session-${WM}-env in config dirs
+#    # so repeat it
+#    load_wm_env
+#    # and add ours
+#    load_config_env "${WM}/env"
 #  }
 #
 #  generate_units_my_cool_wm() {
@@ -215,6 +225,184 @@ fi
 
 WM_CMD="${1:?Requires a compositor command line as first argument: $SUPPORTED_WMS}"
 MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
+
+wm_selector() {
+	# parse desktop entries of wayland-sessions, present choice via whiptail
+	python <<- EOF
+		try:
+		    import os, sys, shlex
+		    from xdg.DesktopEntry import DesktopEntry
+		except ModuleNotFoundError as E:
+		    print(E, file=sys.stderr)
+		    sys.exit(126)
+		
+		def which(executable):
+		    'Simple which'
+		    for path in os.getenv('PATH', '').split(os.path.pathsep):
+		        path = os.path.join(path, executable)
+		        if os.path.exists(path) and os.access(path, os.X_OK):
+		            return path
+		    return ''
+		
+		def get_default_cmd():
+		    'Gets WM command line from wayland-session-default-cmd file in config hierarchy'
+		    for dir in [
+		            os.getenv('XDG_CONFIG_HOME', os.path.join(os.getenv('HOME'), '.config')),
+		            *(os.getenv('XDG_DATA_DIRS', '/etc/xdg').split(':'))
+		        ]:
+		        cmd_cache_file = os.path.join(dir, 'wayland-session-default-cmd')
+		        if os.path.exists(cmd_cache_file):
+		            try:
+		                with open(cmd_cache_file, 'r') as opened_cmd_cache_file:
+		                    for line in opened_cmd_cache_file.readlines():
+		                        if line.strip():
+		                            return line.strip()
+		            except exception as E:
+		                print(E, file=sys.stderr)
+		                sys.exit(126)
+		    return ''
+		
+		default = get_default_cmd()
+		seen_entries = []
+		entry_files = []
+		choices = []
+		
+		# find relevant desktop entries as first found paths in data hierarchy
+		for dir in [
+		        os.getenv('XDG_DATA_HOME', os.path.join(os.getenv('HOME'), '.local/share')),
+		        *(os.getenv('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':'))
+		    ]:
+		    dir = os.path.join(dir, 'wayland-sessions')
+		    if os.path.isdir(dir):
+		        try:
+		            os.chdir(dir)
+		            for file in os.listdir():
+		                if os.path.splitext(file)[1] == '.desktop' and file not in seen_entries:
+		                    seen_entries.append(file)
+		                    entry_files.append(os.path.join(dir, file))
+		        except Exception as E:
+		            print(E, file=sys.stderr)
+		            sys.exit(126)
+		
+		# fill choces list with [Exec, Name], filtered
+		for entry in entry_files:
+		    try:
+		        entry = DesktopEntry(entry)
+		    except:
+		        # just skip unparsable entry
+		        continue
+		    # skip inaccessible executables or hidden entries
+		    if (
+		        entry.getHidden()
+		        or entry.getNoDisplay()
+		        or (entry.getTryExec() and not entry.findTryExec())
+		        or not entry.getExec()
+		        or not which(shlex.split(entry.getExec())[0])
+		    ):
+		        continue
+		    items = [entry.getExec(), entry.getName() or os.path.splitext(os.path.basename(entry.filename))[0]]
+		    choices.extend(items)
+		
+		if len(choices) == 2 and default == choices[0]:
+		    # just spit out the only preselected choice
+		    print(choices[0], file=sys.stderr)
+		    sys.exit(0)
+		elif len(choices) > 2 and len(choices) % 2 == 0:
+		    # drop default if not among choices
+		    if default and default not in choices[::2]:
+		        default = ''
+		    elif default and os.getenv('__JUST_RUN_DEFAULT__', 'false') == 'true':
+		        # just spit out default
+		        for choice in choices[::2]:
+		            if choice == default:
+		                print(choice, file=sys.stderr)
+		                sys.exit(0)
+		elif len(choices) == 0:
+		    print('No choices found', file=sys.stderr)
+		    sys.exit(126)
+		else:
+		    print('Malformed choices', file=sys.stderr)
+		    sys.exit(126)
+		
+		# generate arguments for whiptail exec
+		argv = (
+		    'whiptail',
+		    'whiptail',
+		    '--clear',
+		    '--backtitle',
+		    'Universal Wayland Session Manager',
+		    '--title',
+		    'Choose compositor',
+		    '--nocancel',
+		    *(
+		        ('--default-item', default) if default else ()
+		    ),
+		    '--menu',
+		    '',
+		    '0',
+		    '0',
+		    '0',
+		    '--notags',
+		    *(choices)
+		)
+		
+		# replace whiptail theme with simple default colors
+		whiptail_env = dict(os.environ)
+		whiptail_env.update({
+		    'TERM': 'linux',
+		    'NEWT_COLORS': ';'.join([
+		        'root=default,default',
+		        'border=default,default',
+		        'window=default,default',
+		        'shadow=default,default',
+		        'title=black,lightgray',
+		        'button=default,default',
+		        'actbutton=black,lightgray',
+		        'compactbutton=default,default',
+		        'checkbox=default,default',
+		        'actcheckbox=black,lightgray',
+		        'entry=default,default',
+		        'disentry=default,default',
+		        'label=default,default',
+		        'listbox=default,default',
+		        'actlistbox=black,lightgray',
+		        'sellistbox=black,lightgray',
+		        'actsellistbox=black,lightgray',
+		        'textbox=default,default',
+		        'acttextbox=black,lightgray',
+		        'emptyscale=default,default',
+		        'fullscale=default,default',
+		        'helpline=default,default',
+		        'roottext=default,default'
+		    ])
+		})
+		
+		os.execlpe(*argv, whiptail_env)
+	EOF
+}
+
+if [ "$WM_CMD" = "select" ] || [ "$WM_CMD" = "default" ]
+then
+	[ "$WM_CMD" = "select" ] && export __JUST_RUN_DEFAULT__=false
+	[ "$WM_CMD" = "default" ] && export __JUST_RUN_DEFAULT__=true
+	WM_CMD=$(wm_selector 3>&1 1>&2 2>&3)
+	__SELECTOR_RC__=$?
+	unset __JUST_RUN_DEFAULT__
+	if [ "${__SELECTOR_RC__}" = "0" ] && [ -n "$WM_CMD" ]
+	then
+		__WM_CMD_USER_DEFAULT__="${XDG_CONFIG_HOME:-${HOME}/.config}/wayland-session-default-cmd"
+		mkdir -p "$(dirname "${__WM_CMD_USER_DEFAULT__}")"
+		echo "$WM_CMD" > "${__WM_CMD_USER_DEFAULT__}"
+		echo "Chosen: $WM_CMD"
+	else
+		echo "Compositor was not selected" >&2
+		# error messages should be here
+		echo "${WM_CMD:-Empty result}" >&2
+		exit ${__SELECTOR_RC__}
+	fi
+	unset __SELECTOR_RC__
+	unset __WM_CMD_USER_DEFAULT__
+fi
 
 ## Rough processing of wm command line
 # get executable name ($0)
@@ -599,6 +787,8 @@ load_config_env() {
 		fi
 	done
 	IFS="$OIFS"
+	unset __CONFIG_DIR__
+	unset __ALL_XDG_CONFIG_DIRS_REV__
 	return 0
 }
 
@@ -607,7 +797,7 @@ load_common_env() {
 }
 
 load_wm_env() {
-	load_config_env "${WM}/env"
+	load_config_env "wayland-session-${WM}-env"
 }
 
 prepare_env() {
@@ -882,9 +1072,8 @@ then
 	# no failure processing yet
 	prepare_env
 
-elif [ "$MODE" = "sd-start" ] || [ "$MODE" = "start" ]
+elif [ "$MODE" = "start" ]
 then
-	[ "$MODE" = "sd-start" ] && echo "'sd-start' is deprecated in favour of simple 'start'"
 	# all in one go systemd start, supports sourcing from login shell
 	# start if no WM is running
 	if systemctl --user is-active -q 'wayland-wm@*.service'
@@ -914,9 +1103,8 @@ then
 		exit
 	fi
 
-elif [ "$MODE" = "sd-stop" ] || [ "$MODE" = "stop" ]
+elif [ "$MODE" = "stop" ]
 then
-	[ "$MODE" = "sd-stop" ] && echo "'sd-stop' is deprecated in favour of simple 'stop'"
 	if systemctl --user is-active -q wayland-wm@${WM}.service
 	then
 		systemctl --user stop wayland-wm@${WM}.service

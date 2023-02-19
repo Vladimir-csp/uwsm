@@ -3,7 +3,7 @@
 This is an experiment in creating a versatile tool for launching
 any standalone Wayland WM with environment management and systemd integration.
 
-WIP. Use at your onw risk.
+WIP. Use at your onw risk. Breaking changes are being introduced. See commit messages.
 
 ## Concepts and features
 
@@ -18,7 +18,7 @@ WIP. Use at your onw risk.
     - On startup environment is prepared by:
         - sourcing shell profile
         - sourcing common `wayland-session-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
-        - sourcing `${wm}/env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
+        - sourcing `wayland-session-${wm}-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
     - Difference between inital state and prepared environment is exported into systemd user manager
     - On shutdown variables that were exported are unset from systemd user manager
     - Lists of variables for export and cleanup are determined algorithmically by:
@@ -79,6 +79,11 @@ Example snippet for sway on how to explicitly put apps in app.slice, scoped:
 
 Start with `wayland-session ${wm} start` (it will hold while wayland session is running).
 
+`${wm}` argument is either a WM executable, or full literal command line with arguments, or one of special strings:
+
+- `select`: Invokes a menu to select WM from desktop entries for wayland-sessions. Selection is saved, previous selection is highlighted.
+- `default`: Runs previously selected WM, if selection was made, otherwise invokes a menu.
+
 Stop with either `wayland-session ${wm} stop` or `systemctl --user stop "wayland-wm@*.service"`
 
 ### Longer story:
@@ -136,20 +141,20 @@ Short snippet for `~/.profile`:
 
     if [ "${0}" != "${0#-}" ] && [ "$XDG_VTNR" = "1" ] && systemctl is-active -q graphical.target
     then
-        exec wayland-session sway start
+        exec wayland-session select start
     fi
 
 Extended snippet for `~/.profile`:
 
-    WM=sway
+    MY_WM=sway
     if [ "${0}" != "${0#-}" -a "$XDG_VTNR" = "1" ] \
       && systemctl is-active -q graphical.target \
       && ! systemctl --user is-active -q wayland-wm@*.service
     then
-        wayland-session ${WM} unitgen
-        trap "if systemctl --user is-active -q wayland-wm@${WM}.service ; then systemctl --user --stop wayland-wm@${WM}.service ; fi" INT EXIT HUP TERM
-        echo Starting ${WM} WM
-        systemctl --user start --wait wayland-wm@${WM}.service &
+        wayland-session ${MY_WM} unitgen
+        trap "if systemctl --user is-active -q wayland-wm@${MY_WM}.service ; then systemctl --user --stop wayland-wm@${MY_WM}.service ; fi" INT EXIT HUP TERM
+        echo Starting ${MY_WM} WM
+        systemctl --user start --wait wayland-wm@${MY_WM}.service &
         wait
         exit
     fi
@@ -161,11 +166,16 @@ Plugins provide WM support and associated functions. See `wayland-session-plugin
 ## TODO
 
 - more plugins
-- invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
-- maybe do some integration with `/usr/share/wayland-sessions/*.desktop`
+- [ ] invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
+- [x] maybe do some integration with `/usr/share/wayland-sessions/*.desktop`
   - [x] WM argument support
-  - [ ] python inclusions and whiptail for desktop entry parser and chooser
-- maybe drop requirement for unified `~/.config/${wm}/` and checks for supported WMs, argument support now allows to just run anything.
+  - [x] python inclusions and whiptail for desktop entry parser and chooser
+- [ ] maybe drop requirement for unified `~/.config/${wm}/` and checks for supported WMs, argument support now allows to just run anything.
+  - [x] default per-WM env location from `${wm}/env` to `wayland-session-${wm}-env`
+  - [x] env from `${wm}/env` specifically for labwc via a plugin
+  - [ ] drop supported wm checks
+  - [ ] uncustomize wayfire handling
+- since shell-start mode was dropped and the only mechanism that requires native shell is env loading contained to `wayland-wm-env@.service` invocations, maybe rewrite the whole thing in python
 
 ## Compliments
 

@@ -1,3 +1,10 @@
 #!/bin/false
 
 add_supported_wm labwc || return $?
+
+load_wm_env_labwc() {
+	# load wm env normally
+	load_wm_env
+	# also add env from labwc location
+	load_config_env "${WM}/env"
+}
