@@ -621,6 +621,7 @@ generate_units() {
 		NotifyAccess=all
 		ExecStart=%I
 		Restart=no
+		TimeoutStartSec=10
 		TimeoutStopSec=10
 		Slice=${WAYLAND_WM_SLICE}
 	EOF
