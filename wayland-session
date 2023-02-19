@@ -288,20 +288,6 @@ filter_varnames(){
 	done
 }
 
-rnd() {
-	__PRE_RND__=''
-	__RND_C__=0
-	until [ "${#__PRE_RND__}" -ge "10" ]
-	do
-		__PRE_RND__=$(tr -dc 0-9a-f </dev/urandom 2>/dev/null | head -c 12)
-		__RND_C__=$(( ${__RND_C__} + 1 ))
-		[ "${__RND_C__}" -ge "10" ] && { echo RND failure >&2 ; exit 1 ; }
-	done
-	echo "${__PRE_RND__}"
-	unset __PRE_RND__
-	unset __RND_C__
-}
-
 normalize_varnames_space() {
 	# pipe var names to get sorted, uniqued, normalized space-separated output
 	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u | tr '\n' ' ' | sed 's/^ \+\| \+$//g'
@@ -314,22 +300,24 @@ normalize_varnames_newline() {
 
 varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
-	__RND__=$(rnd)
-	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}"
-	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
-	comm -23 "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
-	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
-	unset __RND__
+	__LIST1_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${WM}_list_1_XXXXXXXX")
+	__LIST2_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${WM}_list_1_XXXXXXXX")
+	normalize_varnames_newline > "${__LIST1_PATH__}"
+	echo $* | normalize_varnames_newline > "${__LIST2_PATH__}"
+	comm -23 "${__LIST1_PATH__}" "${__LIST2_PATH__}"
+	rm -f "${__LIST1_PATH__}" "${__LIST2_PATH__}"
+	unset __LIST1_PATH__ __LIST2_PATH__
 }
 
 varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
-	__RND__=$(rnd)
-	normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}"
-	echo $* | normalize_varnames_newline > "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
-	comm -12 "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
-	rm -f "${XDG_RUNTIME_DIR}/${WM}_list_1_${__RND__}" "${XDG_RUNTIME_DIR}/${WM}_list_2_${__RND__}"
-	unset __RND__
+	__LIST1_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${WM}_list_1_XXXXXXXX")
+	__LIST2_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${WM}_list_1_XXXXXXXX")
+	normalize_varnames_newline > "${__LIST1_PATH__}"
+	echo $* | normalize_varnames_newline > "${__LIST2_PATH__}"
+	comm -12 "${__LIST1_PATH__}" "${__LIST2_PATH__}"
+	rm -f "${__LIST1_PATH__}" "${__LIST2_PATH__}"
+	unset __LIST1_PATH__ __LIST2_PATH__
 }
 
 varnames_union() {
@@ -345,23 +333,23 @@ update_unit() {
 	# copies to desitnation ${XDG_RUNTIME_DIR}/systemd/user/$1 if differs
 	# subdirs created automatically
 	__RC__=0
-	__RND__=$(rnd)
-	cat > "${XDG_RUNTIME_DIR}/${__RND__}_staged_content"
-	if [ ! -f "${XDG_RUNTIME_DIR}/systemd/user/$1" ] || [ "$(md5sum < "${XDG_RUNTIME_DIR}/${__RND__}_staged_content")" != "$(md5sum < "${XDG_RUNTIME_DIR}/systemd/user/$1")" ]
+	__STAGED_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/uwsm_staged_content_XXXXXXXX")
+	cat > "${__STAGED_PATH__}"
+	if [ ! -f "${XDG_RUNTIME_DIR}/systemd/user/$1" ] || [ "$(md5sum < "${__STAGED_PATH__}")" != "$(md5sum < "${XDG_RUNTIME_DIR}/systemd/user/$1")" ]
 	then
 		# create subdir if needed
 		[ "$(dirname "$1")" != "." ] && \
 		  [ ! -d "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")" ] && \
 		  mkdir -pv "${XDG_RUNTIME_DIR}/systemd/user/$(dirname "$1")"
 		# put content in place
-		cp -av "${XDG_RUNTIME_DIR}/${__RND__}_staged_content" "${XDG_RUNTIME_DIR}/systemd/user/$1"
+		cp -av "${__STAGED_PATH__}" "${XDG_RUNTIME_DIR}/systemd/user/$1"
 		__RC__=$?
-		rm "${XDG_RUNTIME_DIR}/${__RND__}_staged_content"
+		rm "${__STAGED_PATH__}"
 		UNITS_UPDATED=true
 	else
-		rm "${XDG_RUNTIME_DIR}/${__RND__}_staged_content"
+		rm "${__STAGED_PATH__}"
 	fi
-	unset __RND__
+	unset __STAGED_PATH__
 	return ${__RC__}
 }
 
