@@ -1,87 +1,7 @@
 #!/bin/false
 
-add_supported_wm wayfire || return $?
-
 quirks_wayfire() {
-	#### find global config and make updateable default out of it
-	WAYFIRE_LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire/wayfire.ini"
-
-	# initial point from docs example if exists
-	if [ -r /usr/share/doc/wayfire/examples/wayfire.ini ]
-	then
-		WAYFIRE_GLOBAL_CONFIG=/usr/share/doc/wayfire/examples/wayfire.ini
-	else
-		WAYFIRE_GLOBAL_CONFIG=''
-	fi
-
-	mkdir -p "$(dirname "$WAYFIRE_LOCAL_CONFIG")"
-
-	# iterate $XDG_CONFIG_DIRS in default (decreasing) importance
-	# get first found config
-	OIFS="$IFS"
-	IFS=":"
-	for CD in ${XDG_CONFIG_DIRS}
-	do
-		IFS="$OIFS"
-		if [ -f "${CD}/wayfire/wayfire.ini" ]
-		then
-			WAYFIRE_GLOBAL_CONFIG="${CD}/wayfire/wayfire.ini"
-			break
-		fi
-		if [ -f "${CD}/wayfire.ini" ]
-		then
-			WAYFIRE_GLOBAL_CONFIG="${CD}/wayfire.ini"
-			break
-		fi
-	done
-	IFS="$OIFS"
-
-	if [ -z "$WAYFIRE_GLOBAL_CONFIG" -o ! -r "$WAYFIRE_GLOBAL_CONFIG" ] && [ -r "${XDG_CONFIG_HOME}/wayfire.ini" ]
-	then
-		# last ditch, get config from wayfire-specific user config location
-		WAYFIRE_GLOBAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
-	fi
-
-	if [ -n "$WAYFIRE_GLOBAL_CONFIG" -a -r "$WAYFIRE_GLOBAL_CONFIG" ]
-	then
-		# copy global config to stage location if not already there
-		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}.upstream" ]
-		then
-			cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
-		fi
-
-		# if local config is missing
-		if [ ! -f "${WAYFIRE_LOCAL_CONFIG}" ]
-		then
-			echo "Generating local wayfire config from upstream"
-			cp -av "${WAYFIRE_GLOBAL_CONFIG}" "$WAYFIRE_LOCAL_CONFIG"
-		elif [ "$(cat "${WAYFIRE_LOCAL_CONFIG}.upstream" | md5sum)" = "$(cat "${WAYFIRE_LOCAL_CONFIG}" | md5sum)" ]
-		then
-			echo "Updating local wayfire config from upstream"
-			cat "${WAYFIRE_GLOBAL_CONFIG}" > "$WAYFIRE_LOCAL_CONFIG"
-		else
-			echo "Local wayfire config differs from upstream, skipping update"
-		fi
-
-		# update stage
-		if [ "$(cat "${WAYFIRE_GLOBAL_CONFIG}" | md5sum)" != "$(cat "${WAYFIRE_LOCAL_CONFIG}.upstream" | md5sum)" ]
-		then
-			cp -av "$WAYFIRE_GLOBAL_CONFIG" "${WAYFIRE_LOCAL_CONFIG}.upstream"
-		fi
-	fi
-
-	if [ -r "$WAYFIRE_LOCAL_CONFIG" ]
-	then
-		export WAYFIRE_LOCAL_CONFIG
-	else
-		echo "Could not create local config in expected location:" >&2
-		echo "  $WAYFIRE_LOCAL_CONFIG"
-		exit 1
-	fi
-
-	ALWAYS_EXPORT_VARS="${ALWAYS_EXPORT_VARS} WAYFIRE_LOCAL_CONFIG"
-	ALWAYS_CLEANUP_VARS="${ALWAYS_CLEANUP_VARS} WAYFIRE_LOCAL_CONFIG"
-
+	WAYFIRE_LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
 	# detect disabled xwayland
 	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${WAYFIRE_LOCAL_CONFIG}"
 	then
@@ -89,8 +9,4 @@ quirks_wayfire() {
 	else
 		XWAYLAND=true
 	fi
-}
-
-inject_args_wayfire() {
-	WM_ARGS_PREPEND='-c "${WAYFIRE_LOCAL_CONFIG}"'
 }

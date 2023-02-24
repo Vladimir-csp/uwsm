@@ -7,7 +7,9 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
 
 ## Concepts and features
 
-- WM-specific behavior is handled by plugins
+- Can select from `wayland-sessions` desktop entries
+- Can run with any provided WM command line
+- WM-specific behavior can be added by plugins
     - currently supported: sway, wayfire, labwc
 - Maximum use of systemd units and dependencies for startup, operation, and shutdown
 - Systemd units are treated with hierarchy and universality in mind:
@@ -36,7 +38,7 @@ Put `wayland-session-plugins` dir somewhere in `/lib:/usr/lib:/usr/local/lib:${H
 
 Ensure your WM does this sequentially upon startup:
 
-- exports `WAYLAND_DISPLAY` to systemd user manager
+- exports `WAYLAND_DISPLAY` (and other potentially useful vars it sets) to systemd user manager
 - runs `systemd-notify --ready` after that
 
 Example snippet for sway:
@@ -161,20 +163,13 @@ Extended snippet for `~/.profile`:
 
 ## WM-specific actions
 
-Plugins provide WM support and associated functions. See `wayland-session-plugins/*.sh.in` for examples.
+Plugins provide WM-specific functions.
+See `#### Load WM plugin` comment section in `wayland-session` for function descriptions
+and `wayland-session-plugins/*.sh.in` for examples.
 
 ## TODO
 
-- more plugins
-- [ ] invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
-- [x] maybe do some integration with `/usr/share/wayland-sessions/*.desktop`
-  - [x] WM argument support
-  - [x] python inclusions and whiptail for desktop entry parser and chooser
-- [ ] maybe drop requirement for unified `~/.config/${wm}/` and checks for supported WMs, argument support now allows to just run anything.
-  - [x] default per-WM env location from `${wm}/env` to `wayland-session-${wm}-env`
-  - [x] env from `${wm}/env` specifically for labwc via a plugin
-  - [ ] drop supported wm checks
-  - [ ] uncustomize wayfire handling
+- invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
 - since shell-start mode was dropped and the only mechanism that requires native shell is env loading contained to `wayland-wm-env@.service` invocations, maybe rewrite the whole thing in python
 
 ## Compliments

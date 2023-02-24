@@ -1,7 +1,5 @@
 #!/bin/false
 
-add_supported_wm labwc || return $?
-
 load_wm_env_labwc() {
 	# load wm env normally
 	load_wm_env

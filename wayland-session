@@ -9,11 +9,9 @@
 #  https://github.com/swaywm/sway
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
-SUPPORTED_WMS=''
 SUPPORTED_MODES='check|unitgen|prepare-env|start|stop|cleanup-env|unitrm'
 PLUGIN_PREFIX_PATHS="/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib"
 PLUGIN_DIR_NAME=wayland-session-plugins
-PLUGIN_NAME_PATTERN='*.sh.in'
 
 #### this is for testing
 WS_EXEC="$(realpath -s "$0")"
@@ -64,18 +62,16 @@ show_help() {
 		Usage:
 		  ${WS_SELF} wm|'wm --with-args="any args"' ${SUPPORTED_MODES}
 		
-		Supported VMs: ${SUPPORTED_WMS:-No supported WMs}
-		  Special value "select" will bring selection menu to choose from
+		  Special wm value "select" will bring selection menu to choose from
 		    'wayland-sessions' desktop entries.
-		  Special value "default" will select saved or predefined cmd from
+		  Special wm value "default" will select saved or predefined cmd from
 		    'wayland-session-default-cmd' file in config hierarchy,
 		    or bring selection menu if default is missing or not among
 		    'wayland-sessions' desktop entries.
 		
 		${WS_SELF} manages session for selected wayland WM.
 		Supported modes:
-		    check:     checks supported arguments
-		
+		    check:        checks supported arguments
 		    start:        does all unit preparations and starts WM via a service
 		                  with --wait and a set of traps to bind to its life
 		    stop:         stops wm
@@ -118,112 +114,13 @@ show_help() {
 	EOF
 }
 
-# functions for use in plugins
-add_supported_wm() {
-	# takes simple executable name
-	if echo "$1" | grep -qE "^[a-zA-Z0-9_.-]+$" && [ "$(echo "$1" | wc -l)" = "1" ]
-	then
-		if echo "$1" | grep -qe "^(${SUPPORTED_WMS})\$"
-		then
-			echo "WM $1 is already supported"
-		else
-			SUPPORTED_WMS="${SUPPORTED_WMS}${SUPPORTED_WMS:+|}${1}"
-			echo "Added supported WM $1"
-		fi
-		return 0
-	else
-		echo "Attempted to add invalid WM name" >&2
-		echo "$1" >&2
-		return 1
-	fi
-}
-
-# load plugins
-# plugins should contain only add_supported_wm call
-# and specifically named functions
-# function name suffix is expected to be WM executable name with
-# all dashes and dots replaced by underscores and underscores singled
-# $(echo "$WM" | tr '.-' '__' | tr -s '_')
-# example:
-#
-#  #!/bin/false
-#
-#  add_supported_wm my-cool-wm
-#
-#  # function to make arbitrary actions before loading wayland-session-${WM}-env
-#  quirks_my_cool_wm() {
-#    # here additional vars can be added set for session manager
-#    # like
-#    IMPORT_BACK_VARS="${IMPORT_BACK_VARS} MY_WM_SOCKET"
-#    ALWAYS_EXPORT_VARS="${ALWAYS_EXPORT_VARS} SOME OTHER VARS"
-#    ALWAYS_CLEANUP_VARS"${ALWAYS_CLEANUP_VARS} SOME OTHER VARS"
-#    # or export more vars for session
-#    export I_WANT_THIS_IN_SESSION=yes
-#    # or prepare a config (see wayfire plugin)
-#    # or set a var to modify what wayland-session-${WM}-env in the next stage will do
-#    ...
-#  }
-#
-#  load_wm_env_my_cool_wm() {
-#    # custom mechanism for loading of env (or a stub)
-#    # completely replaces loading from wayland-session-${WM}-env in config dirs
-#    # so repeat it
-#    load_wm_env
-#    # and add ours
-#    load_config_env "${WM}/env"
-#  }
-#
-#  generate_units_my_cool_wm() {
-#    # place some units or fragments specifically for my-cool-wm
-#    # use update_unit function
-#    # reloading is handled by main script
-#  }
-#
-#  remove_units_my_cool_wm() {
-#    # remove the same units
-#    # use remove_unit function
-#    # reloading is handled by main script
-#  }
-#
-#  # function to add/replace args for WM command
-#  inject_args_my_cool_wm() {
-#    # prepend some args before original args
-#    WM_ARGS_PREPEND='-s --logmsg="foo bar"'
-#    # on second thought, drop original args
-#    WM_ARGS=''
-#    # and append a bunch more
-#    WM_ARGS_APPEND='--lifetime 1h'
-#    my-cool-wm-communicate exit
-#  }
-
-OIFS="$IFS"
-IFS=":"
-for PLUGIN_PREFIX_PATH in $PLUGIN_PREFIX_PATHS
-do
-	if [ -n "$PLUGIN_PREFIX_PATH" ] && [ -n "$PLUGIN_DIR_NAME" ] && [ -n "$PLUGIN_NAME_PATTERN" ] && [ -d "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}" ]
-	then
-		IFS="
-"
-		for PFILE in $(
-			find -L "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/"\
-			  -mindepth 1 -maxdepth 1 \
-			  -type f -name "$PLUGIN_NAME_PATTERN"
-		)
-		do
-			echo "Loading plugin: $PFILE"
-			. "$PFILE"
-		done
-	fi
-done
-IFS="$OIFS"
-
 if echo "$*" | grep -qE '(^| )(--help|-h)( |$)'
 then
 	show_help
 	exit 0
 fi
 
-WM_CMD="${1:?Requires a compositor command line as first argument: $SUPPORTED_WMS}"
+WM_CMD="${1:?Requires a compositor command line as first argument}"
 MODE="${2:?Requires a mode of action as second argument: $SUPPORTED_MODES}"
 
 wm_selector() {
@@ -404,7 +301,8 @@ then
 	unset __WM_CMD_USER_DEFAULT__
 fi
 
-## Rough processing of wm command line
+#### Rough processing of wm command line
+
 # get executable name ($0)
 WM=$(printf '%s' "$WM_CMD" | xargs sh -c 'echo "$1"' arg_snip)
 # get the rest of arguments
@@ -417,7 +315,8 @@ WM_ARGS="${WM_ARGS#"${WM_ARGS%%[![:space:]]*}"}"
 # replace dashes with underscores for function names
 WM_FNAME=$(echo "$WM" | tr '.-' '__' | tr -s '_')
 
-## Sanity checks
+#### Sanity checks
+
 CHECKOUT=true
 
 if ! echo "$MODE" | grep -qE "^(${SUPPORTED_MODES})\$"
@@ -428,19 +327,14 @@ fi
 
 if ! echo "$WM" | grep -qE "^[a-zA-Z0-9_.-]+$"
 then
-	echo "Got malformed compositor name: $WM" >&2
+	echo "Got malformed compositor name:" >&2
+	echo "$WM" >&2
 	CHECKOUT=false
 fi
 
 if ! [ -x "$(which "$WM")" ]
 then
 	echo "$WM is not an executable binary" >&2
-	CHECKOUT=false
-fi
-
-if ! echo "$WM" | grep -qE "^(${SUPPORTED_WMS})$"
-then
-	echo "Compositor $WM not supported, choose $SUPPORTED_WMS" >&2
 	CHECKOUT=false
 fi
 
@@ -457,12 +351,84 @@ then
 
 elif [ "$MODE" = "check" ]
 then
-	# exit successfully after supported compositors check
+	# exit successfully after basic compositors check
 	echo "Checked for compositor ${WM}"
 	exit 0
 fi
 
-# functions for operating on lists of variable names
+#### Load WM plugin
+
+# Plugins should be named ${WM}.sh.in
+# Plugins should only contain specifically named functions.
+# Function name suffix is expected to be WM executable name with
+# all dashes and dots replaced by underscores and underscores singled
+# $(echo "$WM" | tr '.-' '__' | tr -s '_')
+# example:
+#
+#  #!/bin/false
+#
+#  # function to make arbitrary actions before loading wayland-session-${WM}-env
+#  quirks_my_cool_wm() {
+#    # here additional vars can be added set for session manager
+#    # like
+#    IMPORT_BACK_VARS="${IMPORT_BACK_VARS} MY_WM_SOCKET"
+#    ALWAYS_EXPORT_VARS="${ALWAYS_EXPORT_VARS} SOME OTHER VARS"
+#    ALWAYS_CLEANUP_VARS"${ALWAYS_CLEANUP_VARS} SOME OTHER VARS"
+#    # or export more vars for session
+#    export I_WANT_THIS_IN_SESSION=yes
+#    # or prepare a config (see wayfire plugin)
+#    # or set a var to modify what wayland-session-${WM}-env in the next stage will do
+#    ...
+#  }
+#
+#  load_wm_env_my_cool_wm() {
+#    # custom mechanism for loading of env (or a stub)
+#    # completely replaces loading from wayland-session-${WM}-env in config dirs
+#    # so repeat it
+#    load_wm_env
+#    # and add ours
+#    load_config_env "${WM}/env"
+#  }
+#
+#  generate_units_my_cool_wm() {
+#    # place some units or fragments specifically for my-cool-wm
+#    # use update_unit function
+#    # reloading is handled by main script
+#  }
+#
+#  remove_units_my_cool_wm() {
+#    # remove the same units
+#    # use remove_unit function
+#    # reloading is handled by main script
+#  }
+#
+#  # function to add/replace args for WM command
+#  inject_args_my_cool_wm() {
+#    # prepend some args before original args
+#    WM_ARGS_PREPEND='-s --logmsg="foo bar"'
+#    # on second thought, drop original args
+#    WM_ARGS=''
+#    # and append a bunch more
+#    WM_ARGS_APPEND='--lifetime 1h'
+#    my-cool-wm-communicate exit
+#  }
+
+OIFS="$IFS"
+IFS=":"
+for PLUGIN_PREFIX_PATH in $PLUGIN_PREFIX_PATHS
+do
+	IFS="$OIFS"
+	if [ -n "$PLUGIN_PREFIX_PATH" ] && \
+	   [ -n "$PLUGIN_DIR_NAME" ] && \
+	   [ -f "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/${WM}.sh.in" ]
+	then
+		echo "Loading plugin: ${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/${WM}.sh.in"
+		. "${PLUGIN_PREFIX_PATH}/${PLUGIN_DIR_NAME}/${WM}.sh.in"
+	fi
+done
+
+#### functions for operating on lists of variable names
+
 filter_varnames(){
 	# leave only vars with valid names, some shells or tools can inject illegal chars, i.e. env-modules
 	for __VAR__ in $(cat)
@@ -515,6 +481,8 @@ varnames_union() {
 		echo $* | normalize_varnames_newline
 	} | sort -u
 }
+
+#### functions for manipulating units
 
 update_unit() {
 	# takes content on stdin, stages it,
@@ -722,6 +690,8 @@ remove_units() {
 	fi
 	unset UNITS_UPDATED
 }
+
+#### functions for dealing with VTs, sessions and ENV
 
 get_vt() {
 	# echoes current vt
