@@ -61,17 +61,32 @@ Example snippet for sway:
 
 ## Slices
 
-If your WM of choice is systemd-aware and supports launching apps explicitly scoped in app.slice,
+By default `wayland-session` launces WM service in `app.slice` and all processes spawned by WM will be
+part of `wayland-wm@${wm}.service` unit. This works, but is not an optimal solution.
+
+Systemd recommends running compositor in `session.slice` and apps as scoped units in `app.slice`.
+
+If your WM of choice is systemd-aware and supports launching apps explicitly scoped in `app.slice`,
 or if you prefixed all app commands launched by WM with:
 
     systemd-run --user -qG --scope --slice=app.slice
 
 then you can put WM in session.slice (as recommended by man systemd.special) by setting environment variable
-`UWSM_USE_SESSION_SLICE=true` during `unitgen` phase. This will set `Slice=session.slice` for WM services.
+`UWSM_USE_SESSION_SLICE=true` during `unitgen` phase (export this in `profile` before `wayland-session` invocation).
+This will set `Slice=session.slice` for WM services.
 
-Example snippet for sway on how to explicitly put apps in app.slice, scoped:
+`wayland-session` also provides special nested slices with a dependency on `graphical-session.target`,
+so any apps placed there will be terminated before WM:
 
-    set $scoper exec systemd-run --user -qG --scope --slice=app.slice
+- `app-graphical.slice`
+- `background-graphical.slice`
+- `session-graphical.slice`
+
+`app-*@autostart.service` and `xdg-desktop-portal-*.service` units are also modified to be started in `app-graphical.slice`.
+
+Example snippet for sway on how to explicitly put apps scoped in `app-graphical.slice`:
+
+    set $scoper exec systemd-run --user -qG --scope --slice=app-graphical.slice
     bindsym --to-code $mod+t exec $scoper foot
     bindsym --to-code $mod+r exec $scoper rofi -show drun
 
@@ -116,7 +131,7 @@ Still if login session is terminated, wayland session will continue running, mos
 
 To also bind it the other way around, use traps:
 
-`trap "if systemctl --user is-active -q wayland-wm@${WM}.service ; then systemctl --user --stop wayland-wm@${WM}.service ; fi" INT EXIT HUP TERM`
+`trap "if systemctl --user is-active -q wayland-wm@${wm}.service ; then systemctl --user --stop wayland-wm@${wm}.service ; fi" INT EXIT HUP TERM`
 
 Then the end of login shell will also be the end of wayland session.
 
@@ -127,7 +142,7 @@ If start command was run with `exec`, (i.e. from login shell on a tty or via `.p
 this stop command also doubles as a logout command.
 
 `wayland-session` is smart enough to find login session associated with current TTY
-and export `$XDG_SESSION_ID`, `$XDG_VTNR` to user manager environment using `wayland-wm-env@${WM}.service` bound to `graphical-session-pre.target`
+and export `$XDG_SESSION_ID`, `$XDG_VTNR` to user manager environment using `wayland-wm-env@${wm}.service` bound to `graphical-session-pre.target`
 (and later clean it up).
 (I really do not know it this is a good idea, but since there can be only one graphical session
 per user with systemd, seems like such).
@@ -136,7 +151,7 @@ per user with systemd, seems like such).
 
 This example starts sway wayland session automatically upon login on tty1 if system is in `graphical.target`
 
-**Screening for being in interactive login shell here is essential**, since `wayland-wm-env@${WM}.service` sources profile which has a potential for nasty loops if run unconditionally.
+**Screening for being in interactive login shell here is essential**, since `wayland-wm-env@${wm}.service` sources profile which has a potential for nasty loops if run unconditionally.
 Other conditions are a recommendation.
 
 Short snippet for `~/.profile`:
@@ -169,7 +184,7 @@ and `wayland-session-plugins/*.sh.in` for examples.
 
 ## TODO
 
-- invent a better way to stop xdg-desktop-portal-gtk.service on WM stop
+- argument revamp
 - since shell-start mode was dropped and the only mechanism that requires native shell is env loading contained to `wayland-wm-env@.service` invocations, maybe rewrite the whole thing in python
 
 ## Compliments

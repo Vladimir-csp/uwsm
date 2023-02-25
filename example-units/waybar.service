@@ -11,6 +11,7 @@ StopPropagatedFrom=graphical-session.target wayland-wm@sway.service wayland-wm@w
 ExecStart=/usr/bin/waybar
 ExecReload=kill -SIGUSR2 $MAINPID
 Restart=on-failure
+Slice=app-graphical.slice
 
 [Install]
 # Get started via specific WMs

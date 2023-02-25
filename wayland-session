@@ -512,6 +512,7 @@ update_unit() {
 generate_units() {
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
+
 	if [ "${UWSM_USE_SESSION_SLICE:-false}" = "true" ]
 	then
 		WAYLAND_WM_SLICE=session.slice
@@ -520,6 +521,8 @@ generate_units() {
 	fi
 	UNITS_UPDATED=false
 	mkdir -vp "${XDG_RUNTIME_DIR}/systemd/user/"
+
+	# targets
 	update_unit "wayland-session-pre@.target" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
@@ -552,6 +555,8 @@ generate_units() {
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
 	EOF
+
+	# services
 	update_unit "wayland-wm-env@.service" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
@@ -582,7 +587,9 @@ generate_units() {
 		Wants=wayland-session-xdg-autostart@%i.target
 		Before=wayland-session-xdg-autostart@%i.target
 		# second hand Requires= between targets is not enough to stop this in time
-		PropagatesStopTo=xdg-desktop-autostart.target
+		#PropagatesStopTo=xdg-desktop-autostart.target
+		#Before=app-graphical.slice
+		PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
 		[Service]
 		# awaits for 'systemd-notify --ready' from WM child
 		Type=notify
@@ -593,11 +600,52 @@ generate_units() {
 		TimeoutStopSec=10
 		Slice=${WAYLAND_WM_SLICE}
 	EOF
-	update_unit "app-@autostart.service.d/stop-tweak.conf" <<- EOF
+
+	# slices
+	update_unit "app-graphical.slice" <<- EOF
+		# injected by ${WS_SELF}, do not edit
+		[Unit]
+		Description=User Graphical Application Slice
+		Documentation=man:systemd.special(7)
+	EOF
+	update_unit "background-graphical.slice" <<- EOF
+		# injected by ${WS_SELF}, do not edit
+		[Unit]
+		Description=User Graphical Background Application Slice
+		Documentation=man:systemd.special(7)
+	EOF
+	update_unit "session-graphical.slice" <<- EOF
+		# injected by ${WS_SELF}, do not edit
+		[Unit]
+		Description=User Graphical Session Application Slice
+		Documentation=man:systemd.special(7)
+	EOF
+
+	# tweaks
+	update_unit "app-@autostart.service.d/slice-tweak.conf" <<- EOF
 		# injected by ${WS_SELF}, do not edit
 		[Unit]
 		# make autostart apps stoppable by target
 		StopPropagatedFrom=xdg-desktop-autostart.target
+		
+		[Service]
+		# also put them in special graphical app slice
+		Slice=app-graphical.slice
+	EOF
+	# this does not work
+	#update_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf" <<- EOF
+	#	# injected by ${WS_SELF}, do not edit
+	#	[Unit]
+	#	# make the same thing as -wlr portal to stop correctly
+	#	PartOf=graphical-session.target
+	#	After=graphical-session.target
+	#	ConditionEnvironment=WAYLAND_DISPLAY
+	#EOF
+	update_unit "xdg-desktop-portal-.service.d/slice-tweak.conf" <<- EOF
+		# injected by ${WS_SELF}, do not edit
+		[Service]
+		# make xdg-desktop-portal-*.service implementations part of graphical scope
+		Slice=app-graphical.slice
 	EOF
 
 	# args from plugins
@@ -669,17 +717,19 @@ remove_units() {
 	then
 		"remove_units_${WM_FNAME}"
 	fi
-	for __UNIT__ in \
-	  "wayland-wm-env@.service" \
-	  "wayland-session-pre@.target" \
-	  "wayland-session@.target" \
-	  "wayland-session-xdg-autostart@.target" \
-	  "wayland-wm@.service" \
-	  "app-@autostart.service.d/stop-tweak.conf" \
-	  "wayland-wm@${WM}.service.d/args.conf"
-	do
-		remove_unit "${__UNIT__}"
-	done
+
+	remove_unit "wayland-session-pre@.target"
+	remove_unit "wayland-session@.target"
+	remove_unit "wayland-session-xdg-autostart@.target"
+	remove_unit "wayland-wm-env@.service"
+	remove_unit "wayland-wm@.service"
+	remove_unit "wayland-wm@${WM}.service.d/args.conf"
+	remove_unit "app-graphical.slice"
+	remove_unit "background-graphical.slice"
+	remove_unit "session-graphical.slice"
+	remove_unit "app-@autostart.service.d/slice-tweak.conf"
+	#remove_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf"
+	remove_unit "xdg-desktop-portal-.service.d/slice-tweak.conf"
 
 	if [ "$UNITS_UPDATED" = "true" ]
 	then
