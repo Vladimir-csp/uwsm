@@ -12,14 +12,16 @@ quirks_sway() {
 	fi
 }
 
-generate_units_sway() {
-	# requires SWAYSOCK in IMPORT_BACK_VARS
-	update_unit "wayland-wm@sway.service.d/exit.conf" <<- EOF
-		[Service]
-		ExecStop=swaymsg exit
-	EOF
-}
+# this does not work, as SWAYSOCK is inaccessible from context of ExecStop
+# and any attempt to get it via env or systemctl --user show-environment failed so far.
+#generate_units_sway() {
+#	# requires SWAYSOCK in IMPORT_BACK_VARS
+#	update_unit "wayland-wm@sway.service.d/exit.conf" <<- EOF
+#		[Service]
+#		ExecStop=swaymsg exit
+#	EOF
+#}
 
-remove_units_sway() {
-	remove_unit "wayland-wm@sway.service.d/exit.conf"
-}
+#remove_units_sway() {
+#	remove_unit "wayland-wm@sway.service.d/exit.conf"
+#}
