@@ -580,15 +580,11 @@ generate_units() {
 		Documentation=man:systemd.service(7)
 		BindsTo=wayland-session@%i.target
 		Before=wayland-session@%i.target
-		Requires=wayland-session-pre@%i.target
-		After=wayland-session-pre@%i.target
 		Requires=wayland-wm-env@%i.service
 		After=wayland-wm-env@%i.service
 		Wants=wayland-session-xdg-autostart@%i.target
 		Before=wayland-session-xdg-autostart@%i.target
-		# second hand Requires= between targets is not enough to stop this in time
-		#PropagatesStopTo=xdg-desktop-autostart.target
-		#Before=app-graphical.slice
+		Before=app-graphical.slice background-graphical.slice session-graphical.slice
 		PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
 		[Service]
 		# awaits for 'systemd-notify --ready' from WM child
@@ -662,7 +658,7 @@ generate_units() {
 		update_unit "wayland-wm@${WM}.service.d/args.conf" <<- EOF
 			[Service]
 			ExecStart=
-			ExecStart=${WM}${WM_ARGS_PREPEND:+ }${WM_ARGS_PREPEND} ${WM_ARGS}${WM_ARGS_APPEND:+ }${WM_ARGS_APPEND}
+			ExecStart=${WM}${WM_ARGS_PREPEND:+ }${WM_ARGS_PREPEND}${WM_ARGS:+ }${WM_ARGS}${WM_ARGS_APPEND:+ }${WM_ARGS_APPEND}
 		EOF
 	elif [ -f "${XDG_RUNTIME_DIR}/systemd/user/wayland-wm@${WM}.service.d/args.conf" ]
 	then
