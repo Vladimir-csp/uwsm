@@ -17,10 +17,7 @@ __PLUGIN_DIR_NAME__="${UWSM_PLUGIN_DIR_NAME:-wayland-session-plugins}"
 __WS_SELF__="$(basename "$0")"
 # wayland-wm-env@.service needs full path in case wayland-session is in ${USER}/.local/bin
 # which most likely is not in PATH of systemd user manager when wayland-wm-env@.service starts
-__WS_SELF_FULL__="$(which "${__WS_SELF__}" 2>/dev/null)" || {
-	echo "${__WS_SELF__} is not in PATH" >&2
-	exit 1
-}
+__WS_SELF_FULL__="$(which "${__WS_SELF__}" 2>/dev/null)"
 ####
 
 # variables that will always be exported to systemd user manager during startup
@@ -524,6 +521,11 @@ generate_units() {
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
 
+	[ -n "${__WS_SELF_FULL__}" ] || {
+		echo "${__WS_SELF__} is not in PATH" >&2
+		exit 1
+	}
+
 	if [ "${UWSM_USE_SESSION_SLICE:-false}" = "true" ]
 	then
 		WAYLAND_WM_SLICE=session.slice
@@ -549,8 +551,8 @@ generate_units() {
 		[Unit]
 		Description=Session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
-		Requires=wayland-session-pre@%i.target
-		After=wayland-session-pre@%i.target
+		Requires=wayland-session-pre@%i.target graphical-session-pre.target
+		After=wayland-session-pre@%i.target graphical-session-pre.target
 		StopWhenUnneeded=yes
 		BindsTo=graphical-session.target
 		Before=graphical-session.target
@@ -560,8 +562,8 @@ generate_units() {
 		[Unit]
 		Description=XDG Autostart for session of %I Wayland Window Manager
 		Documentation=man:systemd.special(7)
-		Requires=wayland-session@%i.target
-		After=wayland-session@%i.target
+		Requires=wayland-session@%i.target graphical-session.target
+		After=wayland-session@%i.target graphical-session.target
 		StopWhenUnneeded=yes
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
@@ -591,11 +593,10 @@ generate_units() {
 		Documentation=man:systemd.service(7)
 		BindsTo=wayland-session@%i.target
 		Before=wayland-session@%i.target
-		Requires=wayland-wm-env@%i.service
-		After=wayland-wm-env@%i.service
-		Wants=wayland-session-xdg-autostart@%i.target
-		Before=wayland-session-xdg-autostart@%i.target
-		Before=app-graphical.slice background-graphical.slice session-graphical.slice
+		Requires=wayland-wm-env@%i.service graphical-session-pre.target
+		After=wayland-wm-env@%i.service graphical-session-pre.target
+		Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target
+		Before=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target app-graphical.slice background-graphical.slice session-graphical.slice
 		PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
 		[Service]
 		# awaits for 'systemd-notify --ready' from WM child
@@ -614,18 +615,24 @@ generate_units() {
 		[Unit]
 		Description=User Graphical Application Slice
 		Documentation=man:systemd.special(7)
+		PartOf=graphical-session.target
+		After=graphical-session.target
 	EOF
 	update_unit "background-graphical.slice" <<- EOF
 		# injected by ${__WS_SELF__}, do not edit
 		[Unit]
 		Description=User Graphical Background Application Slice
 		Documentation=man:systemd.special(7)
+		PartOf=graphical-session.target
+		After=graphical-session.target
 	EOF
 	update_unit "session-graphical.slice" <<- EOF
 		# injected by ${__WS_SELF__}, do not edit
 		[Unit]
 		Description=User Graphical Session Application Slice
 		Documentation=man:systemd.special(7)
+		PartOf=graphical-session.target
+		After=graphical-session.target
 	EOF
 
 	# tweaks
@@ -633,7 +640,7 @@ generate_units() {
 		# injected by ${__WS_SELF__}, do not edit
 		[Unit]
 		# make autostart apps stoppable by target
-		StopPropagatedFrom=xdg-desktop-autostart.target
+		#StopPropagatedFrom=xdg-desktop-autostart.target
 		
 		[Service]
 		# also put them in special graphical app slice
