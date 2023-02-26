@@ -275,7 +275,11 @@ wm_selector() {
 		    ])
 		})
 		
-		os.execlpe(*argv, whiptail_env)
+		try:
+		    os.execlpe(*argv, whiptail_env)
+		except Exception as E:
+		    print(E, file=sys.stderr)
+		    sys.exit(126)
 	EOF
 }
 
