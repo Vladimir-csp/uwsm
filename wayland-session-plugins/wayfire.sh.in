@@ -3,7 +3,7 @@
 quirks_wayfire() {
 	WAYFIRE_LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
 	# detect disabled xwayland
-	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${WAYFIRE_LOCAL_CONFIG}"
+	if grep -qE '^[[:space:]]*xwayland[[:space:]]*=[[:space:]]*false' "${WAYFIRE_LOCAL_CONFIG}" 2>/dev/null
 	then
 		XWAYLAND=false
 	else

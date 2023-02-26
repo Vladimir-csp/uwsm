@@ -1,10 +1,10 @@
 #!/bin/false
 
 quirks_sway() {
-	IMPORT_BACK_VARS="${IMPORT_BACK_VARS} I3SOCK SWAYSOCK"
-	ALWAYS_CLEANUP_VARS="${IMPORT_BACK_VARS} I3SOCK SWAYSOCK"
+	UWSM_VARS_IMPORT_BACK="${UWSM_VARS_IMPORT_BACK} I3SOCK SWAYSOCK"
+	ALWAYS_CLEANUP_VARS="${UWSM_VARS_IMPORT_BACK} I3SOCK SWAYSOCK"
 	# detect disabled xwayland
-	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config"
+	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config" 2>/dev/null
 	then
 		XWAYLAND=false
 	else
@@ -15,7 +15,7 @@ quirks_sway() {
 # this does not work, as SWAYSOCK is inaccessible from context of ExecStop
 # and any attempt to get it via env or systemctl --user show-environment failed so far.
 #generate_units_sway() {
-#	# requires SWAYSOCK in IMPORT_BACK_VARS
+#	# requires SWAYSOCK in UWSM_VARS_IMPORT_BACK
 #	update_unit "wayland-wm@sway.service.d/exit.conf" <<- EOF
 #		[Service]
 #		ExecStop=swaymsg exit
