@@ -9,16 +9,11 @@
 #  https://github.com/swaywm/sway
 #  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
+#### definitions
+
 __SUPPORTED_MODES__='check|unitgen|prepare-env|start|stop|cleanup-env|unitrm'
 __PLUGIN_PREFIX_PATHS__="${UWSM_PLUGIN_PREFIX_PATHS:-/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib}"
 __PLUGIN_DIR_NAME__="${UWSM_PLUGIN_DIR_NAME:-wayland-session-plugins}"
-
-#### self-naming
-__WS_SELF__="$(basename "$0")"
-# wayland-wm-env@.service needs full path in case wayland-session is in ${USER}/.local/bin
-# which most likely is not in PATH of systemd user manager when wayland-wm-env@.service starts
-__WS_SELF_FULL__="$(which "${__WS_SELF__}" 2>/dev/null)"
-####
 
 # variables that will always be exported to systemd user manager during startup
 UWSM_VARS_ALWAYS_EXPORT="XDG_SESSION_ID
@@ -53,28 +48,41 @@ UWSM_VARS_NEVER_CLEANUP="SSH_AGENT_LAUNCHER
 SSH_AUTH_SOCK
 SSH_AGENT_PID"
 
+#### Functions
+
+self_naming() {
+	__WS_SELF__="$(basename "$0")"
+	# wayland-wm-env@.service needs full path in case wayland-session is in ${USER}/.local/bin
+	# which most likely is not in PATH of systemd user manager when wayland-wm-env@.service starts
+	__WS_SELF_FULL__="$(which "${__WS_SELF__}" 2>/dev/null)"
+}
+
 show_help() {
+	self_naming
 	cat <<- EOF
 		
-		Generic wayland session manager with systemd integration
+		Universal Wayland Session Manager with systemd integration.
+		
 		Usage:
-		  ${__WS_SELF__} wm|'wm --with-args="any args"' ${__SUPPORTED_MODES__}
+		  Managing WM:
+		    ${__WS_SELF__} mode wm|"wm --with args"
+		    ${__WS_SELF__} stop
+		  Operations from within WM session:
+		    ${__WS_SELF__} finalize [[ADDITIONAL] VARS]
+		    ${__WS_SELF__} app ...
+		    ${__WS_SELF__} background ...
+		    ${__WS_SELF__} session ...
 		
-		  Special wm value "select" will bring selection menu to choose from
-		    'wayland-sessions' desktop entries.
-		  Special wm value "default" will select saved or predefined cmd from
-		    'wayland-session-default-cmd' file in config hierarchy,
-		    or bring selection menu if default is missing or not among
-		    'wayland-sessions' desktop entries.
+		Managing WM:
 		
-		${__WS_SELF__} manages session for selected wayland WM.
-		Supported modes:
+		  Basic modes:
+		
 		    check:        checks supported arguments
 		    start:        does all unit preparations and starts WM via a service
 		                  with --wait and a set of traps to bind to its life
-		    stop:         stops wm
+		    stop:         stops WM. If no WM argument given, stops by wildcard
 		
-		If more control needed: more grained modes available:
+		  If more control needed, more grained modes available:
 		
 		    unitgen:      generates systemd unit files in runtime hierarchy
 		    prepare-env:  prepares environment for WM in systemd user manager
@@ -83,43 +91,63 @@ show_help() {
 		                  (for use in ExecStop of wayland-wm-env@.service)
 		    unitrm:       removes systemd unit files from runtime hierarchy
 		
-		    WM can be started this way:
-		        ${__WS_SELF__} \${__WM__} unitgen
-		        exec systemctl --user --wait start wayland-wm@\${__WM__}.service
+		  WM command:
 		
-		    Or binding it both ways to the login session:
-		        ${__WS_SELF__} \${__WM__} unitgen
-		        trap "if systemctl --user is-active -q wayland-wm@\${__WM__}.service ; then systemctl --user stop wayland-wm@\${__WM__}.service ; fi" INT TERM HUP EXIT
-		        systemctl --user --wait start wayland-wm@\${__WM__}.service &
-		        wait
-		        exit
+		    Any compositor executable or a full command line with arguments,
+		    that is compatible with systemd service "Exec=" field.
 		
-		${__WS_SELF__} also loads environment from "wayland-session-env" and "wayland-session-${__WM__}-env" files in
-		\${XDG_CONFIG_DIRS}:\${XDG_CONFIG_HOME} dirs (in order of increasing importance)
+		    Special values "select" and "default" will bring selection menu to choose
+		    from desktop entries located in "wayland-sessions" dirs in XDG data
+		    hierarchy, or launch previous selection right away.
+		    Selection is saved in "wayland-session-default-cmd" file in the config
+		    hierarchy.
 		
-		If your WM is systemd-aware and supports launching apps explicitly scoped in app.slice,
-		or if you prefixed all app commands launched by WM with:
+		WM should be configured to run this on startup:
 		
-		    systemd-run --user --scope --slice=app.slice
+		  ${__WS_SELF__} finalize [[VAR] ANOTHER_VAR]
 		
-		then you can put WM in session.slice (as recommended by man systemd.special) by setting
+		    This exports WAYLAND_DISPLAY and DISPLAY to systemd and dbus environments
+		    and notifies systemd that WM has finished startup.
+		    Without this startup will fail in 10 seconds.
+		    Any addional vars that WM sets that should be accessible to apps should be
+		    given as arguments, they will be exported too.
+		    Think of things like SWAYSOCK in sway.
+		
+		During startup at stage of "graphical-session-pre.target" environment is
+		sourced from shell profile and from files "wayland-session-env" and
+		"wayland-session-${wm}-env" in XDG config hierarchy
+		(in order of increasing importance)
+		
+		It is highly recommended to configure your WM to launch apps explicitly scoped
+		in special user session slices (app.slice, background.slice, session.slice).
+		See "man systemd.special"
+		
+		${__WS_SELF__} provides custom nested slices for apps to live in and be
+		terminated on session end:
+		
+		  app-graphical.slice
+		  background-graphical.slice
+		  session-graphical.slice
+		
+		To exec apps into app-graphical.slice run:
+		
+		  systemd-run --user --scope -qG --slice=app-graphical.slice your_app
+		
+		Or reduce clutter and let ${__WS_SELF__} handle that for you:
+		
+		  ${__WS_SELF__} app your_app [with --args]
+		
+		If app launching is configured as recommended, you can put WM in session.slice
+		(as recommended by man systemd.special) by setting:
 		
 		    UWSM_USE_SESSION_SLICE=true
 		
-		This var affects unitgen phase, Slice= parameter of services.
+		This var affects unitgen phase, Slice= parameter of WM services.
+		(put it in shell profile).
 		
 		See code comments for documentation on plugins.
 	EOF
 }
-
-if echo "$*" | grep -qE '(^| )(--help|-h)( |$)'
-then
-	show_help
-	exit 0
-fi
-
-__WM_CMD__="${1:?Requires a compositor command line as first argument}"
-__MODE__="${2:?Requires a mode of action as second argument: ${__SUPPORTED_MODES__}}"
 
 wm_selector() {
 	# parse desktop entries of wayland-sessions, present choice via whiptail
@@ -280,164 +308,9 @@ wm_selector() {
 	EOF
 }
 
-if [ "${__WM_CMD__}" = "select" ] || [ "${__WM_CMD__}" = "default" ]
-then
-	[ "${__WM_CMD__}" = "select" ] && export __JUST_RUN_DEFAULT__=false
-	[ "${__WM_CMD__}" = "default" ] && export __JUST_RUN_DEFAULT__=true
-	__WM_CMD__=$(wm_selector 3>&1 1>&2 2>&3)
-	__SELECTOR_RC__=$?
-	unset __JUST_RUN_DEFAULT__
-	if [ "${__SELECTOR_RC__}" = "0" ] && [ -n "${__WM_CMD__}" ]
-	then
-		__WM_CMD_USER_DEFAULT__="${XDG_CONFIG_HOME:-${HOME}/.config}/wayland-session-default-cmd"
-		mkdir -p "$(dirname "${__WM_CMD_USER_DEFAULT__}")"
-		echo "${__WM_CMD__}" > "${__WM_CMD_USER_DEFAULT__}"
-		echo "Chosen: ${__WM_CMD__}"
-	else
-		echo "Compositor was not selected" >&2
-		# error messages should be here
-		echo "${__WM_CMD__:-Empty result}" >&2
-		exit ${__SELECTOR_RC__}
-	fi
-	unset __SELECTOR_RC__
-	unset __WM_CMD_USER_DEFAULT__
-fi
-
-#### Rough processing of wm command line
-
-# get executable name ($0)
-__WM__=$(printf '%s' "${__WM_CMD__}" | xargs sh -c 'printf "%s" "$1"' arg_snip)
-
-# get the rest of arguments
-# cut executable name from beginning
-__WM_ARGS__="${__WM_CMD__#"${__WM__}"}"
-
-# trim spaces
-__WM_ARGS__="${__WM_ARGS__%"${__WM_ARGS__##*[![:space:]]}"}"
-__WM_ARGS__="${__WM_ARGS__#"${__WM_ARGS__%%[![:space:]]*}"}"
-#"
-
-# replace dashes with underscores for function names
-__WM_FNAME__=$(echo "${__WM__}" | tr '.-' '__' | tr -s '_')
-
-#### Sanity checks
-
-CHECKOUT=true
-
-if ! echo "${__MODE__}" | grep -qE "^(${__SUPPORTED_MODES__})\$"
-then
-	echo "Mode ${__MODE__} not supported, choose ${__SUPPORTED_MODES__}" >&2
-	CHECKOUT=false
-fi
-
-if ! echo "${__WM__}" | grep -qE "^[a-zA-Z0-9_.-]+$"
-then
-	echo "Got malformed compositor name:" >&2
-	echo "${__WM__}" >&2
-	CHECKOUT=false
-fi
-
-if ! [ -x "$(which "${__WM__}")" ]
-then
-	echo "${__WM__} is not an executable binary" >&2
-	CHECKOUT=false
-fi
-
-if [ -z "$XDG_RUNTIME_DIR" ]
-then
-	echo "\$XDG_RUNTIME_DIR is not set, something is wrong with your environment" >&2
-	CHECKOUT=false
-fi
-
-# exit/return with error on failed checks
-if [ "$CHECKOUT" = "false" ]
-then
-	exit 1
-
-elif [ "${__MODE__}" = "check" ]
-then
-	# exit successfully after basic compositors check
-	echo "Checked for compositor ${__WM__}"
-	exit 0
-fi
-
-#### Load WM plugin
-
-# Plugins should be named ${__WM__}.sh.in
-# Plugins should only contain specifically named functions.
-# Function name suffix is expected to be WM executable name with
-# all dashes and dots replaced by underscores and underscores singled
-# $(echo "${__WM__}" | tr '.-' '__' | tr -s '_')
-# example:
-#
-#  #!/bin/false
-#
-#  # function to make arbitrary actions before loading wayland-session-${__WM__}-env
-#  quirks_my_cool_wm() {
-#    # here additional vars can be added set for session manager
-#    # like
-#    UWSM_VARS_ALWAYS_EXPORT="${UWSM_VARS_ALWAYS_EXPORT} SOME OTHER VARS"
-#    UWSM_VARS_NEVER_EXPORT="${UWSM_VARS_ALWAYS_EXPORT} SOME OTHER VARS"
-#    UWSM_VARS_ALWAYS_CLEANUP"${UWSM_VARS_ALWAYS_CLEANUP} SOME OTHER VARS"
-#    UWSM_VARS_NEVER_CLEANUP"${UWSM_VARS_ALWAYS_CLEANUP} SOME OTHER VARS"
-#    # or export more vars for session
-#    export I_WANT_THIS_IN_SESSION=yes
-#    # or prepare a config for WM
-#    # or set a var to modify what sourcing wayland-session-env, wayland-session-${__WM__}-env
-#    # in the next stage will do
-#    ...
-#  }
-#
-#  load_wm_env_my_cool_wm() {
-#    # custom mechanism for loading of env (or a stub)
-#    # completely replaces loading from wayland-session-${__WM__}-env in config dirs
-#    # so repeat it
-#    load_wm_env
-#    # and add ours
-#    load_config_env "${__WM__}/env"
-#  }
-#
-#  generate_units_my_cool_wm() {
-#    # place some units or fragments specifically for my-cool-wm
-#    # use update_unit function
-#    # reloading is handled by main script
-#  }
-#
-#  remove_units_my_cool_wm() {
-#    # remove the same units
-#    # use remove_unit function
-#    # reloading is handled by main script
-#  }
-#
-#  # function to add/replace args for WM command
-#  inject_args_my_cool_wm() {
-#    # prepend some args before original args
-#    __WM_ARGS_PREPEND__='-s --logmsg="foo bar"'
-#    # on second thought, drop original args
-#    __WM_ARGS__=''
-#    # and append a bunch more
-#    __WM_ARGS_APPEND__='--lifetime 1h'
-#    my-cool-wm-communicate exit
-#  }
-
-OIFS="$IFS"
-IFS=":"
-for __PLUGIN_PREFIX_PATH__ in ${__PLUGIN_PREFIX_PATHS__}
-do
-	IFS="$OIFS"
-	if [ -n "$__PLUGIN_PREFIX_PATH__" ] && \
-	   [ -n "$__PLUGIN_DIR_NAME__" ] && \
-	   [ -f "${__PLUGIN_PREFIX_PATH__}/${__PLUGIN_DIR_NAME__}/${__WM__}.sh.in" ]
-	then
-		echo "Loading plugin: ${__PLUGIN_PREFIX_PATH__}/${__PLUGIN_DIR_NAME__}/${__WM__}.sh.in"
-		. "${__PLUGIN_PREFIX_PATH__}/${__PLUGIN_DIR_NAME__}/${__WM__}.sh.in"
-	fi
-done
-unset __PLUGIN_PREFIX_PATH__ __PLUGIN_PREFIX_PATHS__ __PLUGIN_DIR_NAME__
-
 #### functions for operating on lists of variable names
 
-filter_varnames(){
+varnames_filter(){
 	# leave only vars with valid names, some shells or tools can inject illegal chars, i.e. env-modules
 	for __VAR__ in $(cat)
 	do
@@ -450,12 +323,12 @@ filter_varnames(){
 	done
 }
 
-normalize_varnames_space() {
+varnames_normalize_space() {
 	# pipe var names to get sorted, uniqued, normalized space-separated output
 	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u | tr '\n' ' ' | sed 's/^ \+\| \+$//g'
 }
 
-normalize_varnames_newline() {
+varnames_normalize_newline() {
 	# pipe var names to get sorted, uniqued, normalized newline-separated output
 	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u
 }
@@ -464,8 +337,8 @@ varnames_subtract() {
 	# pipe in list 1, get list 2 on args, output diff newline-separated output (comm)
 	__LIST1_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${__WM__}_list_1_XXXXXXXX")
 	__LIST2_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${__WM__}_list_1_XXXXXXXX")
-	normalize_varnames_newline > "${__LIST1_PATH__}"
-	echo $* | normalize_varnames_newline > "${__LIST2_PATH__}"
+	varnames_normalize_newline > "${__LIST1_PATH__}"
+	echo $* | varnames_normalize_newline > "${__LIST2_PATH__}"
 	comm -23 "${__LIST1_PATH__}" "${__LIST2_PATH__}"
 	rm -f "${__LIST1_PATH__}" "${__LIST2_PATH__}"
 	unset __LIST1_PATH__ __LIST2_PATH__
@@ -475,8 +348,8 @@ varnames_intersect() {
 	# pipe in list 1, get list 2 on args, output intersection newline-separated output (comm)
 	__LIST1_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${__WM__}_list_1_XXXXXXXX")
 	__LIST2_PATH__=$(mktemp "${XDG_RUNTIME_DIR}/${__WM__}_list_1_XXXXXXXX")
-	normalize_varnames_newline > "${__LIST1_PATH__}"
-	echo $* | normalize_varnames_newline > "${__LIST2_PATH__}"
+	varnames_normalize_newline > "${__LIST1_PATH__}"
+	echo $* | varnames_normalize_newline > "${__LIST2_PATH__}"
 	comm -12 "${__LIST1_PATH__}" "${__LIST2_PATH__}"
 	rm -f "${__LIST1_PATH__}" "${__LIST2_PATH__}"
 	unset __LIST1_PATH__ __LIST2_PATH__
@@ -485,9 +358,23 @@ varnames_intersect() {
 varnames_union() {
 	# pipe in list 1, get list 2 on args, output merged newline-separated output
 	{
-		normalize_varnames_newline
-		echo $* | normalize_varnames_newline
+		varnames_normalize_newline
+		echo $* | varnames_normalize_newline
 	} | sort -u
+}
+
+varnames_get_defined() {
+	# pipe in var names, print only defined ones
+	for __VAR__ in $(cat)
+	do
+		# get "DEFINED" if defined, empty otherwise
+		__EVAL__=$(eval printf %s "\${${__VAR__}+DEFINED}")
+		if [ "${__EVAL__}" = "DEFINED" ]
+		then
+			echo "$VAR"
+		fi
+	done
+	unset __VAR__ __EVAL__
 }
 
 #### functions for manipulating units
@@ -518,6 +405,7 @@ update_unit() {
 }
 
 generate_units() {
+	self_naming
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
 
@@ -581,8 +469,8 @@ generate_units() {
 		[Service]
 		Type=oneshot
 		RemainAfterExit=yes
-		ExecStart=${__WS_SELF_FULL__} "%I" prepare-env
-		ExecStop=${__WS_SELF_FULL__} "%I" cleanup-env
+		ExecStart=${__WS_SELF_FULL__} prepare-env "%I"
+		ExecStop=${__WS_SELF_FULL__} cleanup-env "%I"
 		Restart=no
 		Slice=${WAYLAND_WM_SLICE}
 	EOF
@@ -848,12 +736,12 @@ prepare_env() {
 
 	# get current shell env names
 	__ENV_NAMES__=$(
-		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | filter_varnames | normalize_varnames_space
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | varnames_filter | varnames_normalize_space
 	)
 
 	# get systemd user manager env names
 	__SYSTEMD_ENV_NAMES__=$(
-		systemctl --user show-environment | cut -d '=' -f 1 | normalize_varnames_space
+		systemctl --user show-environment | cut -d '=' -f 1 | varnames_normalize_space
 	)
 
 	# take full snapshot of env vars state (zero-delimited)
@@ -862,7 +750,7 @@ prepare_env() {
 
 	# collect env names
 	__ENV_NAMES__=$(
-		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | filter_varnames | normalize_varnames_space
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | varnames_filter | varnames_normalize_space
 	)
 
 	# deal with vt and session vars
@@ -923,7 +811,7 @@ prepare_env() {
 
 	# collect env names
 	__ENV_NAMES_AFTER__=$(
-		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | filter_varnames | normalize_varnames_space
+		env -0 | cut -z -d '=' -f 1 | sort -z | tr '\0' ' ' | varnames_filter | varnames_normalize_space
 	)
 
 	# finalize export vars:
@@ -935,15 +823,15 @@ prepare_env() {
 			  "${XDG_RUNTIME_DIR}/${__WM__}_final_env" \
 			| cut -z -d '=' -f 1 \
 			| tr '\0' '\n' \
-			| filter_varnames
+			| varnames_filter
 
 			# add defined subset of ${UWSM_VARS_ALWAYS_EXPORT}
 			echo ${UWSM_VARS_ALWAYS_EXPORT} \
-			| normalize_varnames_space \
+			| varnames_normalize_space \
 			| varnames_intersect ${__ENV_NAMES_AFTER__} \
-			| normalize_varnames_newline
+			| varnames_normalize_newline
 			# exclude ${UWSM_VARS_NEVER_EXPORT}
-		} | varnames_subtract ${UWSM_VARS_NEVER_EXPORT} | normalize_varnames_space
+		} | varnames_subtract ${UWSM_VARS_NEVER_EXPORT} | varnames_normalize_space
 	)
 
 	# finalize unset vars:
@@ -951,7 +839,7 @@ prepare_env() {
 	__ENV_NAMES_FOR_UNSET__=$(
 		echo ${__ENV_NAMES__} \
 		| varnames_subtract ${__ENV_NAMES_AFTER__} \
-		| normalize_varnames_space
+		| varnames_normalize_space
 	)
 
 	# generate list of vars for cleanup after exit
@@ -963,9 +851,9 @@ prepare_env() {
 			# also add ${UWSM_VARS_ALWAYS_CLEANUP}
 			echo ${UWSM_VARS_ALWAYS_CLEANUP}
 			# then subtract ${UWSM_VARS_NEVER_CLEANUP}
-		} | normalize_varnames_space \
+		} | varnames_normalize_space \
 		  | varnames_subtract ${UWSM_VARS_NEVER_CLEANUP} \
-		  | normalize_varnames_space
+		  | varnames_normalize_space
 	)
 
 	# cleanup temp files
@@ -975,7 +863,7 @@ prepare_env() {
 
 	# save cleanup list
 	echo ${__ENV_NAMES_FOR_CLEANUP__} \
-	  | normalize_varnames_newline \
+	  | varnames_normalize_newline \
 	  > "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names"
 
 	__HAS_VARS__=false
@@ -1045,7 +933,7 @@ cleanup_vars() {
 			# vars to always cleanup
 			echo ${UWSM_VARS_ALWAYS_CLEANUP}
 			# subtract vars to never cleanup
-		} | varnames_subtract ${UWSM_VARS_NEVER_CLEANUP} | normalize_varnames_space
+		} | varnames_subtract ${UWSM_VARS_NEVER_CLEANUP} | varnames_normalize_space
 	)
 	echo "Cleaning up variables:"
 	__HAS_VARS__=false
@@ -1073,6 +961,213 @@ trap_exit() {
 		systemctl --user stop wayland-wm@${__WM__}.service
 	fi
 }
+
+#### End of functions
+
+#### Non-WM argument actions
+
+if [ "$#" = "0" ] || case "$*" in --help|--help\ *|*\ --help|*\ --help\ *|-h|*\ -h|-h\ *|*\ -h\ *) true ;; *) false ;; esac
+then
+	show_help
+	exit 0
+
+elif [ "$1" = "app" ] || [ "$1" = "background" ] || [ "$1" = "session" ]
+then
+	# for use inside WM
+	# exec argv scoped into selected slice
+	SLICE="$1"
+	shift
+	exec systemd-run --user -qG --scope --slice="${SLICE}-graphical.slice" "$@"
+
+elif [ "$1" = "finalize" ]
+then
+	# for use inside WM
+	# export vars and report readiness
+	shift
+	if [ -z "$WAYLAND_DISPLAY" ]
+	then
+		echo "WAYLAND_DISPLAY is not defined. Are we being run by a wayland compositor or not?" >&2
+		exit 1
+	fi
+	__VARS__=$(echo WAYLAND_DISPLAY DISPLAY $* | varnames_filter | varnames_get_defined | varnames_normalize_space)
+	dbus-update-activation-environment --systemd ${__VARS__} &&\
+	  systemctl --user import-environment ${__VARS__} &&\
+	  exec systemd-notify --ready
+	echo "Something went wrong" >&2
+	exit 1
+
+elif [ "$1" = "stop" ] && [ "$#" = "1" ]
+then
+	# generic fast stop
+	if systemctl --user is-active -q 'wayland-wm@*.service'
+	then
+		systemctl --user stop 'wayland-wm@*.service'
+	else
+		echo "wayland-wm@*.service is not running"
+		exit 0
+	fi
+
+#### WM actions
+
+elif echo "$1" | grep -qE "${__SUPPORTED_MODES__}" && [ -n "$2" ] && [ "$#" = "2" ]
+then
+	# scoop mode and wm cmd
+	__MODE__="${1}"
+	__WM_CMD__="${2}"
+else
+	echo "Wrong arguments!" >&2
+	show_help >&2
+	exit 1
+fi
+
+if [ "${__WM_CMD__}" = "select" ] || [ "${__WM_CMD__}" = "default" ]
+then
+	[ "${__WM_CMD__}" = "select" ] && export __JUST_RUN_DEFAULT__=false
+	[ "${__WM_CMD__}" = "default" ] && export __JUST_RUN_DEFAULT__=true
+	__WM_CMD__=$(wm_selector 3>&1 1>&2 2>&3)
+	__SELECTOR_RC__=$?
+	unset __JUST_RUN_DEFAULT__
+	if [ "${__SELECTOR_RC__}" = "0" ] && [ -n "${__WM_CMD__}" ]
+	then
+		__WM_CMD_USER_DEFAULT__="${XDG_CONFIG_HOME:-${HOME}/.config}/wayland-session-default-cmd"
+		mkdir -p "$(dirname "${__WM_CMD_USER_DEFAULT__}")"
+		echo "${__WM_CMD__}" > "${__WM_CMD_USER_DEFAULT__}"
+		echo "Chosen: ${__WM_CMD__}"
+	else
+		echo "Compositor was not selected" >&2
+		# error messages should be here
+		echo "${__WM_CMD__:-Empty result}" >&2
+		exit ${__SELECTOR_RC__}
+	fi
+	unset __SELECTOR_RC__
+	unset __WM_CMD_USER_DEFAULT__
+fi
+
+#### Rough processing of wm command line
+
+# get executable name ($0)
+__WM__=$(printf '%s' "${__WM_CMD__}" | xargs sh -c 'printf "%s" "$1"' arg_snip)
+
+# get the rest of arguments
+# cut executable name from beginning
+__WM_ARGS__="${__WM_CMD__#"${__WM__}"}"
+
+# trim spaces
+__WM_ARGS__="${__WM_ARGS__%"${__WM_ARGS__##*[![:space:]]}"}"
+__WM_ARGS__="${__WM_ARGS__#"${__WM_ARGS__%%[![:space:]]*}"}"
+#"
+
+# replace dashes with underscores for function names
+__WM_FNAME__=$(echo "${__WM__}" | tr '.-' '__' | tr -s '_')
+
+#### Sanity checks
+
+CHECKOUT=true
+
+if ! echo "${__WM__}" | grep -qE "^[a-zA-Z0-9_.-]+$"
+then
+	echo "Got malformed compositor name:" >&2
+	echo "${__WM__}" >&2
+	CHECKOUT=false
+fi
+
+if ! [ -x "$(which "${__WM__}")" ]
+then
+	echo "${__WM__} is not an executable binary" >&2
+	CHECKOUT=false
+fi
+
+if [ -z "$XDG_RUNTIME_DIR" ]
+then
+	echo "\$XDG_RUNTIME_DIR is not set, something is wrong with your environment" >&2
+	CHECKOUT=false
+fi
+
+# exit/return with error on failed checks
+if [ "$CHECKOUT" = "false" ]
+then
+	exit 1
+
+elif [ "${__MODE__}" = "check" ]
+then
+	# exit successfully after basic compositors check
+	echo "Checked for compositor ${__WM__}"
+	exit 0
+fi
+
+#### Load WM plugin
+
+# Plugins should be named ${__WM__}.sh.in
+# Plugins should only contain specifically named functions.
+# Function name suffix is expected to be WM executable name with
+# all dashes and dots replaced by underscores and underscores singled
+# $(echo "${__WM__}" | tr '.-' '__' | tr -s '_')
+# example:
+#
+#  #!/bin/false
+#
+#  # function to make arbitrary actions before loading wayland-session-${__WM__}-env
+#  quirks_my_cool_wm() {
+#    # here additional vars can be added set for session manager
+#    # like
+#    UWSM_VARS_ALWAYS_EXPORT="${UWSM_VARS_ALWAYS_EXPORT} SOME OTHER VARS"
+#    UWSM_VARS_NEVER_EXPORT="${UWSM_VARS_ALWAYS_EXPORT} SOME OTHER VARS"
+#    UWSM_VARS_ALWAYS_CLEANUP"${UWSM_VARS_ALWAYS_CLEANUP} SOME OTHER VARS"
+#    UWSM_VARS_NEVER_CLEANUP"${UWSM_VARS_ALWAYS_CLEANUP} SOME OTHER VARS"
+#    # or export more vars for session
+#    export I_WANT_THIS_IN_SESSION=yes
+#    # or prepare a config for WM
+#    # or set a var to modify what sourcing wayland-session-env, wayland-session-${__WM__}-env
+#    # in the next stage will do
+#    ...
+#  }
+#
+#  load_wm_env_my_cool_wm() {
+#    # custom mechanism for loading of env (or a stub)
+#    # completely replaces loading from wayland-session-${__WM__}-env in config dirs
+#    # so repeat it
+#    load_wm_env
+#    # and add ours
+#    load_config_env "${__WM__}/env"
+#  }
+#
+#  generate_units_my_cool_wm() {
+#    # place some units or fragments specifically for my-cool-wm
+#    # use update_unit function
+#    # reloading is handled by main script
+#  }
+#
+#  remove_units_my_cool_wm() {
+#    # remove the same units
+#    # use remove_unit function
+#    # reloading is handled by main script
+#  }
+#
+#  # function to add/replace args for WM command
+#  inject_args_my_cool_wm() {
+#    # prepend some args before original args
+#    __WM_ARGS_PREPEND__='-s --logmsg="foo bar"'
+#    # on second thought, drop original args
+#    __WM_ARGS__=''
+#    # and append a bunch more
+#    __WM_ARGS_APPEND__='--lifetime 1h'
+#    my-cool-wm-communicate exit
+#  }
+
+OIFS="$IFS"
+IFS=":"
+for __PLUGIN_PREFIX_PATH__ in ${__PLUGIN_PREFIX_PATHS__}
+do
+	IFS="$OIFS"
+	if [ -n "$__PLUGIN_PREFIX_PATH__" ] && \
+	   [ -n "$__PLUGIN_DIR_NAME__" ] && \
+	   [ -f "${__PLUGIN_PREFIX_PATH__}/${__PLUGIN_DIR_NAME__}/${__WM__}.sh.in" ]
+	then
+		echo "Loading plugin: ${__PLUGIN_PREFIX_PATH__}/${__PLUGIN_DIR_NAME__}/${__WM__}.sh.in"
+		. "${__PLUGIN_PREFIX_PATH__}/${__PLUGIN_DIR_NAME__}/${__WM__}.sh.in"
+	fi
+done
+unset __PLUGIN_PREFIX_PATH__ __PLUGIN_PREFIX_PATHS__ __PLUGIN_DIR_NAME__
 
 #### More mode decisions
 
