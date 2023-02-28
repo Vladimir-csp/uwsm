@@ -12,20 +12,20 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
 - Maximum use of systemd units and dependencies for startup, operation, and shutdown
   - binds to basic structure of `graphical-session-pre.target`, `graphical-session.target`, `xdg-desktop-autostart.target`
   - adds custom slices `app-graphical.slice`, `background-graphical.slice`, `session-graphical.slice` to put apps in and terminate them cleanly
-  - Provides convenient way of launching apps to those slices
+  - provides convenient way of launching apps to those slices
 - Systemd units are treated with hierarchy and universality in mind:
-  - use specifiers
-  - named from common to specific: `wayland-${category}@${wm}.${unit_type}`
-  - allow for high-level `name-.d` drop-ins
+  - templated units with specifiers
+  - named from common to specific where possible
+  - allowing for high-level `name-.d` drop-ins
 - WM-specific behavior can be added by plugins
   - currently supported: sway, wayfire, labwc
 - Idempotently (well, best-effort-idempotently) handle environment:
   - On startup environment is prepared by:
     - sourcing shell profile
     - sourcing common `wayland-session-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
-    - sourcing `wayland-session-${wm}-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
-  - Difference between inital state and prepared environment is exported into systemd user manager and dbus activation environment
-  - On shutdown variables that were exported are unset from systemd user manager (dbus activation environment does not support unsetting sadly)
+    - sourcing WM-specific `wayland-session-${wm}-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
+  - Difference between environment state before and after preparation is exported into systemd user manager and dbus activation environment
+  - On shutdown variables that were exported are unset from systemd user manager (dbus activation environment does not support unsetting, sadly)
   - Lists of variables for export and cleanup are determined algorithmically by:
     - comparing environment before and after preparation procedures
     - boolean operations with predefined lists (tweakable by plugins)
@@ -34,9 +34,10 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
 - Can run with arbitrary WM command line
 - Better control of XDG autostart apps:
   - XDG autostart services (`app-*@autostart.service` units) are placed into `app-graphical.slice` that receives stop action before WM is stopped.
+  - Can be mass-controlled via stopping and starting `wayland-session-xdg-autostart@${wm}.target`
 - Try best to shutdown session cleanly via a lot of dependencies between units
 - Written in POSIX shell (a smidgen of masochism went into this code)
-  - the only exception is `wayland-sessions` desktop entries support in `select` or `default` modes.
+  - the only exception is `wayland-sessions` desktop entries support in `select` or `default` modes
 
 ## Installation
 
@@ -62,10 +63,9 @@ Example snippet for sway config:
 By default `wayland-session` launces WM service in `app.slice` and all processes spawned by WM will be
 a part of `wayland-wm@${wm}.service` unit. This works, but is not an optimal solution.
 
-Systemd documentation recommends running compositors in `session.slice` and launch apps as scoped units in `app.slice`.
+Systemd documentation recommends running compositors in `session.slice` and launch apps as scopes in `app.slice`.
 
 `wayland-session` provides convenient way of handling this.
-
 It generates special nested slices that will also receive stop action ordered before `wayland-wm@${wm}.service` shutdown:
 
 - `app-graphical.slice`
@@ -82,10 +82,9 @@ Example snippet for sway config to launch terminal, app launcher and file manage
     bindsym --to-code $mod+r exec exec wayland-session app fuzzel --log-no-syslog
     bindsym --to-code $mod+e exec exec wayland-session app spacefm
 
-When app launching is properly configured, you can configure `wayland-session` to put WM services in `session.slice`
-by setting environment variable `UWSM_USE_SESSION_SLICE=true` before generating units
+When app launching is properly configured, WM service itself can be placed in `session.slice` by setting
+environment variable `UWSM_USE_SESSION_SLICE=true` before generating units
 (best to export this in `profile` before `wayland-session` invocation).
-This will set `Slice=session.slice` for WM services.
 
 ## Operation
 
@@ -93,14 +92,14 @@ This will set `Slice=session.slice` for WM services.
 
 Start variants:
 
-- `wayland-session start ${wm}`: generates and starts templated units with `@${wm}` instance
-- `wayland-session start "${wm} with \"any complex\" arguments"`: also adds arguments for particular `@${wm}` instance
+- `wayland-session start ${wm}`: generates and starts templated units with `@${wm}` instance.
+- `wayland-session start "${wm} with \"any complex\" arguments"`: also adds arguments for particular `@${wm}` instance.
 - `wayland-session start select`: Invokes a menu to select WM from desktop entries for wayland-sessions. Selection is saved, previous selection is highlighted.
 - `wayland-session start default`: Runs previously selected WM, if selection was made, otherwise invokes a menu.
 
 When started, `wayland-session` will hold while wayland session is running, and terminate session if interrupted or killed.
 
-Stop with either `wayland-session stop` or `systemctl --user stop "wayland-wm@*.service"`
+Stop with `wayland-session stop`
 
 To launch automatically after login on virtual console 1, add this to shell profile:
 
@@ -109,6 +108,9 @@ To launch automatically after login on virtual console 1, add this to shell prof
     	exec wayland-session start select
     fi
 
+`may-start` checker command, among other things, **screens for being in interactive login shell which is essential**,
+since profile sourcing can otherwise lead to nasty loops.
+
 ### Longer story, tour under the hood:
 
 #### Start and bind
@@ -116,6 +118,7 @@ To launch automatically after login on virtual console 1, add this to shell prof
 (At least for now) units are generated by the script (and plugins).
 
 Run `wayland-session unitgen ${wm}` to populate `${XDG_RUNTIME_DIR}/systemd/user/` with them and do nothing else.
+`wayland-session unitrm ${wm}` removes units.
 
 WM argument may also contain the full literal command line for the WM with arguments, i.e.:
 
@@ -151,9 +154,9 @@ Add `--wait` to hold terminal until session ends.
 
 `exec systemctl --user start --wait wayland-wm@${wm}.service`
 
-Still if login session is terminated, wayland session will continue running, most likely no longer accessible.
+Still if login session is terminated, wayland session will continue running, most likely no longer being accessible.
 
-To also bind it the other way around, traps are used:
+To also bind it the other way around, shell traps are used:
 
 `trap "if systemctl --user is-active -q wayland-wm@${wm}.service ; then systemctl --user --stop wayland-wm@${wm}.service ; fi" INT EXIT HUP TERM`
 
@@ -161,30 +164,30 @@ This makes the end of login shell also be the end of wayland session.
 
 #### Stop
 
-Wildcard `systemctl --user stop "wayland-wm@*.service"`.
+Just stop the main service: `systemctl --user stop "wayland-wm@${wm}.service"`.
+
+Wildcard `systemctl --user stop "wayland-wm@*.service"` will also work.
 
 If start command was run with `exec` from login shell or via `.profile`,
 this stop command also doubles as a logout command.
 
 `wayland-session` is smart enough to find login session associated with current TTY
-and export `$XDG_SESSION_ID`, `$XDG_VTNR` to user manager environment using `wayland-wm-env@${wm}.service`
-bound to `graphical-session-pre.target` (and later clean it up when `wayland-wm-env@${wm}.service` stops).
-(I really do not know it this is a good idea, but since there can be only one graphical session
+and export `$XDG_SESSION_ID`, `$XDG_VTNR` to user manager environment when invoked in `wayland-wm-env@${wm}.service`
+(bound to `graphical-session-pre.target`). When `wayland-wm-env@${wm}.service` is stopped, those two variables will be cleaned up unconditionally.
+(I really do not know it this mechanism is a good idea, but since there can be only one graphical session
 per user with systemd, it seems like such).
 
 #### Profile integration
 
-This example starts wayland session automatically upon login on tty1 if system is in `graphical.target`
+This example does the same thing as `may-start` + `start` command combination described earlier: starts wayland session automatically upon login on tty1 if system is in `graphical.target`
 
-**Screening for being in interactive login shell here is essential** (`[ "${0}" != "${0#-}" ]`), since `wayland-wm-env@${wm}.service` sources profile,
-which has a potential for nasty loops if run unconditionally. Other conditions are a recommendation.
-
-Extended snippet for `~/.profile` that shows what combination of `may-start` and `start` does:
+**Screening for being in interactive login shell here is essential** (`[ "${0}" != "${0#-}" ]`). `wayland-wm-env@${wm}.service` sources profile,
+which has a potential for nasty loops if run unconditionally. Other conditions are a recommendation:
 
     MY_WM=sway
-    if [ "${0}" != "${0#-}" -a "$XDG_VTNR" = "1" ] && \
-       systemctl is-active -q graphical.target && \
+    if [ "${0}" != "${0#-}" ] && \
        [ "$XDG_VTNR" = "1" ] && \
+       systemctl is-active -q graphical.target && \
        ! systemctl --user is-active -q wayland-wm@*.service
     then
         wayland-session unitgen ${MY_WM}
