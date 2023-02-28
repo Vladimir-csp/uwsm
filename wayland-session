@@ -65,13 +65,16 @@ show_help() {
 		
 		Usage:
 		  Managing WM:
-		    ${__WS_SELF__} mode wm|"wm --with args"
+		    ${__WS_SELF__} ${__SUPPORTED_MODES__} wm|"wm --with args"
 		    ${__WS_SELF__} stop
-		  Operations from within WM session:
-		    ${__WS_SELF__} finalize [[ADDITIONAL] VARS]
+		  Helpers for use from within WM session:
+		    ${__WS_SELF__} finalize [ADDITIONAL] [VARS]
 		    ${__WS_SELF__} app ...
 		    ${__WS_SELF__} background ...
 		    ${__WS_SELF__} session ...
+		  Checkers:
+		    ${__WS_SELF__} is-active [vm]
+		    ${__WS_SELF__} may-start [-v] [VTNR] [VTNR]...
 		
 		Managing WM:
 		
@@ -116,11 +119,12 @@ show_help() {
 		During startup at stage of "graphical-session-pre.target" environment is
 		sourced from shell profile and from files "wayland-session-env" and
 		"wayland-session-${wm}-env" in XDG config hierarchy
-		(in order of increasing importance)
+		(in order of increasing importance). Delta will be exported to systemd and
+		dbus activation environments, and cleaned up when services are stopped.
 		
 		It is highly recommended to configure your WM to launch apps explicitly scoped
 		in special user session slices (app.slice, background.slice, session.slice).
-		See "man systemd.special"
+		See "man systemd.special", "man systemd-run"
 		
 		${__WS_SELF__} provides custom nested slices for apps to live in and be
 		terminated on session end:
@@ -129,21 +133,36 @@ show_help() {
 		  background-graphical.slice
 		  session-graphical.slice
 		
-		To exec apps into app-graphical.slice run:
-		
-		  systemd-run --user --scope -qG --slice=app-graphical.slice your_app
-		
-		Or reduce clutter and let ${__WS_SELF__} handle that for you:
+		And helper commands to handle all the systemd-run invocations for you:
 		
 		  ${__WS_SELF__} app your_app [with --args]
+		  ${__WS_SELF__} background your_app [with --args]
+		  ${__WS_SELF__} session your_app [with --args]
 		
-		If app launching is configured as recommended, you can put WM in session.slice
-		(as recommended by man systemd.special) by setting:
+		If app launching is configured as recommended, you can put WM itself in
+		session.slice (as recommended by man systemd.special) by setting:
 		
 		    UWSM_USE_SESSION_SLICE=true
 		
 		This var affects unitgen phase, Slice= parameter of WM services.
-		(put it in shell profile).
+		(best to export it in shell profile).
+		
+		Checkers:
+		
+		  ${__WS_SELF__} is-active [wm]
+		
+		    Checks whether any/specific wayland session is running (RC 0) or not (RC 1)
+		
+		  ${__WS_SELF__} may-start [-v] [VTNR] [VTNR]...
+		
+		    Checks whether it is OK to launch a wayland session (RC 0) or not (RC 1)
+		    Conditions:
+		      Running from login shell
+		      No wayland session is running
+		      Foreground VT is among allowed (default: 1)
+		    Arguments:
+		        -v: list dealbreakers
+		      VTNR: allowed VT numbers to override default 1
 		
 		See code comments for documentation on plugins.
 	EOF
@@ -955,6 +974,27 @@ cleanup_vars() {
 	return ${__CLEANUP_RC__}
 }
 
+is_active() {
+	# check and list active wayland wm unit
+	# return 0 if active, 1 if not
+	if [ -n "$1" ]
+	then
+		# specific
+		CHECK_UNIT="wayland-wm@$(printf '%s' "${1}" | xargs sh -c 'printf "%s" "$1"' arg_snip).service"
+	else
+		# generic
+		CHECK_UNIT="wayland-wm@*.service"
+	fi
+	if systemctl --user -q is-active "${CHECK_UNIT}"
+	then
+		systemctl list-units --user --state=active --quiet --full --plain "${CHECK_UNIT}"
+		return 0
+	else
+		systemctl list-units --user --all --quiet --full --plain "${CHECK_UNIT}"
+		return 1
+	fi
+}
+
 trap_exit() {
 	if systemctl --user is-active -q wayland-wm@${__WM__}.service
 	then
@@ -964,7 +1004,7 @@ trap_exit() {
 
 #### End of functions
 
-#### Non-WM argument actions
+#### Non-WM argument actions and helpers
 
 if [ "$#" = "0" ] || case "$*" in --help|--help\ *|*\ --help|*\ --help\ *|-h|*\ -h|-h\ *|*\ -h\ *) true ;; *) false ;; esac
 then
@@ -978,6 +1018,66 @@ then
 	SLICE="$1"
 	shift
 	exec systemd-run --user -qG --scope --slice="${SLICE}-graphical.slice" "$@"
+
+elif [ "$1" = "is-active" ]
+then
+	shift
+	is_active "$@"
+	exit $?
+
+elif [ "$1" = "may-start" ]
+then
+	# check if in login shell, system is at graphical.target, no WM is running[, in requested VTs]
+	shift
+	if [ "$1" = "-v" ]
+	then
+		VERBOSE=true
+		shift
+	else
+		VERBOSE=false
+	fi
+	MAY_START=true
+	ARGS_FINE=true
+	for CHECK_VT in ${*:-1}
+	do
+		case "$CHECK_VT" in
+			[1-9]|1[0-2]) true ;;
+			*)
+				echo "\"$CHECK_VT\" is not a number for F-key VT" >&2
+				ARGS_FINE=false
+			;;
+		esac
+	done
+	[ "$ARGS_FINE" = "true" ] || exit 1
+	PARENT_SHELL_CMD="$(head -zn1 < "/proc/${PPID}/cmdline")"
+	[ "${PARENT_SHELL_CMD}" != "${PARENT_SHELL_CMD#-}" ] || {
+		[ "$VERBOSE" = "true" ] && echo "Parent process $PARENT_SHELL_CMD is not a login shell"
+		MAY_START=false
+	}
+	systemctl is-active -q graphical.target || {
+		[ "$VERBOSE" = "true" ] && echo "System is not at graphical.target"
+		MAY_START=false
+	}
+	VT=$(fgconsole)
+	[ -n "$VT" ] || {
+		[ "$VERBOSE" = "true" ] && echo "Not on VT"
+		MAY_START=false
+	}
+	! is_active >/dev/null || {
+		[ "$VERBOSE" = "true" ] && echo "Wayland session is already running"
+		MAY_START=false
+	}
+	VT_MATCHED=false
+	for CHECK_VT in ${*:-1}
+	do
+		[ "$VT" = "$CHECK_VT" ] && VT_MATCHED=true && break
+	done
+	[ "$VT_MATCHED" = "true" ] || {
+		[ "$VERBOSE" = "true" ] && echo "VT $VT is not among requested (${*:-1})"
+		MAY_START=false
+	}
+	[ "$MAY_START" = "true" ]
+	exit $?
 
 elif [ "$1" = "finalize" ]
 then
