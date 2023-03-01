@@ -452,6 +452,7 @@ generate_units() {
 		StopWhenUnneeded=yes
 		BindsTo=graphical-session-pre.target
 		Before=graphical-session-pre.target
+		PropagatesStopTo=graphical-session-pre.target
 	EOF
 	update_unit "wayland-session@.target" <<- EOF
 		# injected by ${__WS_SELF__}, do not edit
@@ -463,6 +464,7 @@ generate_units() {
 		StopWhenUnneeded=yes
 		BindsTo=graphical-session.target
 		Before=graphical-session.target
+		PropagatesStopTo=graphical-session.target
 	EOF
 	update_unit "wayland-session-xdg-autostart@.target" <<- EOF
 		# injected by ${__WS_SELF__}, do not edit
@@ -474,6 +476,7 @@ generate_units() {
 		StopWhenUnneeded=yes
 		BindsTo=xdg-desktop-autostart.target
 		Before=xdg-desktop-autostart.target
+		PropagatesStopTo=xdg-desktop-autostart.target
 	EOF
 
 	# services
@@ -548,7 +551,7 @@ generate_units() {
 		[Unit]
 		# make autostart apps stoppable by target
 		#StopPropagatedFrom=xdg-desktop-autostart.target
-		
+		PartOf=xdg-desktop-autostart.target
 		[Service]
 		# also put them in special graphical app slice
 		Slice=app-graphical.slice

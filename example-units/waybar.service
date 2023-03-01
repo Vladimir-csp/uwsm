@@ -3,9 +3,6 @@ Description=Highly customizable Wayland bar for Sway and Wlroots based composito
 Documentation=https://github.com/Alexays/Waybar/wiki/
 # order startup after WM
 After=graphical-session.target
-# Make sure to receive stop when WM stops
-# Stop before WM stops due to After= ordering above
-StopPropagatedFrom=graphical-session.target wayland-wm@sway.service wayland-wm@wayfire.service wayland-wm@labwc.service
 
 [Service]
 ExecStart=/usr/bin/waybar
@@ -15,6 +12,6 @@ Slice=app-graphical.slice
 
 [Install]
 # Get started via specific WMs
-WantedBy=wayland-wm@sway.service
-WantedBy=wayland-wm@wayfire.service
-WantedBy=wayland-wm@labwc.service
+WantedBy=wayland-session@sway.target
+WantedBy=wayland-session@wayfire.target
+WantedBy=wayland-session@labwc.target
