@@ -113,7 +113,8 @@ show_help() {
 		    and notifies systemd that WM has finished startup.
 		    Without this startup will fail in 10 seconds.
 		    Any addional vars that WM sets that should be accessible to apps should be
-		    given as arguments, they will be exported too.
+		    given as arguments, they will be exported too and marked for cleanup on
+		    shutdown.
 		    Think of things like SWAYSOCK in sway.
 		
 		During startup at stage of "graphical-session-pre.target" environment is
@@ -344,12 +345,14 @@ varnames_filter(){
 
 varnames_normalize_space() {
 	# pipe var names to get sorted, uniqued, normalized space-separated output
-	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u | tr '\n' ' ' | sed 's/^ \+\| \+$//g'
+	__O__=$(tr '[:space:]' '[\n*]' | sort -u)
+	echo ${__O__}
+	unset __O__
 }
 
 varnames_normalize_newline() {
 	# pipe var names to get sorted, uniqued, normalized newline-separated output
-	tr ' \t\n' '\n\n\n' | tr -s '\n' | sort -u
+	varnames_normalize_space | tr ' ' '\n'
 }
 
 varnames_subtract() {
@@ -390,7 +393,7 @@ varnames_defined() {
 		__EVAL__=$(eval printf %s "\${${__VAR__}+DEFINED}")
 		if [ "${__EVAL__}" = "DEFINED" ]
 		then
-			echo "$VAR"
+			echo "${__VAR__}"
 		fi
 	done
 	unset __VAR__ __EVAL__
@@ -978,6 +981,13 @@ cleanup_env() {
 	return ${__CLEANUP_RC__}
 }
 
+get_active_instance() {
+	# finds running wayland-wm@*.service, returns specifier
+	systemd-escape --unescape --instance $(
+		systemctl --user show --state=active,activating --property Id --value 'wayland-wm@*.service'
+	)
+}
+
 is_active() {
 	# check and list active wayland wm unit
 	# return 0 if active, 1 if not
@@ -991,10 +1001,10 @@ is_active() {
 	fi
 	if systemctl --user -q is-active "${CHECK_UNIT}"
 	then
-		systemctl list-units --user --state=active --quiet --full --plain "${CHECK_UNIT}"
+		systemctl --user list-units --state=active --quiet --full --plain "${CHECK_UNIT}"
 		return 0
 	else
-		systemctl list-units --user --all --quiet --full --plain "${CHECK_UNIT}"
+		systemctl --user list-units --all --quiet --full --plain "${CHECK_UNIT}"
 		return 1
 	fi
 }
@@ -1090,14 +1100,51 @@ then
 elif [ "$1" = "finalize" ]
 then
 	# for use inside WM
-	# export vars and report readiness
+	# export vars and report readiness, also add exported vars to cleanup list
 	shift
 	if [ -z "$WAYLAND_DISPLAY" ]
 	then
 		echo "WAYLAND_DISPLAY is not defined. Are we being run by a wayland compositor or not?" >&2
 		exit 1
 	fi
+	# get list of defined vars from requested
 	__VARS__=$(echo WAYLAND_DISPLAY DISPLAY $* | varnames_filter | varnames_defined | varnames_normalize_space)
+
+	# update cleanup list
+	__RUNNING_INSTANCE__=$(get_active_instance)
+	if [ "$?" != "0" ] || [ -z "${__RUNNING_INSTANCE__}" ]
+		echo "Could not get active or activating WM instance" >&2
+		exit 1
+	}
+	if [ -f "${XDG_RUNTIME_DIR}/${__RUNNING_INSTANCE__}_env_names_for_cleanup" ]
+	then
+		# mush new vars wih vars from cleanup list
+		__NEW_VARS_FOR_CLEANUP__=$(
+			varnames_union ${__VARS__} \
+			  < "${XDG_RUNTIME_DIR}/${__RUNNING_INSTANCE__}_env_names_for_cleanup" \
+			  | varnames_subtract ${UWSM_VARS_NEVER_CLEANUP} \
+			  | varnames_normalize_newline
+		)
+		# write file
+		if [ "$?" = 0 ] && \
+		   [ -n "${__NEW_VARS_FOR_CLEANUP__}" ]
+		then
+			echo "${__NEW_VARS_FOR_CLEANUP__}" > "${XDG_RUNTIME_DIR}/${__RUNNING_INSTANCE__}_env_names_for_cleanup" || {
+				echo "Could not write ${XDG_RUNTIME_DIR}/${__RUNNING_INSTANCE__}_env_names_for_cleanup" >&2
+				echo "Something is wrong with runtime dir" >&2
+				exit 1
+			}
+		else
+			echo "Could not construct list of vars for cleanup from ${__RUNNING_INSTANCE__}_env_names_for_cleanup and new vars" >&2
+			exit 1
+		fi
+	else
+		echo "${XDG_RUNTIME_DIR}/${__RUNNING_INSTANCE__}_env_names_for_cleanup does not exist" >&2
+		echo "Assuming env preloader failed" >&2
+		exit 1
+	fi
+
+	# do the exporty thing
 	dbus-update-activation-environment --systemd ${__VARS__} && \
 	  systemctl --user import-environment ${__VARS__} && \
 	  exec systemd-notify --ready

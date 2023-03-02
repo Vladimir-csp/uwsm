@@ -51,7 +51,7 @@ Put `wayland-session-plugins` dir somewhere in `/lib:/usr/lib:/usr/local/lib:${H
 
 Ensure your WM runs `wayland-session finalize` at startup:
 
-- it fills systemd and dbus environments with essential vars set by WM: `WAYLAND_DISPLAY`, `DISPLAY` (other vars can be given by names as arguments)
+- it fills systemd and dbus environments with essential vars set by WM: `WAYLAND_DISPLAY`, `DISPLAY` (other vars can be given by names as arguments, they also will be added to cleanup list)
 - if environment export is successful, it signals WM service readiness via `systemd-notify --ready`
 
 Example snippet for sway config:
