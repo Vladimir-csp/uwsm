@@ -152,7 +152,7 @@ show_help() {
 		
 		  ${__WS_SELF__} is-active [wm]
 		
-		    Checks whether any/specific wayland session is running (RC 0) or not (RC 1)
+		    Checks whether any/specific wayland session is active/activating (RC 0) or not (RC 1)
 		
 		  ${__WS_SELF__} may-start [-v] [VTNR] [VTNR]...
 		
@@ -227,6 +227,8 @@ wm_selector() {
 		            print(E, file=sys.stderr)
 		            sys.exit(126)
 		
+		entry_files.sort()
+		
 		# fill choces list with [Exec, Name], filtered
 		for entry in entry_files:
 		    try:
@@ -243,8 +245,13 @@ wm_selector() {
 		        or not which(shlex.split(entry.getExec())[0])
 		    ):
 		        continue
-		    items = [entry.getExec(), entry.getName() or os.path.splitext(os.path.basename(entry.filename))[0]]
-		    choices.extend(items)
+		    name = entry.getName() or os.path.splitext(os.path.basename(entry.filename))[0]
+		    generic_name = entry.get('GenericName', '')
+		    comment = entry.get('Comment', '')
+		    description = f"{name}, {generic_name}" if generic_name else name
+		    description = f"{description} ({comment})" if comment else description
+		    # exec as tag and description as message for whiptail
+		    choices.extend([entry.getExec(), description])
 		
 		if len(choices) == 2 and default == choices[0]:
 		    # just spit out the only preselected choice
@@ -325,6 +332,75 @@ wm_selector() {
 		except Exception as E:
 		    print(E, file=sys.stderr)
 		    sys.exit(126)
+	EOF
+}
+
+desktop_entry_parse() {
+	# parse entry by name of desktop entry in wayland-sessions by name
+	python - "$1" <<- EOF
+		try:
+		    import os, sys, shlex
+		    from xdg.DesktopEntry import DesktopEntry
+		except ModuleNotFoundError as E:
+		    print(E, file=sys.stderr)
+		    sys.exit(126)
+		
+		def which(executable):
+		    'Simple which'
+		    for path in os.getenv('PATH', '').split(os.path.pathsep):
+		        path = os.path.join(path, executable)
+		        if os.path.exists(path) and os.access(path, os.X_OK):
+		            return path
+		    return ''
+		
+		entry_name = sys.argv[1]
+		entry_path = ''
+		
+		if not entry_name.endswith('.desktop'):
+		    print('Invalid entry name', file=sys.stderr)
+		    sys.exit(1)
+		# if absolute path, use it
+		if os.path.isabs(entry_name):
+		    entry_path = entry_name
+		
+		# or find highest priority entry in data hierarchy
+		else:
+		    for dir in [
+		            os.getenv('XDG_DATA_HOME', os.path.join(os.getenv('HOME'), '.local/share')),
+		            *(os.getenv('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':'))
+		        ]:
+		        file = os.path.join(dir, 'wayland-sessions', entry_name)
+		        if os.path.isfile(file):
+		            entry_path = file
+		
+		if not entry_path:
+		    print('Entry not found', file=sys.stderr)
+		    sys.exit(1)
+		
+		# parse entry
+		try:
+		    entry = DesktopEntry(entry_path)
+		except exception as E:
+		    print(E, file=sys.stderr)
+		    sys.exit(1)
+		
+		# fail on inaccessible executables or hidden entries
+		error = ''
+		if entry.getHidden():
+		    error = 'Entry is hidden'
+		if ((entry.getTryExec() and not entry.findTryExec())
+		    or not entry.getExec()
+		    or not which(shlex.split(entry.getExec())[0])
+		):
+		    error = 'Entry is missing an executable'
+		if error:
+		    print(error, file=sys.stderr)
+		    sys.exit(1)
+		
+		out = []
+		for attr in ['Name', 'GenericName', 'Comment', 'Exec', 'DesktopNames']:
+		    out.append(f"{attr}={entry.get(attr, '')}")
+		print('\n'.join(out))
 	EOF
 }
 
@@ -990,7 +1066,7 @@ get_active_instance() {
 }
 
 is_active() {
-	# check and list active wayland wm unit
+	# check and list active and activating wayland wm unit
 	# return 0 if active, 1 if not
 	if [ -n "$1" ]
 	then
@@ -1000,9 +1076,10 @@ is_active() {
 		# generic
 		CHECK_UNIT="wayland-wm@*.service"
 	fi
-	if systemctl --user -q is-active "${CHECK_UNIT}"
+	RESULT="$(systemctl --user list-units --state=active,activating --quiet --full --plain  "${CHECK_UNIT}")"
+	if [ -n "$RESULT" ]
 	then
-		systemctl --user list-units --state=active --quiet --full --plain "${CHECK_UNIT}"
+		systemctl --user list-units --state=active,activating --quiet --full --plain "${CHECK_UNIT}"
 		return 0
 	else
 		systemctl --user list-units --all --quiet --full --plain "${CHECK_UNIT}"
@@ -1162,6 +1239,32 @@ then
 	else
 		echo "wayland-wm@*.service is not running"
 		exit 0
+	fi
+
+elif [ "$1" = "parse-desktop-entry" ]
+then
+	if [ -n "$2" ] && [ "$#" = "2" ]
+	then
+		desktop_entry_parse "$2"
+		exit
+	elif [ -n "$2" ] && [ "$#" -gt "2" ]
+	then
+		echo "Too many arguments" >&2
+		exit 1
+	else
+		echo "Requires name or path for desktop entry" >&2
+		exit 1
+	fi
+
+elif [ "$1" = "check-select" ]
+then
+	if [ "$#" = "1" ]
+	then
+		wm_selector
+		exit
+	else
+		echo "Too many arguments" >&2
+		exit 1
 	fi
 
 #### WM actions
