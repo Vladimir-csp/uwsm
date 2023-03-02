@@ -659,8 +659,6 @@ remove_units() {
 	remove_unit "background-graphical.slice"
 	remove_unit "session-graphical.slice"
 	remove_unit "app-@autostart.service.d/slice-tweak.conf"
-	remove_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf"
-	remove_unit "xdg-desktop-portal-.service.d/slice-tweak.conf"
 
 	if [ "$UNITS_UPDATED" = "true" ]
 	then

@@ -72,7 +72,7 @@ It generates special nested slices that will also receive stop action ordered be
 - `background-graphical.slice`
 - `session-graphical.slice`
 
-`app-*@autostart.service` and `xdg-desktop-portal-*.service` units are also modified to be started in `app-graphical.slice`.
+`app-*@autostart.service` units are also modified to be started in `app-graphical.slice`.
 
 To launch an app scoped inside one of those slices, use `wayland-session app|background|session your_app [with args]`.
 
@@ -144,7 +144,6 @@ Basic set of generated units:
 - tweaks
   - `wayland-wm@${wm}.service.d/args.conf`- if WM has arguments, they go here.
   - `app-@autostart.service.d/slice-tweak.conf` - assigns XDG autostart apps to `app-graphical.slice`
-  - `xdg-desktop-portal-.service.d/slice-tweak.conf` - assigns XDG portal implementations to `app-graphical.slice`
 
 After units are generated, WM can be started by: `systemctl --user start wayland-wm@${wm}.service`
 
