@@ -560,21 +560,20 @@ generate_units() {
 		# also put them in special graphical app slice
 		Slice=app-graphical.slice
 	EOF
-	# this does not work
-	#update_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf" <<- EOF
-	#	# injected by ${__WS_SELF__}, do not edit
-	#	[Unit]
-	#	# make the same thing as -wlr portal to stop correctly
-	#	PartOf=graphical-session.target
-	#	After=graphical-session.target
-	#	ConditionEnvironment=WAYLAND_DISPLAY
-	#EOF
-	update_unit "xdg-desktop-portal-.service.d/slice-tweak.conf" <<- EOF
+	update_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf" <<- EOF
 		# injected by ${__WS_SELF__}, do not edit
-		[Service]
-		# make xdg-desktop-portal-*.service implementations part of graphical scope
-		Slice=app-graphical.slice
+		[Unit]
+		# make the same thing as -wlr portal to stop correctly
+		PartOf=graphical-session.target
+		After=graphical-session.target
+		ConditionEnvironment=WAYLAND_DISPLAY
 	EOF
+	#update_unit "xdg-desktop-portal-.service.d/slice-tweak.conf" <<- EOF
+	#	# injected by ${__WS_SELF__}, do not edit
+	#	[Service]
+	#	# make xdg-desktop-portal-*.service implementations part of graphical scope
+	#	Slice=app-graphical.slice
+	#EOF
 
 	# args from plugins
 	__WM_ARGS_PREPEND__=''
@@ -656,7 +655,7 @@ remove_units() {
 	remove_unit "background-graphical.slice"
 	remove_unit "session-graphical.slice"
 	remove_unit "app-@autostart.service.d/slice-tweak.conf"
-	#remove_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf"
+	remove_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf"
 	remove_unit "xdg-desktop-portal-.service.d/slice-tweak.conf"
 
 	if [ "$UNITS_UPDATED" = "true" ]
@@ -1030,9 +1029,8 @@ then
 	# for use inside WM
 	# exec argv scoped into selected slice
 	RAND=$(tr -cd '0-9a-f' < /dev/urandom | head -c 10) || exit 1
-	#SLICE="${1}-graphical"
-	SLICE="${1}"
-	PREFIX="${SLICE}-$(systemd-escape "${XDG_SESSION_DESKTOP}")" || exit 1
+	SLICE="${1}-graphical"
+	PREFIX="${1}-$(systemd-escape "${XDG_SESSION_DESKTOP}")" || exit 1
 	shift
 	APP_NAME="$(systemd-escape "$1")" || exit 1
 	exec systemd-run --user --scope --slice "${SLICE}.slice" -u "${PREFIX}-${APP_NAME}-${RAND}.scope" -qG "$@"
@@ -1111,11 +1109,13 @@ then
 	__VARS__=$(echo WAYLAND_DISPLAY DISPLAY $* | varnames_filter | varnames_defined | varnames_normalize_space)
 
 	# update cleanup list
+	# get active/activating wm instance
 	__RUNNING_INSTANCE__=$(get_active_instance)
 	if [ "$?" != "0" ] || [ -z "${__RUNNING_INSTANCE__}" ]
+	then
 		echo "Could not get active or activating WM instance" >&2
 		exit 1
-	}
+	fi
 	if [ -f "${XDG_RUNTIME_DIR}/${__RUNNING_INSTANCE__}_env_names_for_cleanup" ]
 	then
 		# mush new vars wih vars from cleanup list
