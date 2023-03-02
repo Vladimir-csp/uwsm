@@ -1018,9 +1018,13 @@ elif [ "$1" = "app" ] || [ "$1" = "background" ] || [ "$1" = "session" ]
 then
 	# for use inside WM
 	# exec argv scoped into selected slice
-	SLICE="$1"
+	RAND=$(tr -cd '0-9a-f' < /dev/urandom | head -c 10) || exit 1
+	#SLICE="${1}-graphical"
+	SLICE="${1}"
+	PREFIX="${SLICE}-$(systemd-escape "${XDG_SESSION_DESKTOP}")" || exit 1
 	shift
-	exec systemd-run --user -qG --scope --slice="${SLICE}-graphical.slice" "$@"
+	APP_NAME="$(systemd-escape "$1")" || exit 1
+	exec systemd-run --user --scope --slice "${SLICE}.slice" -u "${PREFIX}-${APP_NAME}-${RAND}.scope" -qG "$@"
 
 elif [ "$1" = "is-active" ]
 then
