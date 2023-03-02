@@ -512,6 +512,8 @@ generate_units() {
 		Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target
 		Before=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target app-graphical.slice background-graphical.slice session-graphical.slice
 		PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
+		# dirty fix of xdg-desktop-portal-gtk.service shudown
+		PropagatesStopTo=xdg-desktop-portal-gtk.service
 		[Service]
 		# awaits for 'systemd-notify --ready' from WM child
 		Type=notify
@@ -560,14 +562,16 @@ generate_units() {
 		# also put them in special graphical app slice
 		Slice=app-graphical.slice
 	EOF
-	update_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf" <<- EOF
-		# injected by ${__WS_SELF__}, do not edit
-		[Unit]
-		# make the same thing as -wlr portal to stop correctly
-		PartOf=graphical-session.target
-		After=graphical-session.target
-		ConditionEnvironment=WAYLAND_DISPLAY
-	EOF
+	# this does not work
+	#update_unit "xdg-desktop-portal-gtk.service.d/part-tweak.conf" <<- EOF
+	#	# injected by ${__WS_SELF__}, do not edit
+	#	[Unit]
+	#	# make the same thing as -wlr portal to stop correctly
+	#	PartOf=graphical-session.target
+	#	After=graphical-session.target
+	#	ConditionEnvironment=WAYLAND_DISPLAY
+	#EOF
+	# this breaks xdg-desktop-portal-rewrite-launchers.service
 	#update_unit "xdg-desktop-portal-.service.d/slice-tweak.conf" <<- EOF
 	#	# injected by ${__WS_SELF__}, do not edit
 	#	[Service]
