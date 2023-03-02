@@ -170,7 +170,7 @@ show_help() {
 
 wm_selector() {
 	# parse desktop entries of wayland-sessions, present choice via whiptail
-	python <<- EOF
+	python - <<- EOF
 		try:
 		    import os, sys, shlex
 		    from xdg.DesktopEntry import DesktopEntry
@@ -382,7 +382,7 @@ varnames_union() {
 	} | sort -u
 }
 
-varnames_get_defined() {
+varnames_defined() {
 	# pipe in var names, print only defined ones
 	for __VAR__ in $(cat)
 	do
@@ -424,9 +424,10 @@ update_unit() {
 }
 
 generate_units() {
-	self_naming
 	# places customized targets bound to systemd special graphical targets
 	# in runtime systemd hierarchy
+
+	self_naming
 
 	[ -n "${__WS_SELF_FULL__}" ] || {
 		echo "${__WS_SELF__} is not in PATH" >&2
@@ -768,7 +769,7 @@ prepare_env() {
 
 	# take full snapshot of env vars state (zero-delimited)
 	# this will be used for comparisons later
-	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${__WM__}_initial_combined_env"
+	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${__WM__}_env_initial_combined"
 
 	# collect env names
 	__ENV_NAMES__=$(
@@ -829,7 +830,7 @@ prepare_env() {
 	unset DISPLAY WAYLAND_DISPLAY
 
 	# take another zero-delimited snapshot of environment for comparison
-	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${__WM__}_final_env"
+	env -0 | sort -z > "${XDG_RUNTIME_DIR}/${__WM__}_env_final"
 
 	# collect env names
 	__ENV_NAMES_AFTER__=$(
@@ -841,8 +842,8 @@ prepare_env() {
 		{
 			# names of vars modified since initial combined environment
 			comm -z -13 \
-			  "${XDG_RUNTIME_DIR}/${__WM__}_initial_combined_env" \
-			  "${XDG_RUNTIME_DIR}/${__WM__}_final_env" \
+			  "${XDG_RUNTIME_DIR}/${__WM__}_env_initial_combined" \
+			  "${XDG_RUNTIME_DIR}/${__WM__}_env_final" \
 			| cut -z -d '=' -f 1 \
 			| tr '\0' '\n' \
 			| varnames_filter
@@ -880,13 +881,13 @@ prepare_env() {
 
 	# cleanup temp files
 	rm -f \
-	  "${XDG_RUNTIME_DIR}/${__WM__}_initial_combined_env" \
-	  "${XDG_RUNTIME_DIR}/${__WM__}_final_env"
+	  "${XDG_RUNTIME_DIR}/${__WM__}_env_initial_combined" \
+	  "${XDG_RUNTIME_DIR}/${__WM__}_env_final"
 
 	# save cleanup list
 	echo ${__ENV_NAMES_FOR_CLEANUP__} \
 	  | varnames_normalize_newline \
-	  > "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names"
+	  > "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup"
 
 	__HAS_VARS__=false
 	echo "Exporting vars to systemd user manager:"
@@ -939,8 +940,8 @@ prepare_env() {
 	fi
 }
 
-cleanup_vars() {
-	# take var names from "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names"
+cleanup_env() {
+	# take var names from "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup"
 	# and ${UWSM_VARS_ALWAYS_CLEANUP}
 	# exclude ${UWSM_VARS_NEVER_CLEANUP}
 	# and remove them from systemd user manager
@@ -950,8 +951,8 @@ cleanup_vars() {
 	__ENV_NAMES_FOR_CLEANUP__=$(
 		{
 			# saved cleanup list if exists
-			[ -f "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names" ] \
-			  && cat "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names"
+			[ -f "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup" ] \
+			  && cat "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup"
 			# vars to always cleanup
 			echo ${UWSM_VARS_ALWAYS_CLEANUP}
 			# subtract vars to never cleanup
@@ -972,8 +973,8 @@ cleanup_vars() {
 		echo "  No vars"
 		__CLEANUP_RC__=0
 	fi
-	[ -f "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names" ] \
-	  && rm "${XDG_RUNTIME_DIR}/${__WM__}_for_cleanup_env_names"
+	[ -f "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup" ] \
+	  && rm "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup"
 	return ${__CLEANUP_RC__}
 }
 
@@ -1096,9 +1097,9 @@ then
 		echo "WAYLAND_DISPLAY is not defined. Are we being run by a wayland compositor or not?" >&2
 		exit 1
 	fi
-	__VARS__=$(echo WAYLAND_DISPLAY DISPLAY $* | varnames_filter | varnames_get_defined | varnames_normalize_space)
-	dbus-update-activation-environment --systemd ${__VARS__} &&\
-	  systemctl --user import-environment ${__VARS__} &&\
+	__VARS__=$(echo WAYLAND_DISPLAY DISPLAY $* | varnames_filter | varnames_defined | varnames_normalize_space)
+	dbus-update-activation-environment --systemd ${__VARS__} && \
+	  systemctl --user import-environment ${__VARS__} && \
 	  exec systemd-notify --ready
 	echo "Something went wrong" >&2
 	exit 1
@@ -1115,6 +1116,13 @@ then
 	fi
 
 #### WM actions
+
+# env modes failsafe
+elif { [ "$1" = "prepare-env" ] || [ "$1" = "cleanup-env" ] ; } && \
+     { [ -z "$MANAGERPID" ] || [ "$MANAGERPID" != "$PPID" ] ; }
+then
+	echo "$1 can only be executed by systemd user manager as a service" >&2
+	exit 1
 
 elif echo "$1" | grep -qE "${__SUPPORTED_MODES__}" && [ -n "$2" ] && [ "$#" = "2" ]
 then
@@ -1180,7 +1188,7 @@ fi
 
 if ! [ -x "$(which "${__WM__}")" ]
 then
-	echo "${__WM__} is not an executable binary" >&2
+	echo "${__WM__} is not an executable" >&2
 	CHECKOUT=false
 fi
 
@@ -1278,11 +1286,22 @@ unset __PLUGIN_PREFIX_PATH__ __PLUGIN_PREFIX_PATHS__ __PLUGIN_DIR_NAME__
 
 #### More mode decisions
 
-if [ "${__MODE__}" = "cleanup-env" ]
+if [ "${__MODE__}" = "prepare-env" ]
 then
-	cleanup_vars
-	__CLEANUP_RC__=$?
-	exit ${__CLEANUP_RC__}
+	# for use by wayland-wm-env@.service
+	# this mode prepares environment, exports it to systemd user manager
+	# no failure processing yet
+	prepare_env
+	exit
+
+elif [ "${__MODE__}" = "cleanup-env" ]
+then
+	# for use by wayland-wm-env@.service
+	# this mode cleans up systemd user manager environment from vars stored in
+	# "${XDG_RUNTIME_DIR}/${__WM__}_env_names_for_cleanup"
+	# no failure processing yet
+	cleanup_env
+	exit
 
 elif [ "${__MODE__}" = "unitgen" ]
 then
@@ -1301,13 +1320,6 @@ then
 		remove_units
 		exit
 	fi
-
-elif [ "${__MODE__}" = "prepare-env" ]
-then
-	# for use by wayland-wm-env@.service
-	# this mode prepares environment, exports it to systemd user manager
-	# no failure processing yet
-	prepare_env
 
 elif [ "${__MODE__}" = "start" ]
 then
