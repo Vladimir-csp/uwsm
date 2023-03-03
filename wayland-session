@@ -372,6 +372,7 @@ desktop_entry_parse() {
 		        file = os.path.join(dir, 'wayland-sessions', entry_name)
 		        if os.path.isfile(file):
 		            entry_path = file
+		            break
 		
 		if not entry_path:
 		    print('Entry not found', file=sys.stderr)
