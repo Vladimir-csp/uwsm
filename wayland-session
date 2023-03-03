@@ -174,35 +174,24 @@ wm_selector() {
 	python - <<- EOF
 		try:
 		    import os, sys, shlex
-		    from xdg.DesktopEntry import DesktopEntry
+		    from xdg.DesktopEntry import DesktopEntry, which
+		    from xdg import BaseDirectory
 		except ModuleNotFoundError as E:
 		    print(E, file=sys.stderr)
 		    sys.exit(126)
 		
-		def which(executable):
-		    'Simple which'
-		    for path in os.getenv('PATH', '').split(os.path.pathsep):
-		        path = os.path.join(path, executable)
-		        if os.path.exists(path) and os.access(path, os.X_OK):
-		            return path
-		    return ''
-		
 		def get_default_cmd():
 		    'Gets WM command line from wayland-session-default-cmd file in config hierarchy'
-		    for dir in [
-		            os.getenv('XDG_CONFIG_HOME', os.path.join(os.getenv('HOME'), '.config')),
-		            *(os.getenv('XDG_DATA_DIRS', '/etc/xdg').split(':'))
-		        ]:
-		        cmd_cache_file = os.path.join(dir, 'wayland-session-default-cmd')
-		        if os.path.exists(cmd_cache_file):
+		    for cmd_cache_file in BaseDirectory.load_config_paths('wayland-session-default-cmd'):
+		        if os.path.isfile(cmd_cache_file):
 		            try:
-		                with open(cmd_cache_file, 'r') as opened_cmd_cache_file:
-		                    for line in opened_cmd_cache_file.readlines():
+		                with open(cmd_cache_file, 'r') as cmd_cache_file:
+		                    for line in cmd_cache_file.readlines():
 		                        if line.strip():
 		                            return line.strip()
 		            except exception as E:
 		                print(E, file=sys.stderr)
-		                sys.exit(126)
+		                continue
 		    return ''
 		
 		default = get_default_cmd()
@@ -211,11 +200,7 @@ wm_selector() {
 		choices = []
 		
 		# find relevant desktop entries as first found paths in data hierarchy
-		for dir in [
-		        os.getenv('XDG_DATA_HOME', os.path.join(os.getenv('HOME'), '.local/share')),
-		        *(os.getenv('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':'))
-		    ]:
-		    dir = os.path.join(dir, 'wayland-sessions')
+		for dir in BaseDirectory.load_data_paths('wayland-sessions'):
 		    if os.path.isdir(dir):
 		        try:
 		            os.chdir(dir)
@@ -340,18 +325,11 @@ desktop_entry_parse() {
 	python - "$1" <<- EOF
 		try:
 		    import os, sys, shlex
-		    from xdg.DesktopEntry import DesktopEntry
+		    from xdg.DesktopEntry import DesktopEntry, which
+		    from xdg import BaseDirectory
 		except ModuleNotFoundError as E:
 		    print(E, file=sys.stderr)
 		    sys.exit(126)
-		
-		def which(executable):
-		    'Simple which'
-		    for path in os.getenv('PATH', '').split(os.path.pathsep):
-		        path = os.path.join(path, executable)
-		        if os.path.exists(path) and os.access(path, os.X_OK):
-		            return path
-		    return ''
 		
 		entry_name = sys.argv[1]
 		entry_path = ''
@@ -359,20 +337,18 @@ desktop_entry_parse() {
 		if not entry_name.endswith('.desktop'):
 		    print('Invalid entry name', file=sys.stderr)
 		    sys.exit(1)
+		
 		# if absolute path, use it
 		if os.path.isabs(entry_name):
 		    entry_path = entry_name
 		
 		# or find highest priority entry in data hierarchy
 		else:
-		    for dir in [
-		            os.getenv('XDG_DATA_HOME', os.path.join(os.getenv('HOME'), '.local/share')),
-		            *(os.getenv('XDG_DATA_DIRS', '/usr/local/share:/usr/share').split(':'))
-		        ]:
-		        file = os.path.join(dir, 'wayland-sessions', entry_name)
-		        if os.path.isfile(file):
-		            entry_path = file
-		            break
+		    entry_path = list(BaseDirectory.load_data_paths(os.path.normpath(os.path.join('wayland-sessions', entry_name))))
+		    if entry_path:
+		        entry_path = entry_path[0]
+		    else:
+		        entry_path = ''
 		
 		if not entry_path:
 		    print('Entry not found', file=sys.stderr)
