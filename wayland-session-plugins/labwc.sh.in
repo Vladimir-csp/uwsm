@@ -4,5 +4,5 @@ load_wm_env_labwc() {
 	# load wm env normally
 	load_wm_env
 	# also add env from labwc location
-	load_config_env "${__WM__}/env"
+	load_config_env "${__WM_BIN_ID__}/env"
 }

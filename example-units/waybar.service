@@ -15,3 +15,6 @@ Slice=app-graphical.slice
 WantedBy=wayland-wm@sway.service
 WantedBy=wayland-wm@wayfire.service
 WantedBy=wayland-wm@labwc.service
+WantedBy=wayland-wm@sway.desktop.service
+WantedBy=wayland-wm@wayfire.desktop.service
+WantedBy=wayland-wm@labwc.desktop.service
