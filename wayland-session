@@ -1686,10 +1686,18 @@ def stop_wm():
 
     return returncode
 
-def stop_wm_and_exit():
-    "for use in signal trap"
+def trap_stopper(signal=0, stack_frame=None):
+    "For use in signal trap. Stops wm and exits."
+    if signal == 0:
+        # reuse second arg for systemctl returncode
+        print_normal(f"systemctl returned {stack_frame}")
+    else:
+        print(f"Received signal {signal}, stopping WM...")
+        print_debug(stack_frame)
+
     returncode = stop_wm()
     if returncode != 0: print_error(f"Stop returned {returncode}")
+
     sys.exit(returncode)
 
 if __name__ == '__main__':
@@ -1770,16 +1778,16 @@ if __name__ == '__main__':
                 System has not reached graphical.target. It might be a good idea to screen for this with a condition.
                 Will continue in 3 seconds...
             """))
-            time.speep(3)
+            time.sleep(3)
 
         if args.dry_run:
             print_warning('Dry Run Mode. Will not go further.')
             sys.exit(0)
 
-        # trap exit on INT TERM HUP EXIT
-        signal.signal(signal.SIGINT, stop_wm_and_exit)
-        signal.signal(signal.SIGTERM, stop_wm_and_exit)
-        signal.signal(signal.SIGHUP, stop_wm_and_exit)
+        # trap exit on INT TERM HUP
+        signal.signal(signal.SIGINT, trap_stopper)
+        signal.signal(signal.SIGTERM, trap_stopper)
+        signal.signal(signal.SIGHUP, trap_stopper)
 
         stdout, stderr, returncode = wrap_process(
             ['systemctl', '--user', 'start', '--wait', f"wayland-wm@{wm_id}.service"],
@@ -1787,7 +1795,9 @@ if __name__ == '__main__':
             stderr=sys.stderr
         )
 
-        print_normal(f"WM service stopped, systemctl returned {returncode}")
+        # in case systemctl is killed, run trap_stopper.
+        # reuse second arg for systemctl returncode
+        trap_stopper(0, returncode)
 
     #### STOP
     elif args.mode == 'stop':
