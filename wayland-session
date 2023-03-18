@@ -951,21 +951,23 @@ def parse_args():
         '-e',
         dest='desktop_names_exclusive',
         action='store_true',
-        help='use desktop names from -d exclusively, discard other sources'
+        help='use desktop names from -D exclusively, discard other sources'
     )
     parsers['wm_args'].add_argument(
         '-N',
         metavar='Name',
         dest='wm_name',
         default='',
-        help='Fancy name for WM (filled from desktop entry by default)'
+        #help='Fancy name for WM (filled from desktop entry by default)'
+        help='Fancy name for WM'
     )
     parsers['wm_args'].add_argument(
         '-C',
         metavar='Comment',
         dest='wm_comment',
         default='',
-        help='Fancy description for WM (filled from desktop entry by default)'
+        #help='Fancy description for WM (filled from desktop entry by default)'
+        help='Fancy description for WM'
     )
 
     # start subcommand
@@ -994,12 +996,6 @@ def parse_args():
         help='Stop WM',
         description='Stops WM and optionally removes generated units.'
     )
-    #parsers['stop'].add_argument(
-    #    'wm',
-    #    nargs='?',
-    #    metavar='wm|wm.desktop',
-    #    help='executable or desktop entry (used as WM ID)'
-    #)
     parsers['stop'].add_argument(
         '-r',
         nargs='?',
@@ -1110,8 +1106,6 @@ def parse_args():
                   No wayland session is running
                   System is at graphical.target
                   Foreground VT is among allowed (default: 1)
-                Arguments:
-                  VTNR: allowed VT numbers to override default 1
         """)
     )
     parsers['may_start'].add_argument(
@@ -1310,7 +1304,7 @@ def prepare_env_gen_sh(random_mark):
         }
 
         load_wm_env() {
-        	load_config_env "wayland-session-${__WM_BIN_ID__}-env"
+        	load_config_env "wayland-session-env-${__WM_BIN_ID__}"
         }
 
         #### Basic environment
