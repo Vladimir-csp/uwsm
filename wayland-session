@@ -52,10 +52,7 @@ class varnames:
 def dedent(data: str) -> str:
     "Applies dedent, lstrips newlines, rstrips except single newline"
     data = textwrap.dedent(data).lstrip("\n")
-    if data.endswith("\n"):
-        return data.rstrip() + "\n"
-    else:
-        return data.rstrip()
+    return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
 
 
 class styles:
@@ -75,17 +72,14 @@ class styles:
 
 def random_hex(length: int = 16) -> str:
     "Returns random hex string of length"
-    return "".join([random.choice(list("0123456789abcdef")) for i in range(0, length)])
+    return "".join([random.choice(list("0123456789abcdef")) for _ in range(length)])
 
 
 def sane_split(string: str, delimiter) -> List[str]:
     "Splits string by delimiter, but returns empty list on empty string"
     if not isinstance(string, str):
         raise Exception(f"This is not a string: {string}")
-    if not string:
-        return []
-    else:
-        return string.split(delimiter)
+    return string.split(delimiter) if string else []
 
 
 # all print_* functions force flush for synchronized output
@@ -131,10 +125,7 @@ def relax_validation(exception):
     "takes pyxdg ValidationError and ignores [stupid] failures"
     ignore_lines = "ValidationError in file| is not a registered |Invalid key: "
     msgs = str(exception).splitlines()
-    for line in msgs:
-        if not re.search(ignore_lines, line):
-            return False
-    return True
+    return all(re.search(ignore_lines, line) for line in msgs)
 
 
 def self_name():
@@ -366,13 +357,13 @@ def select_de():
             for choice in choices[::2]:
                 if choice == default:
                     return choice
-    elif len(choices) == 0:
+    elif not choices:
         raise Exception("No choices found")
     else:
         raise Exception("Malformed choices")
 
     # generate arguments for whiptail exec
-    argv = (
+    argv = [
         "whiptail",
         "--clear",
         "--backtitle",
@@ -380,7 +371,7 @@ def select_de():
         "--title",
         "Choose compositor",
         "--nocancel",
-        *(("--default-item", default) if default else ()),
+        *(("--default-item", default) if default else ""),
         "--menu",
         "",
         "0",
@@ -388,7 +379,7 @@ def select_de():
         "0",
         "--notags",
         *(choices),
-    )
+    ]
 
     # replace whiptail theme with simple default colors
     whiptail_env = dict(os.environ) | {
@@ -656,7 +647,7 @@ def remove_unit(unit):
         unit_filename = os.path.basename(unit_path)
         if os.path.isdir(unit_subdir_path):
             if set(os.listdir(unit_subdir_path)) - {unit_filename}:
-                print_warning(f"Subdir {subdirunit_subdir_path} is not empty")
+                print_warning(f"Subdir {unit_subdir_path} is not empty")
             else:
                 if not args.dry_run:
                     os.rmdir(unit_subdir_path)
