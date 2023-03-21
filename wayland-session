@@ -123,10 +123,9 @@ def print_style(stls, *args):
 
 def relax_validation(exception):
     "takes pyxdg ValidationError and ignores [stupid] failures"
-    ignore_lines = "ValidationError in file| is not a registered |Invalid key: "
+    ignore_lines = r'ValidationError in file| is not a registered |Invalid key: '
     msgs = str(exception).splitlines()
     return all(re.search(ignore_lines, line) for line in msgs)
-
 
 def self_name():
     "returns basename of argv[0]"
@@ -1434,6 +1433,35 @@ def prepare_env_gen_sh(random_mark):
 
     return shell_full
 
+def filter_varnames(data):
+    """
+    Filters variable names (some environments can introduce garbage).
+    Accepts dicts of env or lists, tuples, sets of names. Returns only valid.
+    """
+    if not isinstance(data, (dict, set, list, tuple)):
+        raise Exception(f"Received {type(data)}")
+    varname_regexp = r'^([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)$'
+
+    if isinstance(data, dict):
+        for var in list(data.keys()):
+            if not re.search(varname_regexp, var):
+                print_warning(f'Encountered illegal var "{var}"')
+                data.pop(var)
+        return data
+
+    elif isinstance(data, (set, list, tuple)):
+        new_data = list()
+        for var in data:
+            if not re.search(varname_regexp, var):
+                print_warning(f'Encountered illegal var "{var}"')
+            else:
+                new_data.append(var)
+        if isinstance(data, set):
+            return set(new_data)
+        elif isinstance(data, tuple):
+            return tuple(new_data)
+        elif isinstance(data, list):
+            return new_data
 
 def prepare_env():
     """
@@ -1444,13 +1472,13 @@ def prepare_env():
     """
 
     # get current ENV
-    env_pre = dict(os.environ)
+    env_pre = filter_varnames(dict(os.environ))
 
     # Run shell code to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
 
-    stdout, stderr, returncode = wrap_process(["sh", "-"], stdin=shell_code)
+    stdout, stderr, returncode = wrap_process(["sh", "-"], stdin=shell_code, env=env_pre)
 
     # cut everything before and including random mark, also the last \0
     # treat stdout before the mark as messages
@@ -1485,6 +1513,7 @@ def prepare_env():
             env_post.update({env[0]: env[1]})
         else:
             print_error(f"No value: {env}")
+    env_post = filter_varnames(env_post)
 
     # get systemd user manager ENV names
     systemd_varnames = get_systemd_varnames()
@@ -1511,7 +1540,7 @@ def prepare_env():
             print_debug(f"Excluding export of {var}")
             set_env.pop(var)
 
-    # Set of vars to remove from systemd user manager
+    # Set of varnames to remove from systemd user manager
     # raw reverse difference
     unset_varnames = set(env_pre.keys()) - set(env_post.keys())
     # add "always_unset" vars
