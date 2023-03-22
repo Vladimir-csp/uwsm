@@ -1,13 +1,15 @@
 #!/usr/bin/python
 
+"""
 # Universal Wayland Desktop Session Manager
-# Runs selected WM with plugin-extendable tweaks
-# Manages systemd environment and targets along the way
-# Inspired by and uses some techniques from:
-#  https://github.com/xdbob/sway-services
-#  https://github.com/alebastr/sway-systemd
-#  https://github.com/swaywm/sway
-#  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
+Runs selected WM with plugin-extendable tweaks
+Manages systemd environment and targets along the way
+Inspired by and uses some techniques from:
+ https://github.com/xdbob/sway-services
+ https://github.com/alebastr/sway-systemd
+ https://github.com/swaywm/sway
+ https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
+"""
 
 import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal
 from io import StringIO
@@ -16,6 +18,7 @@ from xdg.DesktopEntry import DesktopEntry, which
 from xdg import BaseDirectory
 
 stdStream = None | int | IO[Any]
+
 
 class varnames:
     "Sets of varnames"
@@ -119,9 +122,10 @@ def print_style(stls, *args):
 
 def relax_validation(exception):
     "takes pyxdg ValidationError and ignores [stupid] failures"
-    ignore_lines = r'ValidationError in file| is not a registered |Invalid key: '
+    ignore_lines = r"ValidationError in file| is not a registered |Invalid key: "
     msgs = str(exception).splitlines()
     return all(re.search(ignore_lines, line) for line in msgs)
+
 
 def self_name():
     "returns basename of argv[0]"
@@ -211,6 +215,7 @@ def get_de(entry_name: str, subpath="wayland-sessions"):
         return {}
     else:
         return entry
+
 
 def get_default_de():
     "Gets WM desktop entry ID from wayland-session-default-id file in config hierarchy"
@@ -384,6 +389,7 @@ def select_de():
 
     return p.stderr.strip() if p.returncode == 0 and p.stderr else ""
 
+
 def get_unit_path(unit, category="runtime", level="user"):
     "Returns tuple: 0) path in category, level dir, 1) unit subpath"
     if os.path.isabs(unit):
@@ -424,7 +430,7 @@ def get_active_wm_id():
             "wayland-wm@*.service",
         ],
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if not p.stdout.strip() or p.returncode != 0:
         raise Exception(p.stdout, p.stderr)
@@ -434,12 +440,13 @@ def get_active_wm_id():
     p = subprocess.run(
         ["systemd-escape", "--unescape", "--instance", active_id],
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if not p.stdout.strip() or p.returncode != 0:
         raise Exception(p.stdout, p.stderr)
 
     return p.stdout.strip()
+
 
 def is_active(check_wm_id="", verbose=False):
     "Checks if generic or specific wm_id is in active or activating state, returns bool"
@@ -460,7 +467,7 @@ def is_active(check_wm_id="", verbose=False):
             check_unit,
         ],
         text=True,
-        capture_output=True
+        capture_output=True,
     )
 
     print_debug(
@@ -491,7 +498,7 @@ def is_active(check_wm_id="", verbose=False):
                     check_unit_generic,
                 ],
                 text=True,
-                capture_output=True
+                capture_output=True,
             )
             # don't bother for returncode here
             if p.stdout.strip():
@@ -499,6 +506,7 @@ def is_active(check_wm_id="", verbose=False):
             if p.stderr.strip():
                 print_error(p.stderr.strip())
         return False
+
 
 def reload_systemd():
     "Reloads systemd user manager"
@@ -511,19 +519,18 @@ def reload_systemd():
 
     print_normal("Reloading systemd user manager")
     p = subprocess.run(
-        ["systemctl", "--user", "daemon-reload", "-q"],
-        text=True,
-        capture_output=True
+        ["systemctl", "--user", "daemon-reload", "-q"], text=True, capture_output=True
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
-    if  p.stderr.strip():
+    if p.stderr.strip():
         print_error(p.stderr.strip())
     if p.returncode != 0:
         raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
     else:
         units_changed = False
         return True
+
 
 def update_unit(unit, data):
     "Updates unit with data if differs"
@@ -941,6 +948,7 @@ def generate_units():
     #    """)
     # )
 
+
 def remove_units(only=None):
     """
     Removes units by X-UWSMType= attribute.
@@ -952,7 +960,7 @@ def remove_units(only=None):
     p = subprocess.run(
         ["grep", "-rlF", f"X-UWSMType={only}", check_dir],
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if preturncode != 0 or not p.stdout.strip():
         return
@@ -963,6 +971,7 @@ def remove_units(only=None):
     for file in sorted(files):
         remove_unit(file)
     return
+
 
 def parse_args():
     "Parses args, returns tuple with args and a dict of parsers"
@@ -1250,7 +1259,7 @@ def finalize(additional_vars=[]):
     p = subprocess.run(
         ["dbus-update-activation-environment", "--systemd", *(export_vars)],
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1262,7 +1271,7 @@ def finalize(additional_vars=[]):
     p = subprocess.run(
         ["systemctl", "--user", "import-environment", *(export_vars)],
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1283,9 +1292,7 @@ def finalize(additional_vars=[]):
 def get_systemd_varnames():
     "Returns set of env names from systemd user manager"
     p = subprocess.run(
-        ["systemctl", "--user", "show-environment"],
-        text=True,
-        capture_output=True
+        ["systemctl", "--user", "show-environment"], text=True, capture_output=True
     )
     if p.returncode != 0:
         raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
@@ -1294,6 +1301,7 @@ def get_systemd_varnames():
     # Seems to be safe to use .splitlines().
     # If values are needed, they can be rendered
     return set([v.split("=")[0] for v in p.stdout.splitlines()])
+
 
 def prepare_env_gen_sh(random_mark):
     """
@@ -1420,6 +1428,7 @@ def prepare_env_gen_sh(random_mark):
 
     return shell_full
 
+
 def filter_varnames(data):
     """
     Filters variable names (some environments can introduce garbage).
@@ -1427,7 +1436,7 @@ def filter_varnames(data):
     """
     if not isinstance(data, (dict, set, list, tuple)):
         raise Exception(f"Received {type(data)}")
-    varname_regexp = r'^([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)$'
+    varname_regexp = r"^([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)$"
 
     if isinstance(data, dict):
         for var in list(data.keys()):
@@ -1450,6 +1459,7 @@ def filter_varnames(data):
         elif isinstance(data, list):
             return new_data
 
+
 def prepare_env():
     """
     Runs shell code to source native shell env fragments,
@@ -1465,7 +1475,9 @@ def prepare_env():
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
 
-    p = subprocess.run(["sh", "-"], text=True, input=shell_code, capture_output=True, env=env_pre)
+    p = subprocess.run(
+        ["sh", "-"], text=True, input=shell_code, capture_output=True, env=env_pre
+    )
 
     # cut everything before and including random mark, also the last \0
     # treat stdout before the mark as messages
@@ -1568,7 +1580,7 @@ def prepare_env():
         ["systemctl", "--user", "import-environment"] + sorted(set_env.keys()),
         env=env_post,
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1582,7 +1594,7 @@ def prepare_env():
         ["dbus-update-activation-environment", "--systemd"] + sorted(set_env.keys()),
         env=env_post,
         text=True,
-        capture_output=True
+        capture_output=True,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1603,7 +1615,7 @@ def prepare_env():
         p = subprocess.run(
             ["systemctl", "--user", "unset-environment"] + sorted(unset_varnames),
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -1670,7 +1682,7 @@ def cleanup_env():
             ["dbus-update-activation-environment", "--systemd"]
             + sorted([f"{n}=" for n in cleanup_varnames]),
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -1683,7 +1695,7 @@ def cleanup_env():
         p = subprocess.run(
             ["systemctl", "--user", "unset-environment"] + sorted(cleanup_varnames),
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -1695,6 +1707,7 @@ def cleanup_env():
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
         print_ok(f'Removed "{os.path.basename(cleanup_file)}"')
+
 
 def fill_wm_globals():
     "Fills global vars wm_argv, wm_id, wm_bin_id, wm_desktop_names, wm_name, wm_description based on args or desktop entry"
@@ -1820,7 +1833,7 @@ def stop_wm():
             p = subprocess.run(
                 ["systemctl", "--user", "stop", "wayland-wm@*.service"],
                 text=True,
-                capture_output=True
+                capture_output=True,
             )
             if p.stdout.strip():
                 print_normal(p.stdout.strip())
@@ -1834,6 +1847,7 @@ def stop_wm():
         returncode = 0
 
     return returncode
+
 
 def trap_stopper(signal=0, stack_frame=None):
     "For use in signal trap. Stops wm and exits."
@@ -1927,14 +1941,16 @@ if __name__ == "__main__":
         p = subprocess.run(
             ["systemctl", "is-active", "-q", "graphical.target"],
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.returncode != 0:
             print_warning(
-                dedent("""
+                dedent(
+                    """
                    System has not reached graphical.target. It might be a good idea to screen for this with a condition.
                    Will continue in 3 seconds...
-                """)
+                """
+                )
             )
             time.sleep(3)
 
@@ -1993,7 +2009,7 @@ if __name__ == "__main__":
         p = subprocess.run(
             ["systemd-escape", os.getenv("XDG_SESSION_DESKTOP", "uwsm")],
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.returncode != 0 or not p.stdout.strip():
             print_error(p.stderr.strip())
@@ -2005,7 +2021,7 @@ if __name__ == "__main__":
         p = subprocess.run(
             ["systemd-escape", args.app_name or os.path.basename(args.cmd)],
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.returncode != 0 or not p.stdout.strip():
             print_error(p.stderr.strip())
@@ -2073,7 +2089,7 @@ if __name__ == "__main__":
         p = subprocess.run(
             ["systemctl", "is-active", "-q", "graphical.target"],
             text=True,
-            capture_output=True
+            capture_output=True,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
