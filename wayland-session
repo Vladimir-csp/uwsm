@@ -20,7 +20,7 @@ from xdg import BaseDirectory
 stdStream = None | int | IO[Any]
 
 
-class varnames:
+class Varnames:
     "Sets of varnames"
     always_export = {
         "XDG_SESSION_ID",
@@ -54,7 +54,8 @@ def dedent(data: str) -> str:
     return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
 
 
-class styles:
+class Styles:
+    "Terminal control characters for color and style"
     reset = "\033[0m"
     red = "\033[31m"
     green = "\033[32m"
@@ -82,42 +83,47 @@ def sane_split(string: str, delimiter) -> List[str]:
 
 
 # all print_* functions force flush for synchronized output
-def print_normal(*args):
-    print(*args, flush=True)
+def print_normal(*what, **how):
+    "Normal print with flush"
+    print(*what, **how, flush=True)
 
 
-def print_ok(*args):
-    print(styles.green, end="", flush=True)
-    print(*args, flush=True)
-    print(styles.reset, end="", file=sys.stderr, flush=True)
+def print_ok(*what, **how):
+    "Prints in green"
+    print(Styles.green, end="", flush=True)
+    print(*what, **how, flush=True)
+    print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_warning(*args):
-    print(styles.yellow, end="", flush=True)
-    print(*args, flush=True)
-    print(styles.reset, end="", file=sys.stderr, flush=True)
+def print_warning(*what, **how):
+    "Prints in yellow"
+    print(Styles.yellow, end="", flush=True)
+    print(*what, **how, flush=True)
+    print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_error(*args):
-    print(styles.red, end="", file=sys.stderr, flush=True)
-    print(*args, file=sys.stderr, flush=True)
-    print(styles.reset, end="", file=sys.stderr, flush=True)
+def print_error(*what, **how):
+    "Prints in red to stderr"
+    print(Styles.red, end="", file=sys.stderr, flush=True)
+    print(*what, **how, file=sys.stderr, flush=True)
+    print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_debug(*args):
+def print_debug(*what, **how):
+    "Prints to stderr if DEBUG=N where N > 0"
     if int(os.getenv("DEBUG", "0")) > 0:
-        print("DEBUG\n", *args, "\nEND_DEBUG", file=sys.stderr, flush=True)
-        print(styles.reset, end="", file=sys.stderr, flush=True)
+        print("DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True)
+        print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_style(stls, *args):
+def print_style(stls, *what, **how):
     "Prints selected style(s), then args, then resets"
     if isinstance(stls, str):
         stls = [stls]
     for style in stls:
         print(style, end="", flush=True)
-    print(*args, flush=True)
-    print(styles.reset, end="", file=sys.stderr, flush=True)
+    print(*what, **how, flush=True)
+    print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
 def relax_validation(exception):
@@ -133,12 +139,12 @@ def self_name():
 
 
 def self_path():
+    "returns path to argv[0] in PATH"
     path = which(self_name())
     if path:
         return path
-    else:
-        print_error(f"{self_name()} is not in PATH or is not executable")
-        sys.exit(0)
+    print_error(f"{self_name()} is not in PATH or is not executable")
+    sys.exit(0)
 
 
 def load_lib_paths(subpath):
@@ -210,11 +216,12 @@ def get_de(entry_name: str, subpath="wayland-sessions"):
         or not which(shlex.split(entry.getExec())[0])  # type: ignore
     ):
         msg = "Entry is missing an executable"
+
     if msg:
         print_warning(msg)
         return {}
-    else:
-        return entry
+
+    return entry
 
 
 def get_default_de():
@@ -222,7 +229,7 @@ def get_default_de():
     for cmd_cache_file in BaseDirectory.load_config_paths("wayland-session-default-id"):
         if os.path.isfile(cmd_cache_file):
             try:
-                with open(cmd_cache_file, "r") as cmd_cache_file:
+                with open(cmd_cache_file, "r", encoding="UTF-8") as cmd_cache_file:
                     for line in cmd_cache_file.readlines():
                         if line.strip():
                             wmid = line.strip()
@@ -242,7 +249,7 @@ def save_default_de(default):
         config = os.path.join(
             BaseDirectory.xdg_config_home, "wayland-session-default-id"
         )
-        with open(config, "w") as config:
+        with open(config, "w", encoding="UTF-8") as config:
             config.write(default)
             print_ok(f"Saved default WM ID: {default}")
     else:
@@ -259,17 +266,17 @@ def select_de():
     choices: List[str] = []
 
     # find relevant desktop entries as first found paths in data hierarchy
-    for dir in BaseDirectory.load_data_paths("wayland-sessions"):
-        if os.path.isdir(dir):
+    for ws_dir in BaseDirectory.load_data_paths("wayland-sessions"):
+        if os.path.isdir(ws_dir):
             try:
-                os.chdir(dir)
+                os.chdir(ws_dir)
                 for file in os.listdir():
                     if (
                         os.path.splitext(file)[1] == ".desktop"
                         and file not in seen_entries
                     ):
                         seen_entries.append(file)
-                        entry_files.append(os.path.join(dir, file))
+                        entry_files.append(os.path.join(ws_dir, file))
             except Exception as E:
                 print_error(E)
                 sys.exit(126)
@@ -311,16 +318,14 @@ def select_de():
     for choice in choices_raw:
         choices.append(choice[0])
         if choice[2]:
-            choices.append(
-                "{} ({})".format(choice[1].ljust(description_length), choice[2])
-            )
+            choices.append(f"{choice[1].ljust(description_length)} ({choice[2]})")
         else:
             choices.append(choice[1])
 
     if len(choices) == 2 and default == choices[0]:
         # just spit out the only preselected choice
         raise Exception(f"Choices for whiptail not even: {choices}")
-    elif len(choices) > 2 and len(choices) % 2 == 0:
+    if len(choices) > 2 and len(choices) % 2 == 0:
         # drop default if not among choices
         if default and default not in choices[::2]:
             default = ""
@@ -385,7 +390,9 @@ def select_de():
         ),
     }
     # run whiptail, capture stderr
-    p = subprocess.run(argv, env=whiptail_env, stderr=subprocess.PIPE, text=True)
+    p = subprocess.run(
+        argv, env=whiptail_env, stderr=subprocess.PIPE, text=True, check=False
+    )
 
     return p.stderr.strip() if p.returncode == 0 and p.stderr else ""
 
@@ -431,6 +438,7 @@ def get_active_wm_id():
         ],
         text=True,
         capture_output=True,
+        check=False,
     )
     if not p.stdout.strip() or p.returncode != 0:
         raise Exception(p.stdout, p.stderr)
@@ -441,6 +449,7 @@ def get_active_wm_id():
         ["systemd-escape", "--unescape", "--instance", active_id],
         text=True,
         capture_output=True,
+        check=False,
     )
     if not p.stdout.strip() or p.returncode != 0:
         raise Exception(p.stdout, p.stderr)
@@ -453,8 +462,9 @@ def is_active(check_wm_id="", verbose=False):
     if check_wm_id:
         check_unit = f"wayland-wm@{check_wm_id}.service"
     else:
-        check_unit = f"wayland-wm@*.service"
-    check_unit_generic = f"wayland-wm@*.service"
+        check_unit = "wayland-wm@*.service"
+    check_unit_generic = "wayland-wm@*.service"
+
     p = subprocess.run(
         [
             "systemctl",
@@ -468,50 +478,55 @@ def is_active(check_wm_id="", verbose=False):
         ],
         text=True,
         capture_output=True,
+        check=False,
     )
 
     print_debug(
-        f"is-active stdout:\n{p.stdout.strip() if p.stdout != None else ''}\nis-active stderr:\n{p.stderr.strip() if p.stderr != None else ''}"
+        f"is-active stdout:\n{p.stdout.strip() if p.stdout is not None else ''}\nis-active stderr:\n{p.stderr.strip() if p.stderr is not None else ''}"
     )
 
     if p.returncode != 0:
         # list-units always returns 0
-        raise_exception(p.stdout, p.stderr, p.returncode)
-    elif p.stdout.strip():
+        raise Exception(p.stdout, p.stderr, p.returncode)
+
+    if p.stdout.strip():
         if verbose:
             if p.stdout.strip():
                 print_normal(p.stdout.strip())
             if p.stderr.strip():
                 print_error(p.stderr.strip())
         return True
-    else:
-        if verbose:
-            p = subprocess.run(
-                [
-                    "systemctl",
-                    "--user",
-                    "list-units",
-                    "--all",
-                    "-q",
-                    "--full",
-                    "--plain",
-                    check_unit_generic,
-                ],
-                text=True,
-                capture_output=True,
-            )
-            # don't bother for returncode here
-            if p.stdout.strip():
-                print_normal(p.stdout.strip())
-            if p.stderr.strip():
-                print_error(p.stderr.strip())
-        return False
+
+    if verbose:
+        p = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "list-units",
+                "--all",
+                "-q",
+                "--full",
+                "--plain",
+                check_unit_generic,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        # don't bother for returncode here
+        if p.stdout.strip():
+            print_normal(p.stdout.strip())
+        if p.stderr.strip():
+            print_error(p.stderr.strip())
+
+    return False
 
 
 def reload_systemd():
     "Reloads systemd user manager"
 
     global units_changed
+
     if args.dry_run:
         print_normal("Will reload systemd user manager")
         units_changed = False
@@ -519,22 +534,28 @@ def reload_systemd():
 
     print_normal("Reloading systemd user manager")
     p = subprocess.run(
-        ["systemctl", "--user", "daemon-reload", "-q"], text=True, capture_output=True
+        ["systemctl", "--user", "daemon-reload", "-q"],
+        text=True,
+        capture_output=True,
+        check=False,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
     if p.stderr.strip():
         print_error(p.stderr.strip())
+
     if p.returncode != 0:
         raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
-    else:
-        units_changed = False
-        return True
+
+    units_changed = False
+    return True
 
 
 def update_unit(unit, data):
-    "Updates unit with data if differs"
-    "Returns change in boolean"
+    """
+    Updates unit with data if differs
+    Returns change in boolean
+    """
 
     global units_changed
 
@@ -564,31 +585,32 @@ def update_unit(unit, data):
             print_ok(f'Created dir "{check_dir}/"')
         elif not units_changed:
             print_ok(f'Will create dir "{check_dir}/"')
-    for dir in [d for d in os.path.dirname(unit).split(os.path.sep) if d]:
-        check_dir = os.path.join(check_dir, dir)
+    for path_element in [d for d in os.path.dirname(unit).split(os.path.sep) if d]:
+        check_dir = os.path.join(check_dir, path_element)
         if not os.path.isdir(check_dir):
             if not args.dry_run:
                 os.mkdir(check_dir)
-                print_ok(f'Created unit subdir "{dir}/"')
+                print_ok(f'Created unit subdir "{path_element}/"')
             else:
-                print_ok(f'Will create unit subdir "{dir}/"')
+                print_ok(f'Will create unit subdir "{path_element}/"')
 
     old_data = ""
     if os.path.isfile(unit_path):
-        with open(unit_path, "r") as unit_file:
+        with open(unit_path, "r", encoding="UTF-8") as unit_file:
             old_data = unit_file.read()
 
     if data == old_data:
         return False
+
+    if not args.dry_run:
+        with open(unit_path, "w", encoding="UTF-8") as unit_file:
+            unit_file.write(data)
+        print_ok(f'Updated "{unit}"')
     else:
-        if not args.dry_run:
-            with open(unit_path, "w") as unit_file:
-                unit_file.write(data)
-            print_ok(f'Updated "{unit}"')
-        else:
-            print_ok(f'Will update "{unit}"')
-        units_changed = True
-        return True
+        print_ok(f'Will update "{unit}"')
+
+    units_changed = True
+    return True
 
 
 def remove_unit(unit):
@@ -961,8 +983,9 @@ def remove_units(only=None):
         ["grep", "-rlF", f"X-UWSMType={only}", check_dir],
         text=True,
         capture_output=True,
+        check=False,
     )
-    if preturncode != 0 or not p.stdout.strip():
+    if p.returncode != 0 or not p.stdout.strip():
         return
 
     files = p.stdout.splitlines()
@@ -1106,7 +1129,7 @@ def parse_args():
         "-s",
         dest="slice",
         metavar="a|b|s|custom.slice",
-        help=f"{{{styles.under}a{styles.reset}pp,{styles.under}b{styles.reset}ackground,{styles.under}s{styles.reset}ession}}-graphical.slice, or any other. (default: %(default)s)",
+        help=f"{{{Styles.under}a{Styles.reset}pp,{Styles.under}b{Styles.reset}ackground,{Styles.under}s{Styles.reset}ession}}-graphical.slice, or any other. (default: %(default)s)",
         default="a",
     )
     parsers["app"].add_argument(
@@ -1230,7 +1253,7 @@ def finalize(additional_vars=[]):
         sys.exit(1)
     export_vars = []
     for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(additional_vars):
-        if os.getenv(var, None) != None and var not in export_vars:
+        if os.getenv(var, None) is not None and var not in export_vars:
             export_vars.append(var)
 
     wm_id = get_active_wm_id()
@@ -1240,26 +1263,27 @@ def finalize(additional_vars=[]):
         BaseDirectory.get_runtime_dir(strict=True), f"env_names_for_cleanup_{wm_id}"
     )
     if os.path.isfile(cleanup_file):
-        with open(cleanup_file, "r") as open_cleanup_file:
+        with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
             current_cleanup_varnames = {
                 l.strip() for l in open_cleanup_file.readlines() if l.strip()
             }
     else:
         print_error(f'"{cleanup_file}" does not exist\nAssuming env preloader failed')
         sys.exit(1)
-    with open(cleanup_file, "w") as open_cleanup_file:
+    with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
         open_cleanup_file.write(
             "\n".join(sorted(current_cleanup_varnames | set(export_vars)))
         )
 
     # export vars
     print_normal(
-        f"Exporting variables to systemd_user_manager:\n  " + "\n  ".join(export_vars)
+        "Exporting variables to systemd_user_manager:\n  " + "\n  ".join(export_vars)
     )
     p = subprocess.run(
         ["dbus-update-activation-environment", "--systemd", *(export_vars)],
         text=True,
         capture_output=True,
+        check=False,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1272,6 +1296,7 @@ def finalize(additional_vars=[]):
         ["systemctl", "--user", "import-environment", *(export_vars)],
         text=True,
         capture_output=True,
+        check=False,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1292,7 +1317,10 @@ def finalize(additional_vars=[]):
 def get_systemd_varnames():
     "Returns set of env names from systemd user manager"
     p = subprocess.run(
-        ["systemctl", "--user", "show-environment"], text=True, capture_output=True
+        ["systemctl", "--user", "show-environment"],
+        text=True,
+        capture_output=True,
+        check=False,
     )
     if p.returncode != 0:
         raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
@@ -1300,7 +1328,7 @@ def get_systemd_varnames():
     # Either var=value or var=$'complex\nescaped\nvalue'.
     # Seems to be safe to use .splitlines().
     # If values are needed, they can be rendered
-    return set([v.split("=")[0] for v in p.stdout.splitlines()])
+    return {v.split("=")[0] for v in p.stdout.splitlines()}
 
 
 def prepare_env_gen_sh(random_mark):
@@ -1445,7 +1473,7 @@ def filter_varnames(data):
                 data.pop(var)
         return data
 
-    elif isinstance(data, (set, list, tuple)):
+    if isinstance(data, (set, list, tuple)):
         new_data = list()
         for var in data:
             if not re.search(varname_regexp, var):
@@ -1454,9 +1482,9 @@ def filter_varnames(data):
                 new_data.append(var)
         if isinstance(data, set):
             return set(new_data)
-        elif isinstance(data, tuple):
+        if isinstance(data, tuple):
             return tuple(new_data)
-        elif isinstance(data, list):
+        if isinstance(data, list):
             return new_data
 
 
@@ -1476,7 +1504,12 @@ def prepare_env():
     shell_code = prepare_env_gen_sh(random_mark)
 
     p = subprocess.run(
-        ["sh", "-"], text=True, input=shell_code, capture_output=True, env=env_pre
+        ["sh", "-"],
+        text=True,
+        input=shell_code,
+        capture_output=True,
+        env=env_pre,
+        check=False,
     )
 
     # cut everything before and including random mark, also the last \0
@@ -1490,9 +1523,9 @@ def prepare_env():
         if p.stderr.strip():
             print_error(p.stderr.strip())
         raise Exception("No env mark in shell output!")
-    else:
-        stdout_msg = p.stdout[0:mark_position]
-        stdout = p.stdout[mark_position + len(random_mark) :].rstrip("\0")
+
+    stdout_msg = p.stdout[0:mark_position]
+    stdout = p.stdout[mark_position + len(random_mark) :].rstrip("\0")
 
     # print stdout if any
     if stdout_msg.strip():
@@ -1527,14 +1560,14 @@ def prepare_env():
 
     # add "always_export" vars from env_post to set_env
     for var in sorted(
-        varnames.always_export - varnames.never_export - varnames.always_unset
+        Varnames.always_export - Varnames.never_export - Varnames.always_unset
     ):
         if var in env_post:
             print_debug(f'Forcing export of {var}="{env_post[var]}"')
             set_env.update({var: env_post[var]})
 
     # remove "never_export" and "always_unset" vars from set_env
-    for var in varnames.never_export | varnames.always_unset:
+    for var in Varnames.never_export | Varnames.always_unset:
         if var in set_env:
             print_debug(f"Excluding export of {var}")
             set_env.pop(var)
@@ -1543,13 +1576,13 @@ def prepare_env():
     # raw reverse difference
     unset_varnames = set(env_pre.keys()) - set(env_post.keys())
     # add "always_unset" vars
-    unset_varnames = unset_varnames | set(varnames.always_unset)
+    unset_varnames = unset_varnames | set(Varnames.always_unset)
     # leave only those that are defined in systemd user manager
     unset_varnames = unset_varnames & systemd_varnames
 
     # Set of vars to remove from systemd user manager on shutdown
     cleanup_varnames = (
-        set(set_env.keys()) | varnames.always_cleanup - varnames.never_cleanup
+        set(set_env.keys()) | Varnames.always_cleanup - Varnames.never_cleanup
     )
 
     # write cleanup file
@@ -1558,14 +1591,14 @@ def prepare_env():
         BaseDirectory.get_runtime_dir(strict=True), f"env_names_for_cleanup_{wm_id}"
     )
     if os.path.isfile(cleanup_file):
-        with open(cleanup_file, "r") as open_cleanup_file:
+        with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
             current_cleanup_varnames = {
                 l.strip() for l in open_cleanup_file.readlines() if l.strip()
             }
     else:
         current_cleanup_varnames = set()
     # write cleanup file
-    with open(cleanup_file, "w") as open_cleanup_file:
+    with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
         open_cleanup_file.write(
             "\n".join(sorted(current_cleanup_varnames | cleanup_varnames))
         )
@@ -1581,6 +1614,7 @@ def prepare_env():
         env=env_post,
         text=True,
         capture_output=True,
+        check=False,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1595,6 +1629,7 @@ def prepare_env():
         env=env_post,
         text=True,
         capture_output=True,
+        check=False,
     )
     if p.stdout.strip():
         print_normal(p.stdout.strip())
@@ -1616,6 +1651,7 @@ def prepare_env():
             ["systemctl", "--user", "unset-environment"] + sorted(unset_varnames),
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -1635,8 +1671,8 @@ def prepare_env():
 def cleanup_env():
     """
     takes var names from "${XDG_RUNTIME_DIR}/env_names_for_cleanup_*"
-    union varnames.always_cleanup,
-    difference varnames.never_cleanup,
+    union Varnames.always_cleanup,
+    difference Varnames.never_cleanup,
     intersect actual systemd user manager varnames,
     and remove them from systemd user manager.
     Remove found cleanup files
@@ -1658,7 +1694,7 @@ def cleanup_env():
     current_cleanup_varnames = set()
     for cleanup_file in cleanup_files:
         if os.path.isfile(cleanup_file):
-            with open(cleanup_file, "r") as open_cleanup_file:
+            with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
                 current_cleanup_varnames = current_cleanup_varnames | {
                     l.strip() for l in open_cleanup_file.readlines() if l.strip()
                 }
@@ -1667,7 +1703,7 @@ def cleanup_env():
 
     cleanup_varnames = (
         current_cleanup_varnames
-        | varnames.always_cleanup - varnames.never_cleanup & systemd_varnames
+        | Varnames.always_cleanup - Varnames.never_cleanup & systemd_varnames
     )
 
     if cleanup_varnames:
@@ -1683,6 +1719,7 @@ def cleanup_env():
             + sorted([f"{n}=" for n in cleanup_varnames]),
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -1696,6 +1733,7 @@ def cleanup_env():
             ["systemctl", "--user", "unset-environment"] + sorted(cleanup_varnames),
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -1834,6 +1872,7 @@ def stop_wm():
                 ["systemctl", "--user", "stop", "wayland-wm@*.service"],
                 text=True,
                 capture_output=True,
+                check=False,
             )
             if p.stdout.strip():
                 print_normal(p.stdout.strip())
@@ -1942,6 +1981,7 @@ if __name__ == "__main__":
             ["systemctl", "is-active", "-q", "graphical.target"],
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.returncode != 0:
             print_warning(
@@ -1964,7 +2004,8 @@ if __name__ == "__main__":
         signal.signal(signal.SIGHUP, trap_stopper)
 
         p = subprocess.run(
-            ["systemctl", "--user", "start", "--wait", f"wayland-wm@{wm_id}.service"]
+            ["systemctl", "--user", "start", "--wait", f"wayland-wm@{wm_id}.service"],
+            check=False,
         )
 
         # in case systemctl is killed, run trap_stopper.
@@ -1978,7 +2019,7 @@ if __name__ == "__main__":
             print_error(f"Stop returned {returncode}")
 
         # args.remove_units is False when not given, None if given without argument
-        if args.remove_units != False:
+        if args.remove_units is not False:
             remove_units(args.remove_units)
             if units_changed:
                 reload_systemd()
@@ -1994,13 +2035,13 @@ if __name__ == "__main__":
     #### APP
     elif args.mode == "app":
         if args.slice == "a":
-            slice = "app-graphical.slice"
+            slice_name = "app-graphical.slice"
         elif args.slice == "b":
-            slice = "background-graphical.slice"
+            slice_name = "background-graphical.slice"
         elif args.slice == "s":
-            slice = "session-graphical.slice"
+            slice_name = "session-graphical.slice"
         elif args.slice.endswith(".slice"):
-            slice = args.slice
+            slice_name = args.slice
         else:
             print_error(f"Invalid slice name: {args.slice}")
             sys.exit(1)
@@ -2010,6 +2051,7 @@ if __name__ == "__main__":
             ["systemd-escape", os.getenv("XDG_SESSION_DESKTOP", "uwsm")],
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.returncode != 0 or not p.stdout.strip():
             print_error(p.stderr.strip())
@@ -2022,6 +2064,7 @@ if __name__ == "__main__":
             ["systemd-escape", args.app_name or os.path.basename(args.cmd)],
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.returncode != 0 or not p.stdout.strip():
             print_error(p.stderr.strip())
@@ -2035,7 +2078,7 @@ if __name__ == "__main__":
             "--user",
             "--scope",
             "--slice",
-            slice,
+            slice_name,
             "-u",
             f"app-{desktop_scopename}-{cmd_scopename}-{random_hex(8)}.scope",
             "-qG",
@@ -2057,7 +2100,9 @@ if __name__ == "__main__":
 
         # check if parent process is a login shell
         try:
-            with open(f"/proc/{os.getppid()}/cmdline", "r") as ppcmdline:
+            with open(
+                f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
+            ) as ppcmdline:
                 parent_cmdline = ppcmdline.read()
                 parent_cmdline = parent_cmdline.strip()
             print_debug(f"parent_pid: {os.getppid()}")
@@ -2070,7 +2115,7 @@ if __name__ == "__main__":
             dealbreakers.append("Not in login shell")
 
         # check foreground VT
-        p = subprocess.run(["fgconsole"], text=True, capture_output=True)
+        p = subprocess.run(["fgconsole"], text=True, capture_output=True, check=False)
         if p.stderr.strip():
             print_error(p.stderr.strip())
         fgvt = p.stdout.strip()
@@ -2090,6 +2135,7 @@ if __name__ == "__main__":
             ["systemctl", "is-active", "-q", "graphical.target"],
             text=True,
             capture_output=True,
+            check=False,
         )
         if p.stdout.strip():
             print_normal(p.stdout.strip())
