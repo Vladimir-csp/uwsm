@@ -91,29 +91,31 @@ def print_normal(*what, **how):
 def print_ok(*what, **how):
     "Prints in green"
     print(Styles.green, end="", flush=True)
-    print(*what, **how, flush=True)
-    print(Styles.reset, end="", file=sys.stderr, flush=True)
+    print(*what, **how, flush=True, end="")
+    print(Styles.reset, file=sys.stderr, flush=True)
 
 
 def print_warning(*what, **how):
     "Prints in yellow"
     print(Styles.yellow, end="", flush=True)
-    print(*what, **how, flush=True)
-    print(Styles.reset, end="", file=sys.stderr, flush=True)
+    print(*what, **how, flush=True, end="")
+    print(Styles.reset, file=sys.stderr, flush=True)
 
 
 def print_error(*what, **how):
     "Prints in red to stderr"
     print(Styles.red, end="", file=sys.stderr, flush=True)
-    print(*what, **how, file=sys.stderr, flush=True)
-    print(Styles.reset, end="", file=sys.stderr, flush=True)
+    print(*what, **how, file=sys.stderr, flush=True, end="")
+    print(Styles.reset, file=sys.stderr, flush=True)
 
 
 def print_debug(*what, **how):
     "Prints to stderr if DEBUG=N where N > 0"
     if int(os.getenv("DEBUG", "0")) > 0:
-        print("DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True)
-        print(Styles.reset, end="", file=sys.stderr, flush=True)
+        print(
+            "DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True, end=""
+        )
+        print(Styles.reset, file=sys.stderr, flush=True)
 
 
 def print_style(stls, *what, **how):
@@ -122,8 +124,8 @@ def print_style(stls, *what, **how):
         stls = [stls]
     for style in stls:
         print(style, end="", flush=True)
-    print(*what, **how, flush=True)
-    print(Styles.reset, end="", file=sys.stderr, flush=True)
+    print(*what, **how, flush=True, end="")
+    print(Styles.reset, file=sys.stderr, flush=True)
 
 
 def relax_validation(exception):
@@ -183,7 +185,6 @@ def get_de(entry_name: str, subpath="wayland-sessions"):
         print_debug(
             f'Entry path is relative: "{entry_name}"\n searching in "{list(BaseDirectory.load_data_paths(subpath))}"'
         )
-        print_debug()
         entry_path = list(
             BaseDirectory.load_data_paths(
                 os.path.normpath(os.path.join(subpath, entry_name))
@@ -393,6 +394,7 @@ def select_de():
     p = subprocess.run(
         argv, env=whiptail_env, stderr=subprocess.PIPE, text=True, check=False
     )
+    print_debug(p)
 
     return p.stderr.strip() if p.returncode == 0 and p.stderr else ""
 
@@ -440,6 +442,7 @@ def get_active_wm_id():
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if not p.stdout.strip() or p.returncode != 0:
         raise Exception(p.stdout, p.stderr)
 
@@ -451,6 +454,7 @@ def get_active_wm_id():
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if not p.stdout.strip() or p.returncode != 0:
         raise Exception(p.stdout, p.stderr)
 
@@ -480,10 +484,7 @@ def is_active(check_wm_id="", verbose=False):
         capture_output=True,
         check=False,
     )
-
-    print_debug(
-        f"is-active stdout:\n{p.stdout.strip() if p.stdout is not None else ''}\nis-active stderr:\n{p.stderr.strip() if p.stderr is not None else ''}"
-    )
+    print_debug(p)
 
     if p.returncode != 0:
         # list-units always returns 0
@@ -513,6 +514,7 @@ def is_active(check_wm_id="", verbose=False):
             capture_output=True,
             check=False,
         )
+        print_debug(p)
         # don't bother for returncode here
         if p.stdout.strip():
             print_normal(p.stdout.strip())
@@ -539,6 +541,7 @@ def reload_systemd():
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.stdout.strip():
         print_normal(p.stdout.strip())
     if p.stderr.strip():
@@ -985,6 +988,7 @@ def remove_units(only=None):
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.returncode != 0 or not p.stdout.strip():
         return
 
@@ -1285,6 +1289,7 @@ def finalize(additional_vars=[]):
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.stdout.strip():
         print_normal(p.stdout.strip())
     if p.stderr.strip():
@@ -1298,6 +1303,7 @@ def finalize(additional_vars=[]):
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.stdout.strip():
         print_normal(p.stdout.strip())
     if p.stderr.strip():
@@ -1322,6 +1328,7 @@ def get_systemd_varnames():
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.returncode != 0:
         raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
     # Systemctl always returns one value per line
@@ -1329,6 +1336,112 @@ def get_systemd_varnames():
     # Seems to be safe to use .splitlines().
     # If values are needed, they can be rendered
     return {v.split("=")[0] for v in p.stdout.splitlines()}
+
+
+def get_fg_vt(verbose: bool = False):
+    "Returns number of foreground VT or None"
+    p = subprocess.run(["fgconsole"], text=True, capture_output=True, check=False)
+    print_debug(p)
+
+    if p.stderr.strip():
+        if verbose:
+            print_error(f"fgconsole error:\n{p.stderr.strip()}")
+
+    if p.returncode != 0:
+        if verbose:
+            print_error(
+                f"Could not determine foreground VT, fgconsole returned {p.returncode}"
+            )
+        return None
+
+    fgvt = p.stdout.strip()
+
+    if not fgvt or not fgvt.isnumeric():
+        if verbose:
+            print_error(
+                f'Could not determine foreground VT, fgconsole output: "{p.stdout.strip()}"'
+            )
+        return None
+
+    fgvt = int(fgvt)
+    return fgvt
+
+
+def get_session_by_vt(vt: int, verbose: bool = False):
+    "Takes VT number, returns associated XDG session ID or None"
+
+    # get session list
+    p = subprocess.run(
+        ["loginctl", "list-sessions", "--no-legend", "--no-pager"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    print_debug(p)
+    if p.returncode != 0:
+        if verbose:
+            print_error(f'"{shlex.join(p.args)}" returned {p.returncode}')
+        return None
+    if p.stderr.strip():
+        print_error(p.stderr.strip())
+
+    # iterate over sessions
+    for line in p.stdout.splitlines():
+        # id is the first number in line, can be space-padded, so strip
+        session_id = line.strip().split(" ")[0]
+        if not session_id.isnumeric():
+            if verbose:
+                print_error(f'Encountered malformed session ID "{session_id}"')
+            continue
+
+        # get session user and VTNr
+        p2 = subprocess.run(
+            [
+                "loginctl",
+                "show-session",
+                session_id,
+                "--property",
+                "Name",
+                "--property",
+                "VTNr",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        print_debug(p2)
+        if p2.returncode != 0:
+            if verbose:
+                print_error(f'"{shlex.join(p2.args)}" returned {p2.returncode}')
+            continue
+        if p2.stderr.strip():
+            print_error(p.stderr.strip())
+
+        # order is not governed by arguments, seems to be alphabetic, but sort to be sure
+        props = sorted(p2.stdout.splitlines())
+        if len(props) != 2:
+            if verbose:
+                print_error(
+                    f'{shlex.join(p2.args)}" printed unparseable properties:\n{p2.stdout.strip()}'
+                )
+            continue
+        user: str = props[0].split("=")[1]
+        vtnr: str = props[1].split("=")[1]
+
+        if not user:
+            if verbose:
+                print_error(f'{shlex.join(p2.args)}" printed empty user')
+            continue
+        if not vtnr.isnumeric():
+            if verbose:
+                print_error(f'{shlex.join(p2.args)}" printed malformed vtnr: "{vtnr}"')
+            continue
+
+        if int(vtnr) == vt and user == os.getlogin():
+            session_id = int(session_id)
+            return session_id
+
+    return None
 
 
 def prepare_env_gen_sh(random_mark):
@@ -1499,6 +1612,15 @@ def prepare_env():
     # get current ENV
     env_pre = filter_varnames(dict(os.environ))
 
+    # override XDG_VTNR and XDG_SESSION_ID right away, they are in Varnames.always_export
+    vt = get_fg_vt()
+    if vt is None:
+        raise Exception("Could not determine foreground VT")
+    session_id = get_session_by_vt(vt)
+    if session_id is None:
+        raise Exception("Could not determine session of foreground VT")
+    env_pre.update({"XDG_VTNR": str(vt), "XDG_SESSION_ID": str(session_id)})
+
     # Run shell code to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
@@ -1511,6 +1633,7 @@ def prepare_env():
         env=env_pre,
         check=False,
     )
+    print_debug(p)
 
     # cut everything before and including random mark, also the last \0
     # treat stdout before the mark as messages
@@ -1616,6 +1739,7 @@ def prepare_env():
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.stdout.strip():
         print_normal(p.stdout.strip())
     if p.stderr.strip():
@@ -1631,6 +1755,7 @@ def prepare_env():
         capture_output=True,
         check=False,
     )
+    print_debug(p)
     if p.stdout.strip():
         print_normal(p.stdout.strip())
     if p.stderr.strip():
@@ -1653,6 +1778,7 @@ def prepare_env():
             capture_output=True,
             check=False,
         )
+        print_debug(p)
         if p.stdout.strip():
             print_normal(p.stdout.strip())
         if p.stderr.strip():
@@ -1721,6 +1847,7 @@ def cleanup_env():
             capture_output=True,
             check=False,
         )
+        print_debug(p)
         if p.stdout.strip():
             print_normal(p.stdout.strip())
         if p.stderr.strip():
@@ -1735,6 +1862,7 @@ def cleanup_env():
             capture_output=True,
             check=False,
         )
+        print_debug(p)
         if p.stdout.strip():
             print_normal(p.stdout.strip())
         if p.stderr.strip():
@@ -1874,6 +2002,7 @@ def stop_wm():
                 capture_output=True,
                 check=False,
             )
+            print_debug(p)
             if p.stdout.strip():
                 print_normal(p.stdout.strip())
             if p.stderr.strip():
@@ -1975,7 +2104,10 @@ if __name__ == "__main__":
             print_warning("Only unit creation was requested. Will not go further.")
             sys.exit(0)
 
-        print_normal(f"Starting {wm_id}...")
+        if args.dry_run:
+            print_normal(f"Will start {wm_id}...")
+        else:
+            print_normal(f"Starting {wm_id}...")
 
         p = subprocess.run(
             ["systemctl", "is-active", "-q", "graphical.target"],
@@ -1983,12 +2115,14 @@ if __name__ == "__main__":
             capture_output=True,
             check=False,
         )
+        print_debug(p)
         if p.returncode != 0:
             print_warning(
                 dedent(
                     """
-                   System has not reached graphical.target. It might be a good idea to screen for this with a condition.
-                   Will continue in 3 seconds...
+                    System has not reached graphical.target.
+                    It might be a good idea to screen for this with a condition.
+                    Will continue in 3 seconds...
                 """
                 )
             )
@@ -2007,6 +2141,7 @@ if __name__ == "__main__":
             ["systemctl", "--user", "start", "--wait", f"wayland-wm@{wm_id}.service"],
             check=False,
         )
+        print_debug(p)
 
         # in case systemctl is killed, run trap_stopper.
         # reuse second arg for systemctl returncode
@@ -2053,6 +2188,8 @@ if __name__ == "__main__":
             capture_output=True,
             check=False,
         )
+        print_debug(p)
+
         if p.returncode != 0 or not p.stdout.strip():
             print_error(p.stderr.strip())
             print_error("Could not escape sequence for scope name")
@@ -2066,6 +2203,8 @@ if __name__ == "__main__":
             capture_output=True,
             check=False,
         )
+        print_debug(p)
+
         if p.returncode != 0 or not p.stdout.strip():
             print_error(p.stderr.strip())
             print_error("Could not escape sequence for scope name")
@@ -2107,7 +2246,7 @@ if __name__ == "__main__":
                 parent_cmdline = parent_cmdline.strip()
             print_debug(f"parent_pid: {os.getppid()}")
             print_debug(f"parent_cmdline: {parent_cmdline}")
-        except exception as E:
+        except Exception as E:
             print_error("Could not determine parent process command")
             print_error(E)
             sys.exit(1)
@@ -2115,14 +2254,10 @@ if __name__ == "__main__":
             dealbreakers.append("Not in login shell")
 
         # check foreground VT
-        p = subprocess.run(["fgconsole"], text=True, capture_output=True, check=False)
-        if p.stderr.strip():
-            print_error(p.stderr.strip())
-        fgvt = p.stdout.strip()
-        if not fgvt.isnumeric():
+        fgvt = get_fg_vt()
+        if fgvt is None:
             dealbreakers.append("Could not determine foreground VT")
         else:
-            fgvt = int(fgvt)
             # argparse does not pass default for this
             allowed_vtnr = args.vtnr or [1]
             if fgvt not in allowed_vtnr:
@@ -2137,6 +2272,7 @@ if __name__ == "__main__":
             capture_output=True,
             check=False,
         )
+        print_debug(p)
         if p.stdout.strip():
             print_normal(p.stdout.strip())
         if p.stderr.strip():
