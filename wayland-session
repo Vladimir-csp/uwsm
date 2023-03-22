@@ -208,18 +208,18 @@ def get_de(entry_name: str, subpath="wayland-sessions"):
     print_debug(entry)
 
     # inaccessible executables or hidden entries
-    msg: str = ""
+    msgs: list = []
     if entry.getHidden():
-        msg = "Entry is hidden"
+        msgs.append("Entry is hidden")
     if (
         (entry.getTryExec() and not entry.findTryExec())
         or not entry.getExec()
         or not which(shlex.split(entry.getExec())[0])  # type: ignore
     ):
-        msg = "Entry is missing an executable"
+        msgs.append("Entry is missing an executable")
 
-    if msg:
-        print_warning(msg)
+    if msgs:
+        print_warning("\n".join(msgs))
         return {}
 
     return entry
@@ -1615,6 +1615,8 @@ def prepare_env():
     Saves list for later cleanup.
     """
 
+    print_normal(f"Preparing environment for {wm_name or wm_id}...")
+
     # get current ENV
     env_pre = filter_varnames(dict(os.environ))
 
@@ -1809,6 +1811,9 @@ def cleanup_env():
     and remove them from systemd user manager.
     Remove found cleanup files
     """
+
+    print_normal("Cleaning up...")
+
     cleanup_file_dir = BaseDirectory.get_runtime_dir(strict=True)
     cleanup_files = []
     for cleanup_file in os.listdir(cleanup_file_dir):
@@ -1919,7 +1924,12 @@ def fill_wm_globals():
             print_error(E)
             sys.exit(1)
 
-        print_debug(entry)
+        print_debug("entry", entry)
+        print_debug(
+            "names",
+            entry.get("Name", "") or "No Name",
+            entry.get("GenericName", "") or "No GenericName",
+        )
 
         # combine exec from entry and arguments
         # TODO: either drop this behavior, or add support for % fields
@@ -1948,9 +1958,8 @@ def fill_wm_globals():
             else:
                 wm_name = " ".join(
                     [
-                        entry.getName()
-                        or os.path.splitext(os.path.basename(entry.filename))[0],
-                        entry.get("GenericName", "Window Manager"),
+                        entry.get("Name", "") or wm_argv[0],
+                        entry.get("GenericName", "") or "Wayland Window Manager",
                     ]
                 )
 
@@ -1976,7 +1985,7 @@ def fill_wm_globals():
                 wm_desktop_names = sane_split(args.desktop_names, ":")
             else:
                 wm_desktop_names = [wm_argv[0]] + sane_split(args.desktop_names, ":")
-            wm_name = args.wm_name
+            wm_name = args.wm_name or f"{wm_argv[0]} Wayland Window Manager"
             wm_description = args.wm_comment
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
@@ -2311,7 +2320,6 @@ if __name__ == "__main__":
                 sys.exit(0)
             except Exception as E:
                 print_error(E)
-                print_error("Cleaning up...")
                 try:
                     cleanup_env()
                 except Exception as E:
@@ -2331,4 +2339,5 @@ if __name__ == "__main__":
         elif args.aux_action == "exec":
             fill_wm_globals()
             print_debug(wm_argv)
+            print_normal(f"Starting {wm_name or wm_argv[0]}...")
             os.execlp(wm_argv[0], *(wm_argv))
