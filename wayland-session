@@ -701,7 +701,7 @@ def generate_units():
             BindsTo=graphical-session-pre.target
             Before=graphical-session-pre.target
             PropagatesStopTo=graphical-session-pre.target
-        """
+            """
         ),
     )
     update_unit(
@@ -719,7 +719,7 @@ def generate_units():
             BindsTo=graphical-session.target
             Before=graphical-session.target
             PropagatesStopTo=graphical-session.target
-        """
+            """
         ),
     )
     update_unit(
@@ -737,7 +737,7 @@ def generate_units():
             BindsTo=xdg-desktop-autostart.target
             Before=xdg-desktop-autostart.target
             PropagatesStopTo=xdg-desktop-autostart.target
-        """
+            """
         ),
     )
 
@@ -760,8 +760,9 @@ def generate_units():
             ExecStart={ws_self_full} aux prepare-env "%I"
             ExecStop={ws_self_full} aux cleanup-env
             Restart=no
+            SyslogIdentifier={ws_self}_env-preloader
             Slice={wayland_wm_slice}
-        """
+            """
         ),
     )
     update_unit(
@@ -790,8 +791,9 @@ def generate_units():
             Restart=no
             TimeoutStartSec=10
             TimeoutStopSec=10
+            SyslogIdentifier={ws_self}_%I
             Slice={wayland_wm_slice}
-        """
+            """
         ),
     )
 
@@ -821,7 +823,7 @@ def generate_units():
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
             After=graphical-session.target
-        """
+            """
         ),
     )
     update_unit(
@@ -835,7 +837,7 @@ def generate_units():
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
             After=graphical-session.target
-        """
+            """
         ),
     )
 
@@ -847,19 +849,19 @@ def generate_units():
         wm_specific_preloader.append(
             dedent(
                 f"""
-            # injected by {ws_self}, do not edit
-            [Unit]
-            X-UWSMType={wm_id}
-        """
+                # injected by {ws_self}, do not edit
+                [Unit]
+                X-UWSMType={wm_id}
+                """
             )
         )
         wm_specific_service.append(
             dedent(
                 f"""
-            # injected by {ws_self}, do not edit
-            [Unit]
-            X-UWSMType={wm_id}
-        """
+                # injected by {ws_self}, do not edit
+                [Unit]
+                X-UWSMType={wm_id}
+                """
             )
         )
 
@@ -867,8 +869,8 @@ def generate_units():
             wm_specific_preloader.append(
                 dedent(
                     """
-                Description=Environment preloader for {wm_cli_name}
-            """
+                    Description=Environment preloader for {wm_cli_name}
+                    """
                 )
             )
 
@@ -876,16 +878,16 @@ def generate_units():
             wm_specific_service.append(
                 dedent(
                     f"""
-                Description={wm_cli_name or wm_id}, {wm_cli_description}
-            """
+                    Description={wm_cli_name or wm_id}, {wm_cli_description}
+                    """
                 )
             )
         elif wm_cli_name:
             wm_specific_service.append(
                 dedent(
                     f"""
-                Description={wm_cli_name} Wayland Window Manager
-            """
+                    Description={wm_cli_name} Wayland Window Manager
+                    """
                 )
             )
 
@@ -902,20 +904,20 @@ def generate_units():
             wm_specific_preloader.append(
                 dedent(
                     f"""
-                [Service]
-                ExecStart=
-                ExecStart={ws_self_full} aux prepare-env{prepend} "%I"{append}
-            """
+                    [Service]
+                    ExecStart=
+                    ExecStart={ws_self_full} aux prepare-env{prepend} "%I"{append}
+                    """
                 )
             )
             if append:
                 wm_specific_service.append(
                     dedent(
                         f"""
-                    [Service]
-                    ExecStart=
-                    ExecStart={ws_self_full} aux exec "%I"{append}
-                """
+                        [Service]
+                        ExecStart=
+                        ExecStart={ws_self_full} aux exec "%I"{append}
+                        """
                     )
                 )
 
@@ -945,13 +947,14 @@ def generate_units():
             [Service]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
-        """
+            """
         ),
     )
     # this does not work
     # update_unit(
-    #    "xdg-desktop-portal-gtk.service.d/part-tweak.conf",
-    #    dedent(f"""
+    #     "xdg-desktop-portal-gtk.service.d/part-tweak.conf",
+    #     dedent(
+    #        f"""
     #        # injected by {ws_self}, do not edit
     #        [Unit]
     #        # make the same thing as -wlr portal to stop correctly
@@ -959,18 +962,21 @@ def generate_units():
     #        After=graphical-session.target
     #        ConditionEnvironment=WAYLAND_DISPLAY
     #        X-UWSMType=generic
-    #    """)
+    #        """
+    #     )
     # )
     # this breaks xdg-desktop-portal-rewrite-launchers.service
     # update_unit(
-    #    "xdg-desktop-portal-.service.d/slice-tweak.conf",
-    #    dedent(f"""
+    #     "xdg-desktop-portal-.service.d/slice-tweak.conf",
+    #     dedent(
+    #        f"""
     #        # injected by {ws_self}, do not edit
     #        [Service]
     #        # make xdg-desktop-portal-*.service implementations part of graphical scope
     #        Slice=app-graphical.slice
     #        X-UWSMType=generic
-    #    """)
+    #        """
+    #     )
     # )
 
 
@@ -1013,8 +1019,8 @@ def parse_args():
         # TODO: add epilog
         epilog=dedent(
             """
-           See action -h|--help.
-        """
+            See action -h|--help.
+            """
         ),
     )
     parsers["main_subparsers"] = parsers["main"].add_subparsers(
@@ -1185,12 +1191,12 @@ def parse_args():
         description="Checks whether it is OK to launch a wayland session.",
         epilog=dedent(
             """
-                Conditions:
-                  Running from login shell
-                  No wayland session is running
-                  System is at graphical.target
-                  Foreground VT is among allowed (default: 1)
-        """
+            Conditions:
+              Running from login shell
+              No wayland session is running
+              System is at graphical.target
+              Foreground VT is among allowed (default: 1)
+            """
         ),
     )
     parsers["may_start"].add_argument(
@@ -1457,7 +1463,7 @@ def prepare_env_gen_sh(random_mark):
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(wm_desktop_names[0])}
-    """
+        """
     )
 
     # bake plugin load into shell
@@ -1467,9 +1473,9 @@ def prepare_env_gen_sh(random_mark):
         shell_plugins_load.append(
             dedent(
                 f"""
-            echo "Loading plugin \\"{plugin}\\""
-            . "{plugin}"
-        """
+                echo "Loading plugin \\"{plugin}\\""
+                . "{plugin}"
+                """
             )
         )
     shell_plugins_load = "\n".join(shell_plugins_load)
@@ -1550,7 +1556,7 @@ def prepare_env_gen_sh(random_mark):
                 load_wm_env || return $?
                 true
         fi
-    """
+        """
     )
 
     # pass env after the mark
@@ -1558,7 +1564,7 @@ def prepare_env_gen_sh(random_mark):
         f"""
         printf "%s" "{random_mark}"
         env -0
-    """
+        """
     )
 
     shell_full = "\n".join(
@@ -2079,13 +2085,13 @@ if __name__ == "__main__":
         print_normal(
             dedent(
                 f"""
-            Selected WM ID: {wm_id}
-              Command Line: {shlex.join(wm_argv)}
-          Plugin/binary ID: {wm_bin_id}
-             Desktop Names: {':'.join(wm_desktop_names)}
-                      Name: {wm_name}
-               Description: {wm_description}
-        """
+                    Selected WM ID: {wm_id}
+                      Command Line: {shlex.join(wm_argv)}
+                  Plugin/binary ID: {wm_bin_id}
+                     Desktop Names: {':'.join(wm_desktop_names)}
+                              Name: {wm_name}
+                       Description: {wm_description}
+                """
             )
         )
 
@@ -2123,7 +2129,7 @@ if __name__ == "__main__":
                     System has not reached graphical.target.
                     It might be a good idea to screen for this with a condition.
                     Will continue in 3 seconds...
-                """
+                    """
                 )
             )
             time.sleep(3)
