@@ -985,7 +985,7 @@ def remove_units(only=None):
     """
     if not only:
         only = ""
-    check_dir, dot = get_unit_path("")
+    check_dir, _ = get_unit_path("")
     p = subprocess.run(
         ["grep", "-rlF", f"X-UWSM-ID={only}", check_dir],
         text=True,
@@ -1794,7 +1794,7 @@ def prepare_env():
 
     # print message about future env cleanup
     cleanup_varnames_msg = (
-        "Variables that will be removed from systemd user manager on stop:\n  "
+        "Variables marked for cleanup from systemd user manager on stop:\n  "
         + "\n  ".join(sorted(cleanup_varnames))
     )
     print_normal(cleanup_varnames_msg)
@@ -1956,9 +1956,9 @@ def fill_wm_globals():
             elif entry.getName() and not entry.getGenericName():
                 wm_name = entry.getName()
             elif not entry.getName() and entry.getGenericName():
-                wm_name = f'{wm_argv[0]} {entry.getGenericName()}'
+                wm_name = f"{wm_argv[0]} {entry.getGenericName()}"
             elif entry.getName() and entry.getGenericName():
-                wm_name = f'{entry.getName()} {entry.getGenericName()}'
+                wm_name = f"{entry.getName()} {entry.getGenericName()}"
 
             if args.wm_comment:
                 wm_description = args.wm_comment
