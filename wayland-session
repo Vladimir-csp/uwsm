@@ -260,27 +260,25 @@ def save_default_de(default):
 def select_de():
     'Uses whiptail to select among "wayland-sessions" desktop entries'
 
-    default = get_default_de()
-    seen_entries = []
-    entry_files = []
-    choices_raw = []
+    if not which("whiptail"):
+        raise Exception(
+            '"whiptail" is not in path, "select" and "default" are not supported'
+        )
+
+    default: str = get_default_de()
+    seen_entries: List[str] = []
+    entry_files: List[str] = []
+    choices_raw: List[tuple[str]] = []
     choices: List[str] = []
 
     # find relevant desktop entries as first found paths in data hierarchy
     for ws_dir in BaseDirectory.load_data_paths("wayland-sessions"):
         if os.path.isdir(ws_dir):
-            try:
-                os.chdir(ws_dir)
-                for file in os.listdir():
-                    if (
-                        os.path.splitext(file)[1] == ".desktop"
-                        and file not in seen_entries
-                    ):
-                        seen_entries.append(file)
-                        entry_files.append(os.path.join(ws_dir, file))
-            except Exception as E:
-                print_error(E)
-                sys.exit(126)
+            os.chdir(ws_dir)
+            for file in os.listdir():
+                if os.path.splitext(file)[1] == ".desktop" and file not in seen_entries:
+                    seen_entries.append(file)
+                    entry_files.append(os.path.join(ws_dir, file))
 
     entry_files.sort()
 
@@ -305,17 +303,19 @@ def select_de():
         name: str = (
             entry.getName() or os.path.splitext(os.path.basename(entry.filename))[0]
         )  # type: ignore
-        generic_name = entry.get("GenericName", "")
-        comment: str = entry.get("Comment", "")  # type: ignore
-        description: str = f"{name}, {generic_name}" if generic_name else name
+        generic_name: str = entry.getGenericName()
+        comment: str = entry.getComment()
+        description: str = " ".join((name, generic_name))
         # add a choice
-        choices_raw.append([os.path.basename(entry.filename), description, comment])
+        choices_raw.append((os.path.basename(entry.filename), description, comment))
 
-    # pretty format choices
+    # find longest description
     description_length: int = 0
     for choice in choices_raw:
         if len(choice[1]) > description_length:
             description_length = len(choice[1])
+
+    # pretty format choices
     for choice in choices_raw:
         choices.append(choice[0])
         if choice[2]:
@@ -323,22 +323,21 @@ def select_de():
         else:
             choices.append(choice[1])
 
-    if len(choices) == 2 and default == choices[0]:
-        # just spit out the only preselected choice
-        raise Exception(f"Choices for whiptail not even: {choices}")
-    if len(choices) > 2 and len(choices) % 2 == 0:
-        # drop default if not among choices
-        if default and default not in choices[::2]:
-            default = ""
-        elif default and args.wm == "default":
-            # just spit out default
-            for choice in choices[::2]:
-                if choice == default:
-                    return choice
-    elif not choices:
+    if not choices:
         raise Exception("No choices found")
-    else:
-        raise Exception("Malformed choices")
+
+    if len(choices) % 2 != 0:
+        raise Exception(f"Choices for whiptail are not even: {choices}")
+
+    # drop default if not among choices
+    if default and default not in choices[::2]:
+        default = ""
+
+    # just spit out default if requested and found
+    if default and args.wm == "default":
+        for choice in choices[::2]:
+            if choice == default:
+                return choice
 
     # generate arguments for whiptail exec
     argv = [
@@ -399,14 +398,14 @@ def select_de():
     return p.stderr.strip() if p.returncode == 0 and p.stderr else ""
 
 
-def get_unit_path(unit, category="runtime", level="user"):
+def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     "Returns tuple: 0) path in category, level dir, 1) unit subpath"
     if os.path.isabs(unit):
         raise Exception("Passed absolute path to get_unit_path")
 
     unit = os.path.normpath(unit)
 
-    unit_path = ""
+    unit_path: str = ""
     if category == "runtime":
         try:
             unit_path = BaseDirectory.get_runtime_dir(strict=True)
@@ -426,7 +425,7 @@ def get_unit_path(unit, category="runtime", level="user"):
 
 
 def get_active_wm_id():
-    "finds running wayland-wm@*.service, returns specifier"
+    "Finds running wayland-wm@*.service, returns specifier"
     p = subprocess.run(
         [
             "systemctl",
@@ -693,8 +692,8 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
-            Description=Preparation for session of %I Wayland Window Manager
+            X-UWSM-ID=GENERIC
+            Description=Preparation for session of %I Wayland WM
             Documentation=man:systemd.special(7)
             Requires=basic.target
             StopWhenUnneeded=yes
@@ -710,8 +709,8 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
-            Description=Session of %I Wayland Window Manager
+            X-UWSM-ID=GENERIC
+            Description=Session of %I Wayland WM
             Documentation=man:systemd.special(7)
             Requires=wayland-session-pre@%i.target graphical-session-pre.target
             After=wayland-session-pre@%i.target graphical-session-pre.target
@@ -728,8 +727,8 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
-            Description=XDG Autostart for session of %I Wayland Window Manager
+            X-UWSM-ID=GENERIC
+            Description=XDG Autostart for session of %I Wayland WM
             Documentation=man:systemd.special(7)
             Requires=wayland-session@%i.target graphical-session.target
             After=wayland-session@%i.target graphical-session.target
@@ -748,8 +747,8 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
-            Description=Environment preloader for %I Wayland Window Manager
+            X-UWSM-ID=GENERIC
+            Description=Environment preloader for %I
             Documentation=man:systemd.service(7)
             BindsTo=wayland-session-pre@%i.target
             Before=wayland-session-pre@%i.target
@@ -771,8 +770,8 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
-            Description=%I Wayland Window Manager
+            X-UWSM-ID=GENERIC
+            Description=Main service for %I
             Documentation=man:systemd.service(7)
             BindsTo=wayland-session@%i.target
             Before=wayland-session@%i.target
@@ -804,7 +803,7 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
+            X-UWSM-ID=GENERIC
             Description=User Graphical Application Slice
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
@@ -818,7 +817,7 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
+            X-UWSM-ID=GENERIC
             Description=User Graphical Background Application Slice
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
@@ -832,7 +831,7 @@ def generate_units():
             f"""
             # injected by {ws_self}, do not edit
             [Unit]
-            X-UWSMType=generic
+            X-UWSM-ID=GENERIC
             Description=User Graphical Session Application Slice
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
@@ -841,97 +840,96 @@ def generate_units():
         ),
     )
 
-    # WM-specific cli-given additions via drop-ins
-    wm_specific_preloader = []
-    wm_specific_service = []
+    # WM-specific additions from cli or desktop entry via drop-ins
+    wm_specific_preloader = f"wayland-wm-env@{wm_id}.service.d/50_custom.conf"
+    wm_specific_service = f"wayland-wm@{wm_id}.service.d/50_custom.conf"
+    wm_specific_preloader_data = [
+        dedent(
+            f"""
+            # injected by {ws_self}, do not edit
+            [Unit]
+            X-UWSM-ID={wm_id}
+            """
+        )
+    ]
+    wm_specific_service_data = [
+        dedent(
+            f"""
+            # injected by {ws_self}, do not edit
+            [Unit]
+            X-UWSM-ID={wm_id}
+            """
+        )
+    ]
 
-    if wm_cli_argv or wm_cli_desktop_names or wm_cli_name or wm_cli_description:
-        wm_specific_preloader.append(
+    # name is given
+    if wm_name:
+        wm_specific_preloader_data.append(
             dedent(
                 f"""
-                # injected by {ws_self}, do not edit
-                [Unit]
-                X-UWSMType={wm_id}
+                Description=Environment preloader for {wm_name}
                 """
             )
         )
-        wm_specific_service.append(
+
+    # name or description is given
+    if wm_name or wm_description:
+        wm_specific_service_data.append(
             dedent(
                 f"""
-                # injected by {ws_self}, do not edit
-                [Unit]
-                X-UWSMType={wm_id}
+                Description=Main service for {', '.join((s for s in (wm_name or wm_argv[0], wm_description) if s))}
                 """
             )
         )
 
-        if wm_cli_name:
-            wm_specific_preloader.append(
-                dedent(
-                    """
-                    Description=Environment preloader for {wm_cli_name}
-                    """
-                )
-            )
+    # desktop names are not just a single executable name
+    prepend: str = (
+        f" -D {':'.join(wm_desktop_names)}" if wm_desktop_names != [wm_argv[0]] else ""
+    )
+    # additional args were given on cli
+    append: str = f" {shlex.join(wm_cli_args)}" if wm_cli_args else ""
 
-        if wm_cli_description:
-            wm_specific_service.append(
-                dedent(
-                    f"""
-                    Description={wm_cli_name or wm_id}, {wm_cli_description}
-                    """
-                )
+    if prepend or append:
+        wm_specific_preloader_data.append(
+            dedent(
+                f"""
+                [Service]
+                ExecStart=
+                ExecStart={ws_self_full} aux prepare-env{prepend} "%I"{append}
+                """
             )
-        elif wm_cli_name:
-            wm_specific_service.append(
-                dedent(
-                    f"""
-                    Description={wm_cli_name} Wayland Window Manager
-                    """
-                )
-            )
-
-        if wm_cli_desktop_names or wm_cli_argv:
-            if wm_cli_desktop_names:
-                prepend = f" -D {':'.join(wm_cli_desktop_names)}"
-            else:
-                prepend = ""
-            if wm_cli_argv:
-                append = f" {shlex.join(wm_cli_argv)}"
-            else:
-                append = ""
-
-            wm_specific_preloader.append(
-                dedent(
-                    f"""
-                    [Service]
-                    ExecStart=
-                    ExecStart={ws_self_full} aux prepare-env{prepend} "%I"{append}
-                    """
-                )
-            )
-            if append:
-                wm_specific_service.append(
-                    dedent(
-                        f"""
-                        [Service]
-                        ExecStart=
-                        ExecStart={ws_self_full} aux exec "%I"{append}
-                        """
-                    )
-                )
-
-        update_unit(
-            f"wayland-wm-env@{wm_id}.service.d/custom.conf",
-            "\n".join(wm_specific_preloader),
         )
+
+    if append:
+        wm_specific_service_data.append(
+            dedent(
+                f"""
+                [Service]
+                ExecStart=
+                ExecStart={ws_self_full} aux exec "%I"{append}
+                """
+            )
+        )
+
+    if len(wm_specific_preloader_data) > 1:
+        # add preloader customization tweak
         update_unit(
-            f"wayland-wm@{wm_id}.service.d/custom.conf", "\n".join(wm_specific_service)
+            wm_specific_preloader,
+            "\n".join(wm_specific_preloader_data),
         )
     else:
-        # remove customization tweaks
-        remove_unit(f"wayland-wm-env@{wm_id}.service.d/custom.conf")
-        remove_unit(f"wayland-wm@{wm_id}.service.d/custom.conf")
+        # remove customization tweak
+        remove_unit(wm_specific_preloader)
+
+    if len(wm_specific_service_data) > 1:
+        # add main service customization tweak
+        update_unit(
+            wm_specific_service,
+            "\n".join(wm_specific_service_data),
+        )
+    else:
+        # remove customization tweak
+        remove_unit(wm_specific_service)
 
     # tweaks
     update_unit(
@@ -943,7 +941,7 @@ def generate_units():
             # make autostart apps stoppable by target
             #StopPropagatedFrom=xdg-desktop-autostart.target
             PartOf=xdg-desktop-autostart.target
-            X-UWSMType=generic
+            X-UWSM-ID=GENERIC
             [Service]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
@@ -961,7 +959,7 @@ def generate_units():
     #        PartOf=graphical-session.target
     #        After=graphical-session.target
     #        ConditionEnvironment=WAYLAND_DISPLAY
-    #        X-UWSMType=generic
+    #        X-UWSM-ID=GENERIC
     #        """
     #     )
     # )
@@ -974,7 +972,7 @@ def generate_units():
     #        [Service]
     #        # make xdg-desktop-portal-*.service implementations part of graphical scope
     #        Slice=app-graphical.slice
-    #        X-UWSMType=generic
+    #        X-UWSM-ID=GENERIC
     #        """
     #     )
     # )
@@ -982,14 +980,14 @@ def generate_units():
 
 def remove_units(only=None):
     """
-    Removes units by X-UWSMType= attribute.
-    if wm_id is given as argument, only remove X-UWSMType={wm_id}, else remove all.
+    Removes units by X-UWSM-ID= attribute.
+    if wm_id is given as argument, only remove X-UWSM-ID={wm_id}, else remove all.
     """
     if not only:
         only = ""
     check_dir, dot = get_unit_path("")
     p = subprocess.run(
-        ["grep", "-rlF", f"X-UWSMType={only}", check_dir],
+        ["grep", "-rlF", f"X-UWSM-ID={only}", check_dir],
         text=True,
         capture_output=True,
         check=False,
@@ -1615,7 +1613,7 @@ def prepare_env():
     Saves list for later cleanup.
     """
 
-    print_normal(f"Preparing environment for {wm_name or wm_id}...")
+    print_normal(f"Preparing environment for {wm_name or wm_argv[0]}...")
 
     # get current ENV
     env_pre = filter_varnames(dict(os.environ))
@@ -1890,7 +1888,7 @@ def fill_wm_globals():
     "Fills global vars wm_argv, wm_id, wm_bin_id, wm_desktop_names, wm_name, wm_description based on args or desktop entry"
 
     global wm_argv
-    global wm_cli_argv
+    global wm_cli_args
     global wm_id
     global wm_bin_id
     global wm_desktop_names
@@ -1927,8 +1925,8 @@ def fill_wm_globals():
         print_debug("entry", entry)
         print_debug(
             "names",
-            entry.get("Name", "") or "No Name",
-            entry.get("GenericName", "") or "No GenericName",
+            entry.getName() or "No Name",
+            entry.getGenericName() or "No GenericName",
         )
 
         # combine exec from entry and arguments
@@ -1955,18 +1953,17 @@ def fill_wm_globals():
 
             if args.wm_name:
                 wm_name = args.wm_name
-            else:
-                wm_name = " ".join(
-                    [
-                        entry.get("Name", "") or wm_argv[0],
-                        entry.get("GenericName", "") or "Wayland Window Manager",
-                    ]
-                )
+            elif entry.getName() and not entry.getGenericName():
+                wm_name = entry.getName()
+            elif not entry.getName() and entry.getGenericName():
+                wm_name = f'{wm_argv[0]} {entry.getGenericName()}'
+            elif entry.getName() and entry.getGenericName():
+                wm_name = f'{entry.getName()} {entry.getGenericName()}'
 
             if args.wm_comment:
                 wm_description = args.wm_comment
             else:
-                wm_description = entry.get("Comment", "")
+                wm_description = entry.getComment()
 
     else:
         # WM id is an executable
@@ -1985,11 +1982,11 @@ def fill_wm_globals():
                 wm_desktop_names = sane_split(args.desktop_names, ":")
             else:
                 wm_desktop_names = [wm_argv[0]] + sane_split(args.desktop_names, ":")
-            wm_name = args.wm_name or f"{wm_argv[0]} Wayland Window Manager"
+            wm_name = args.wm_name
             wm_description = args.wm_comment
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
-    wm_cli_argv = args.args
+    wm_cli_args = args.args
     # this does not happen in aux exec mode
     if "desktop_names" in args:
         wm_cli_desktop_names = args.desktop_names
@@ -2052,7 +2049,7 @@ if __name__ == "__main__":
     # define globals
     units_changed: bool = False
     wm_argv: List[str] = []
-    wm_cli_argv: List[str] = []
+    wm_cli_args: List[str] = []
     wm_id: str = ""
     wm_bin_id: str = ""
     wm_desktop_names: List[str] = []
@@ -2075,11 +2072,7 @@ if __name__ == "__main__":
             try:
                 select_wm_id = select_de()
                 if select_wm_id:
-                    try:
-                        save_default_de(select_wm_id)
-                    except Exception as E:
-                        print_error(E)
-                        sys.exit(1)
+                    save_default_de(select_wm_id)
                     # update args.wm in place
                     args.wm = select_wm_id
                 else:
@@ -2339,5 +2332,5 @@ if __name__ == "__main__":
         elif args.aux_action == "exec":
             fill_wm_globals()
             print_debug(wm_argv)
-            print_normal(f"Starting {wm_name or wm_argv[0]}...")
+            print_normal(f"Starting: {shlex.join(wm_argv)}")
             os.execlp(wm_argv[0], *(wm_argv))
