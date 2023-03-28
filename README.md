@@ -5,7 +5,7 @@ provide graphical user session with environment management, XDG autostart suppor
 
 WIP. Use at your onw risk. Breaking changes are being introduced. See commit messages.
 
-**(!) python rewrite changed and regrouped some arguments, cut shell plugins scope**.
+**(!) python rewrite in v0.5 changed and regrouped some arguments, cut shell plugins scope**.
 
 ## Concepts and features
 
@@ -85,11 +85,13 @@ It generates special nested slices that will also receive stop action ordered be
 
 To launch an app scoped inside one of those slices, use `wayland-session app [-s a|b|s|custom.slice] your_app [with args]`.
 
+Launching desktop entries is partially supported (without arguments):  `wayland-session app [-s a|b|s|custom.slice] your_app.desktop`.
+
 Example snippet for sway config to launch terminal, app launcher and file manager scoped in default (`a`) `app-graphical.slice`:
 
     bindsym --to-code $mod+t exec exec wayland-session app foot
     bindsym --to-code $mod+r exec exec wayland-session app fuzzel --log-no-syslog
-    bindsym --to-code $mod+e exec exec wayland-session app spacefm
+    bindsym --to-code $mod+e exec exec wayland-session app spacefm.desktop
 
 When app launching is properly configured, WM service itself can be placed in `session.slice` by setting
 environment variable `UWSM_USE_SESSION_SLICE=true` before generating units
@@ -105,8 +107,9 @@ Start variants:
 - `wayland-session start ${wm_id} with "any complex" arguments`: also adds arguments for particular `@${wm_id}` instance.
 - `-N, -[e]D, -C` can be used to add name, desktop names, description respectively.
 
-If `${wm_id}` ends with `.desktop`, `wayland-session` finds desktop entry in `wayland-sessions`, uses exec arguments and desktop names from it.
-Arguments provided on command line are appended to the command line of desktop entry.
+If `${wm_id}` ends with `.desktop`, `wayland-session` finds desktop entry in `wayland-sessions`, uses exec arguments and desktop names from it
+(along with name and comment for unit descriptons).
+Arguments provided on command line are appended to the command line of desktop entry (unlike apps).
 
 If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions`.
 Selection is saved, previous selection is highlighted (or launched right away in case of `default`). Selected entry is used as `${wm_id}`.

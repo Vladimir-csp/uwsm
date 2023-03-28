@@ -1012,20 +1012,63 @@ def parse_args():
 
     # main parser with subcommands
     parsers["main"] = argparse.ArgumentParser(
-        description="Universal Wayland Session Manager",
-        # usage='%(prog)s [-h] action ...',
-        # TODO: add epilog
-        epilog=dedent(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=dedent(
             """
-            See action -h|--help.
+            Universal Wayland Session Manager.
+            Launches arbitrary wayland WM via a set of systemd user units
+            to provide graphical user session with environment management,
+            XDG autostart support, scoped application launch helpers,
+            clean shutdown.
+            """
+        ),
+        # usage='%(prog)s [-h] action ...',
+        epilog=dedent(
+            f"""
+            Also see "{self_name()} {{subcommand}} -h" for further info.
+
+            WM should be configured to run this on startup:
+            
+              {self_name()} finalize [[VAR] ANOTHER_VAR]
+            
+            (See "{self_name()} finalize --help")
+            
+            Startup can be integrated conditionally into shell profile
+            (See "{self_name()} check --help")
+            
+            During startup at stage of "graphical-session-pre.target" environment is
+            sourced from shell profile and from files "wayland-session-env" and
+            "wayland-session-env-${{wm}}" in XDG config hierarchy
+            (in order of increasing importance). Delta will be exported to systemd and
+            dbus activation environments, and cleaned up when services are stopped.
+            
+            It is highly recommended to configure your WM to launch apps explicitly scoped
+            in special user session slices (app.slice, background.slice, session.slice).
+            {self_name()} provides custom nested slices for apps to live in and be
+            terminated on session end:
+            
+              app-graphical.slice
+              background-graphical.slice
+              session-graphical.slice
+            
+            And helper command to handle all the systemd-run invocations for you:
+            (See  "{self_name()} app --help", "man systemd.special", "man systemd-run"
+            
+            If app launching is configured as recommended, you can put WM itself in
+            session.slice (as recommended by man systemd.special) by setting:
+            
+              UWSM_USE_SESSION_SLICE=true
+            
+            This var affects unit generation phase during start, Slice= parameter
+            of WM services (best to export it in shell profile).
             """
         ),
     )
     parsers["main_subparsers"] = parsers["main"].add_subparsers(
-        title="Subcommands",
+        title="Action subcommands",
         description=None,
         dest="mode",
-        metavar="action",
+        metavar="{subcommand}",
         required=True,
     )
 
@@ -1033,8 +1076,8 @@ def parse_args():
     parsers["wm_args"] = argparse.ArgumentParser(add_help=False)
     parsers["wm_args"].add_argument(
         "wm",
-        metavar="wm|wm.desktop",
-        help="executable or desktop entry (used as WM ID)",
+        metavar="{wm|wm.desktop}",
+        help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries.',
     )
     parsers["wm_args"].add_argument(
         "args", metavar="...", nargs=argparse.REMAINDER, help="any additional arguments"
@@ -1057,16 +1100,14 @@ def parse_args():
         metavar="Name",
         dest="wm_name",
         default="",
-        # help='Fancy name for WM (filled from desktop entry by default)'
-        help="Fancy name for WM",
+        help="Fancy name for WM (filled from desktop entry by default)",
     )
     parsers["wm_args"].add_argument(
         "-C",
         metavar="Comment",
         dest="wm_comment",
         default="",
-        # help='Fancy description for WM (filled from desktop entry by default)'
-        help="Fancy description for WM",
+        help="Fancy description for WM (filled from desktop entry by default)",
     )
 
     # start subcommand
@@ -1075,6 +1116,16 @@ def parse_args():
         help="Start WM",
         description="Generates units for given WM command line or desktop entry and starts WM.",
         parents=[parsers["wm_args"]],
+        epilog=dedent(
+            """
+            During startup at stage of "graphical-session-pre.target" environment is
+            sourced from shell profile and from files "wayland-session-env" and
+            "wayland-session-${wm}-env" in XDG config hierarchy
+            (in order of increasing importance). Delta will be exported to systemd and
+            dbus activation environments, and cleaned up when services are stopped.
+
+            """
+        ),
     )
     parsers["start"].add_argument(
         "-o",
@@ -1091,6 +1142,14 @@ def parse_args():
         "stop",
         help="Stop WM",
         description="Stops WM and optionally removes generated units.",
+        epilog=dedent(
+            """
+            During shutdown at stage of stopping "graphical-session-pre.target"
+            environment is cleaned up from systemd activation environment according
+            to a list saved in ${XDG_RUNTIME_DIR}/env_names_for_cleanup_* files.
+
+            """
+        ),
     )
     parsers["stop"].add_argument(
         "-r",
@@ -1107,8 +1166,8 @@ def parse_args():
     # finalize subcommand
     parsers["finalize"] = parsers["main_subparsers"].add_parser(
         "finalize",
-        help="Signal WM startup and export variables",
-        description="For use inside WM. Sends startup notification to systemd user manager. Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables to systemd user manager.",
+        help="Signal WM startup, export essential and optional variables",
+        description="For use inside WM. Sends startup notification to systemd user manager. Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables (mentioned by name as arguments) to systemd user manager. Variables are also added to cleanup list for stop phase.",
     )
     parsers["finalize"].add_argument(
         "env_names",
@@ -1124,10 +1183,13 @@ def parse_args():
         description="Launches application as a scope in specific slice.",
     )
     parsers["app"].add_argument(
-        "cmd", metavar="cmd|app.desktop", help="executable or desktop entry"
+        "cmd", metavar="{cmd|app.desktop}", help="executable or desktop entry"
     )
     parsers["app"].add_argument(
-        "args", metavar="...", nargs=argparse.REMAINDER, help="arguments (not for desktop entries)"
+        "args",
+        metavar="...",
+        nargs=argparse.REMAINDER,
+        help="arguments (not for desktop entries)",
     )
     parsers["app"].add_argument(
         "-s",
@@ -1154,14 +1216,22 @@ def parse_args():
     # check subcommand
     parsers["check"] = parsers["main_subparsers"].add_parser(
         "check",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         help="Checkers of states",
         description="Performs a check, returns 0 if true, 1 if false.",
+        epilog=dedent(
+            f"""
+            Use may-start checker to integrate startup into shell profile
+            See "{self_name()} check may-start -h"
+
+            """
+        ),
     )
     parsers["check_subparsers"] = parsers["check"].add_subparsers(
         title="Subcommands",
         description=None,
         dest="checker",
-        metavar="checker",
+        metavar="{checker}",
         required=True,
     )
     parsers["is_active"] = parsers["check_subparsers"].add_parser(
@@ -1184,12 +1254,31 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Checks whether it is OK to launch a wayland session.",
         epilog=dedent(
-            """
+            f"""
             Conditions:
               Running from login shell
               No wayland session is running
               System is at graphical.target
               Foreground VT is among allowed (default: 1)
+
+            To integrate startup into shell profile, add:
+
+              if {self_name()} check may-start
+              then
+              	exec {self_name()} start select
+              fi
+
+            Condition is essential, since {self_name()}'s environment preloader sources
+            profile and can cause loops without protection.
+
+            A bit more complex variant with ability to drop to console:
+
+              if {self_name()} check may-start && \\
+                {self_name()} start -o select
+              then
+              	exec {self_name()} start default
+              fi
+
             """
         ),
     )
@@ -1210,13 +1299,13 @@ def parse_args():
     parsers["aux"] = parsers["main_subparsers"].add_parser(
         "aux",
         help="Auxillary functions",
-        description="Can only be called by systemd user manager as a unit",
+        description="Can only be called by systemd user manager, used in units Exec*",
     )
     parsers["aux_subparsers"] = parsers["aux"].add_subparsers(
-        title="Subcommands",
+        title="Action subcommands",
         description=None,
         dest="aux_action",
-        metavar="prepare-env|cleanup-env|exec",
+        metavar="{subcommand}",
         required=True,
     )
     parsers["prepare_env"] = parsers["aux_subparsers"].add_parser(
@@ -1237,7 +1326,7 @@ def parse_args():
     )
     parsers["exec"].add_argument(
         "wm",
-        metavar="wm|wm.desktop",
+        metavar="{wm|wm.desktop}",
         help="executable or desktop entry (used as WM ID)",
     )
     parsers["exec"].add_argument(
