@@ -54,6 +54,29 @@ def dedent(data: str) -> str:
     return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
 
 
+def wrap_pgs(data: str, maxwidth: int = 0) -> str:
+    '''
+    Splits paragrpaphs by "\n\n", applies wrap of no more than maxsize to each non-indented one
+    If maxwidth == 0, just rejoins each non-indented paragraph into single line
+    '''
+    width = os.get_terminal_size().columns
+    if maxwidth < width:
+        width = maxwidth
+    paragraphs = data.split('\n\n')
+    for idx, paragraph in enumerate(paragraphs):
+        # do not touch indented paragraphs
+        indented = False
+        for line in paragraph.splitlines():
+            if line.startswith(' '):
+                indented = True
+        if not indented:
+            if width == 0:
+                paragraphs[idx] = ' '.join(paragraph.splitlines())
+            else:
+                paragraphs[idx] = '\n'.join(textwrap.wrap(paragraph, width=width))
+    return '\n\n'.join(paragraphs)
+
+
 class Styles:
     "Terminal control characters for color and style"
     reset = "\033[0m"
@@ -1013,7 +1036,7 @@ def parse_args():
     # main parser with subcommands
     parsers["main"] = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=dedent(
+        description=wrap_pgs(dedent(
             """
             Universal Wayland Session Manager.
             Launches arbitrary wayland WM via a set of systemd user units
@@ -1021,9 +1044,9 @@ def parse_args():
             XDG autostart support, scoped application launch helpers,
             clean shutdown.
             """
-        ),
+        )),
         # usage='%(prog)s [-h] action ...',
-        epilog=dedent(
+        epilog=wrap_pgs(dedent(
             f"""
             Also see "{self_name()} {{subcommand}} -h" for further info.
 
@@ -1062,7 +1085,7 @@ def parse_args():
             This var affects unit generation phase during start, Slice= parameter
             of WM services (best to export it in shell profile).
             """
-        ),
+        )),
     )
     parsers["main_subparsers"] = parsers["main"].add_subparsers(
         title="Action subcommands",
@@ -1120,7 +1143,7 @@ def parse_args():
             """
             During startup at stage of "graphical-session-pre.target" environment is
             sourced from shell profile and from files "wayland-session-env" and
-            "wayland-session-${wm}-env" in XDG config hierarchy
+            "wayland-session-env-${wm}" in XDG config hierarchy
             (in order of increasing importance). Delta will be exported to systemd and
             dbus activation environments, and cleaned up when services are stopped.
 
@@ -1219,13 +1242,13 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         help="Checkers of states",
         description="Performs a check, returns 0 if true, 1 if false.",
-        epilog=dedent(
+        epilog=wrap_pgs(dedent(
             f"""
             Use may-start checker to integrate startup into shell profile
             See "{self_name()} check may-start -h"
 
             """
-        ),
+        )),
     )
     parsers["check_subparsers"] = parsers["check"].add_subparsers(
         title="Subcommands",
@@ -1253,7 +1276,7 @@ def parse_args():
         help="checks for start conditions",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Checks whether it is OK to launch a wayland session.",
-        epilog=dedent(
+        epilog=wrap_pgs(dedent(
             f"""
             Conditions:
               Running from login shell
@@ -1280,7 +1303,7 @@ def parse_args():
               fi
 
             """
-        ),
+        )),
     )
     parsers["may_start"].add_argument(
         "vtnr",
