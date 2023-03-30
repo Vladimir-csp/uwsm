@@ -55,10 +55,10 @@ def dedent(data: str) -> str:
 
 
 def wrap_pgs(data: str, maxwidth: int = 0) -> str:
-    '''
+    """
     Splits paragrpaphs by "\n\n", applies wrap of no more than maxsize to each non-indented one
     If maxwidth == 0, just rejoins each non-indented paragraph into single line
-    '''
+    """
     try:
         width = os.get_terminal_size().columns
     except:
@@ -66,19 +66,19 @@ def wrap_pgs(data: str, maxwidth: int = 0) -> str:
         width = 80
     if maxwidth < width:
         width = maxwidth
-    paragraphs = data.split('\n\n')
+    paragraphs = data.split("\n\n")
     for idx, paragraph in enumerate(paragraphs):
         # do not touch indented paragraphs
         indented = False
         for line in paragraph.splitlines():
-            if line.startswith(' '):
+            if line.startswith(" "):
                 indented = True
         if not indented:
             if width == 0:
-                paragraphs[idx] = ' '.join(paragraph.splitlines())
+                paragraphs[idx] = " ".join(paragraph.splitlines())
             else:
-                paragraphs[idx] = '\n'.join(textwrap.wrap(paragraph, width=width))
-    return '\n\n'.join(paragraphs)
+                paragraphs[idx] = "\n".join(textwrap.wrap(paragraph, width=width))
+    return "\n\n".join(paragraphs)
 
 
 class Styles:
@@ -1040,56 +1040,60 @@ def parse_args():
     # main parser with subcommands
     parsers["main"] = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=wrap_pgs(dedent(
-            """
-            Universal Wayland Session Manager.
-            Launches arbitrary wayland WM via a set of systemd user units
-            to provide graphical user session with environment management,
-            XDG autostart support, scoped application launch helpers,
-            clean shutdown.
-            """
-        )),
+        description=wrap_pgs(
+            dedent(
+                """
+                Universal Wayland Session Manager.
+                Launches arbitrary wayland WM via a set of systemd user units
+                to provide graphical user session with environment management,
+                XDG autostart support, scoped application launch helpers,
+                clean shutdown.
+                """
+            )
+        ),
         # usage='%(prog)s [-h] action ...',
-        epilog=wrap_pgs(dedent(
-            f"""
-            Also see "{self_name()} {{subcommand}} -h" for further info.
+        epilog=wrap_pgs(
+            dedent(
+                f"""
+                Also see "{self_name()} {{subcommand}} -h" for further info.
 
-            WM should be configured to run this on startup:
-            
-              {self_name()} finalize [[VAR] ANOTHER_VAR]
-            
-            (See "{self_name()} finalize --help")
-            
-            Startup can be integrated conditionally into shell profile
-            (See "{self_name()} check --help")
-            
-            During startup at stage of "graphical-session-pre.target" environment is
-            sourced from shell profile and from files "wayland-session-env" and
-            "wayland-session-env-${{wm}}" in XDG config hierarchy
-            (in order of increasing importance). Delta will be exported to systemd and
-            dbus activation environments, and cleaned up when services are stopped.
-            
-            It is highly recommended to configure your WM to launch apps explicitly scoped
-            in special user session slices (app.slice, background.slice, session.slice).
-            {self_name()} provides custom nested slices for apps to live in and be
-            terminated on session end:
-            
-              app-graphical.slice
-              background-graphical.slice
-              session-graphical.slice
-            
-            And helper command to handle all the systemd-run invocations for you:
-            (See  "{self_name()} app --help", "man systemd.special", "man systemd-run"
-            
-            If app launching is configured as recommended, you can put WM itself in
-            session.slice (as recommended by man systemd.special) by setting:
-            
-              UWSM_USE_SESSION_SLICE=true
-            
-            This var affects unit generation phase during start, Slice= parameter
-            of WM services (best to export it in shell profile).
-            """
-        )),
+                WM should be configured to run this on startup:
+
+                  {self_name()} finalize [[VAR] ANOTHER_VAR]
+
+                (See "{self_name()} finalize --help")
+
+                Startup can be integrated conditionally into shell profile
+                (See "{self_name()} check --help")
+
+                During startup at stage of "graphical-session-pre.target" environment is
+                sourced from shell profile and from files "wayland-session-env" and
+                "wayland-session-env-${{wm}}" in XDG config hierarchy
+                (in order of increasing importance). Delta will be exported to systemd and
+                dbus activation environments, and cleaned up when services are stopped.
+
+                It is highly recommended to configure your WM to launch apps explicitly scoped
+                in special user session slices (app.slice, background.slice, session.slice).
+                {self_name()} provides custom nested slices for apps to live in and be
+                terminated on session end:
+
+                  app-graphical.slice
+                  background-graphical.slice
+                  session-graphical.slice
+
+                And helper command to handle all the systemd-run invocations for you:
+                (See  "{self_name()} app --help", "man systemd.special", "man systemd-run"
+
+                If app launching is configured as recommended, you can put WM itself in
+                session.slice (as recommended by man systemd.special) by setting:
+
+                  UWSM_USE_SESSION_SLICE=true
+
+                This var affects unit generation phase during start, Slice= parameter
+                of WM services (best to export it in shell profile).
+                """
+            )
+        ),
     )
     parsers["main_subparsers"] = parsers["main"].add_subparsers(
         title="Action subcommands",
@@ -1246,13 +1250,15 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         help="Checkers of states",
         description="Performs a check, returns 0 if true, 1 if false.",
-        epilog=wrap_pgs(dedent(
-            f"""
-            Use may-start checker to integrate startup into shell profile
-            See "{self_name()} check may-start -h"
+        epilog=wrap_pgs(
+            dedent(
+                f"""
+                Use may-start checker to integrate startup into shell profile
+                See "{self_name()} check may-start -h"
 
-            """
-        )),
+                """
+            )
+        ),
     )
     parsers["check_subparsers"] = parsers["check"].add_subparsers(
         title="Subcommands",
@@ -1280,34 +1286,36 @@ def parse_args():
         help="checks for start conditions",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Checks whether it is OK to launch a wayland session.",
-        epilog=wrap_pgs(dedent(
-            f"""
-            Conditions:
-              Running from login shell
-              No wayland session is running
-              System is at graphical.target
-              Foreground VT is among allowed (default: 1)
+        epilog=wrap_pgs(
+            dedent(
+                f"""
+                Conditions:
+                  Running from login shell
+                  No wayland session is running
+                  System is at graphical.target
+                  Foreground VT is among allowed (default: 1)
 
-            To integrate startup into shell profile, add:
+                To integrate startup into shell profile, add:
 
-              if {self_name()} check may-start
-              then
-              	exec {self_name()} start select
-              fi
+                  if {self_name()} check may-start
+                  then
+                  	exec {self_name()} start select
+                  fi
 
-            Condition is essential, since {self_name()}'s environment preloader sources
-            profile and can cause loops without protection.
+                Condition is essential, since {self_name()}'s environment preloader sources
+                profile and can cause loops without protection.
 
-            A bit more complex variant with ability to drop to console:
+                A bit more complex variant with ability to drop to console:
 
-              if {self_name()} check may-start && \\
-                {self_name()} start -o select
-              then
-              	exec {self_name()} start default
-              fi
+                  if {self_name()} check may-start && \\
+                    {self_name()} start -o select
+                  then
+                  	exec {self_name()} start default
+                  fi
 
-            """
-        )),
+                """
+            )
+        ),
     )
     parsers["may_start"].add_argument(
         "vtnr",
