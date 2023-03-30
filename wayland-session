@@ -59,7 +59,11 @@ def wrap_pgs(data: str, maxwidth: int = 0) -> str:
     Splits paragrpaphs by "\n\n", applies wrap of no more than maxsize to each non-indented one
     If maxwidth == 0, just rejoins each non-indented paragraph into single line
     '''
-    width = os.get_terminal_size().columns
+    try:
+        width = os.get_terminal_size().columns
+    except:
+        # default for not being in interactive terminal
+        width = 80
     if maxwidth < width:
         width = maxwidth
     paragraphs = data.split('\n\n')
