@@ -2237,12 +2237,17 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
 def fill_wm_globals():
     """
     Fills global vars:
-      wm_argv,
-      wm_id,
-      wm_bin_id,
-      wm_desktop_names,
-      wm_name,
+      wm_argv
+      wm_cli_args
+      wm_id
+      wm_bin_id
+      wm_desktop_names
+      wm_cli_desktop_names
+      wm_cli_desktop_names_exclusive
+      wm_name
+      wm_cli_name
       wm_description
+      wm_cli_description
     based on args or desktop entry.
     """
 
@@ -2361,13 +2366,22 @@ def fill_wm_globals():
     wm_cli_args = args.args
     # this does not happen in aux exec mode
     if "desktop_names" in args:
-        wm_cli_desktop_names = args.desktop_names
+        wm_cli_desktop_names = sane_split(args.desktop_names, ':')
         wm_cli_desktop_names_exclusive = args.desktop_names_exclusive
         wm_cli_name = args.wm_name
         wm_cli_description = args.wm_comment
 
-        # deduplicate desktop names
-        wm_desktop_names = list(set(wm_desktop_names))
+        # deduplicate desktop names preserving order
+        ddn = []
+        for dn in wm_cli_desktop_names:
+            if dn not in ddn:
+                ddn.append(dn)
+        wm_cli_desktop_names = ddn
+        ddn = []
+        for dn in wm_desktop_names:
+            if dn not in ddn:
+                ddn.append(dn)
+        wm_desktop_names = ddn
 
     # id for functions and env loading
     wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_argv[0])
