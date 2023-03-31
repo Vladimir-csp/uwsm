@@ -95,7 +95,7 @@ Example snippet for sway config to launch terminal, app launcher and file manage
 
 When app launching is properly configured, WM service itself can be placed in `session.slice` by setting
 environment variable `UWSM_USE_SESSION_SLICE=true` before generating units
-(best to export this in `profile` before `wayland-session` invocation).
+(best to export this in `profile` before `wayland-session` invocation). Or by adding `-S` argument to `start` subcommand.
 
 ## Operation
 
@@ -118,9 +118,9 @@ When started, `wayland-session` will hold while wayland session is running, and 
 
 To launch automatically after login on virtual console 1, if systemd is at `graphical.target`, add this to shell profile:
 
-    if wayland-session check may-start
+    if wayland-session check may-start && wayland-session start select
     then
-    	exec wayland-session start select
+    	exec wayland-session start default
     fi
 
 `check may-start` checker subcommand, among other things, **screens for being in interactive login shell which is essential**,

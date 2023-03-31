@@ -704,7 +704,7 @@ def generate_units():
         print_error(f"{ws_self} is not in PATH. Can not continue!")
         sys.exit(1)
 
-    if os.getenv("UWSM_USE_SESSION_SLICE", "false") == "true":
+    if args.use_session_slice:
         wayland_wm_slice = "session.slice"
     else:
         wayland_wm_slice = "app.slice"
@@ -909,10 +909,15 @@ def generate_units():
             )
         )
 
-    # desktop names are not just a single executable name
-    prepend: str = (
-        f" -D {':'.join(wm_desktop_names)}" if wm_desktop_names != [wm_argv[0]] else ""
-    )
+    # exclusive desktop names were given on command line
+    if wm_cli_desktop_names_exclusive:
+        prepend: str = f" -eD {':'.join(wm_cli_desktop_names)}"
+    # desktop names differ from just executable name
+    elif wm_desktop_names != [wm_argv[0]]:
+        prepend: str = f" -D {':'.join(wm_desktop_names)}"
+    else:
+        prepend: str = ""
+
     # additional args were given on cli
     append: str = f" {shlex.join(wm_cli_args)}" if wm_cli_args else ""
 
@@ -1124,7 +1129,7 @@ def parse_args():
         "-e",
         dest="desktop_names_exclusive",
         action="store_true",
-        help="use desktop names from -D exclusively, discard other sources",
+        help="use desktop names set by -D exclusively, discard other sources",
     )
     parsers["wm_args"].add_argument(
         "-N",
@@ -1157,6 +1162,17 @@ def parse_args():
 
             """
         ),
+    )
+    use_session_slice = os.getenv('UWSM_USE_SESSION_SLICE', 'false')
+    if use_session_slice not in ('true', 'false'):
+        print_warning(f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false"')
+        use_session_slice = "false"
+    parsers["start"].add_argument(
+        "-S",
+        action="store_true",
+        dest="use_session_slice",
+        default=use_session_slice == 'true',
+        help=f"launch WM in session.slice ({'already' if use_session_slice == 'true' else 'can be'} preset by UWSM_USE_SESSION_SLICE env var)",
     )
     parsers["start"].add_argument(
         "-o",
@@ -1214,7 +1230,7 @@ def parse_args():
         description="Launches application as a scope in specific slice.",
     )
     parsers["app"].add_argument(
-        "cmd", metavar="{cmd|app.desktop}", help="executable or desktop entry"
+        "cmd", metavar="{cmd,app.desktop}", help="executable or desktop entry"
     )
     parsers["app"].add_argument(
         "args",
@@ -1225,15 +1241,26 @@ def parse_args():
     parsers["app"].add_argument(
         "-s",
         dest="slice_name",
-        metavar="a|b|s|custom.slice",
+        metavar="{a,b,s,custom.slice}",
         help=f"{{{Styles.under}a{Styles.reset}pp,{Styles.under}b{Styles.reset}ackground,{Styles.under}s{Styles.reset}ession}}-graphical.slice, or any other. (default: %(default)s)",
         default="a",
+    )
+    app_unit_type_default = os.getenv("UWSM_APP_UNIT_TYPE", "scope")
+    if app_unit_type_default not in ("scope", "service"):
+        print_warning(f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope"')
+        app_unit_type_default = "scope"
+    parsers["app"].add_argument(
+        "-t",
+        dest="app_unit_type",
+        choices=("scope", "service"),
+        default=app_unit_type_default,
+        help="type of unit to launch (default: %(default)s, can be preset by UWSM_APP_UNIT_TYPE env var)",
     )
     parsers["app"].add_argument(
         "-a",
         dest="app_name",
         metavar="app_name",
-        help="override app name (for substring in unit name)",
+        help="override app name (a substring in unit name)",
         default="",
     )
     parsers["app"].add_argument(
@@ -2096,7 +2123,7 @@ def gen_entry_args(entry, args):
     return entry_argv
 
 
-def app(cmd, cmd_args, slice_name, app_name, unit_name):
+def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
     "Exec given command via systemd-run in specific scope."
 
     # parse desktop entry, update cmd, cmd_args, app_name
@@ -2151,7 +2178,7 @@ def app(cmd, cmd_args, slice_name, app_name, unit_name):
             print_error(p.stderr.strip())
             print_error("Could not escape sequence for scope name")
             sys.exit(1)
-        desktop_scopename = p.stdout.strip()
+        desktop_unit_substring = p.stdout.strip()
 
         # use app cmd as part of scope name
         p = subprocess.run(
@@ -2166,23 +2193,28 @@ def app(cmd, cmd_args, slice_name, app_name, unit_name):
             print_error(p.stderr.strip())
             print_error("Could not escape sequence for scope name")
             sys.exit(1)
-        cmd_scopename = p.stdout.strip()
+        cmd_unit_substring = p.stdout.strip()
 
-        unit_name = f"app-{desktop_scopename}-{cmd_scopename}-{random_hex(8)}.scope"
+        unit_name = (
+            f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
+        )
     else:
-        if not unit_name.endswith(".scope"):
-            raise Exception('Only ".scope" is supported as unit suffix')
+        if not unit_name.endswith(f".{app_unit_type}"):
+            raise Exception(
+                f'Only ".{app_unit_type}" is supported as unit suffix for {app_unit_type} unit type'
+            )
 
     print_debug(
         "systemd-run",
         "systemd-run",
         "--user",
-        "--scope",
+        f"--{app_unit_type}",
         "--slice",
         slice_name,
         "-u",
         unit_name,
         "-qG",
+        "--",
         cmd,
         *(cmd_args),
     )
@@ -2233,7 +2265,7 @@ def fill_wm_globals():
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
-    elif not re.search("^[a-zA-Z0-9_.-]+$", wm_id):
+    elif not re.search("\A[a-zA-Z0-9_.-]+\Z", wm_id, flags=re.MULTILINE):
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
@@ -2263,20 +2295,33 @@ def fill_wm_globals():
 
         # this does not happen in aux exec mode
         if "desktop_names" in args:
-            # prepend desktop names from entry
-            if args.desktop_names_exclusive:
+            # check desktop names
+            if args.desktop_names and not re.search(
+                "\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z",
+                args.desktop_names,
+                flags=re.MULTILINE,
+            ):
+                print_error(f"Got malformed desktop names: {args.desktop_names}")
+                sys.exit(1)
+            # set exclusive desktop names
+            if args.desktop_names_exclusive and args.desktop_names:
                 wm_desktop_names = sane_split(args.desktop_names, ":")
+            # error out on conflicting args
+            if args.desktop_names_exclusive and not args.desktop_names:
+                print_error(
+                    'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"'
+                )
+                sys.exit(1)
+            # prepend desktop names from entry
             else:
-                if entry.get("DesktopNames", ""):
+                if entry.get("DesktopNames", "").rstrip("; \t\n"):
                     wm_desktop_names = (
-                        [wm_argv[0]]
-                        + sane_split(entry.get("DesktopNames", ""), ":")
+                        sane_split(entry.get("DesktopNames", "").rstrip("; \t\n"), ";")
+                        + [wm_argv[0]]
                         + sane_split(args.desktop_names, ":")
                     )
                 else:
-                    wm_desktop_names = [wm_argv[0]] + sane_split(
-                        args.desktop_names, ":"
-                    )
+                    wm_desktop_names = [wm_argv[0]] + sane_split(args.desktop_names, ":")
 
             if args.wm_name:
                 wm_name = args.wm_name
@@ -2509,6 +2554,7 @@ if __name__ == "__main__":
                 cmd=args.cmd,
                 cmd_args=args.args,
                 slice_name=args.slice_name,
+                app_unit_type=args.app_unit_type,
                 app_name=args.app_name,
                 unit_name=args.unit_name,
             )
