@@ -37,6 +37,7 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
     - `Name` and `Comment` for unit `Description`
   - Entries can be overridden, masked or added in `${XDG_DATA_HOME}/wayland-sessions/`
   - Optional interactive selector (requires whiptail), choice is saved in `wayland-session-default-id`
+  - Desktop entry [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html) are supported
 - Can run with arbitrary WM command line (saved as a unit drop-in)
 - Better control of XDG autostart apps:
   - XDG autostart services (`app-*@autostart.service` units) are placed into `app-graphical.slice` that receives stop action before WM is stopped.
@@ -90,15 +91,23 @@ To launch an app scoped inside one of those slices, use:
 
 Launching desktop entries is also supported:
 
-`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app.desktop [with args]`
+`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app.desktop[:action] [with args]`
 
-In this case args must be supported by the entry according to [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/).
+In this case args must be supported by the entry or its selected action according to [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
 
-Example snippet for sway config to launch terminal, app launcher and file manager scoped in default (`a`) `app-graphical.slice`:
+Example snippet for sway config on how to launch apps:
 
+    # launch foot terminal by executable
     bindsym --to-code $mod+t exec exec wayland-session app foot
-    bindsym --to-code $mod+r exec exec wayland-session app fuzzel --log-no-syslog
+    
+    # fuzzel has a very useful launch-prefix option
+    bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='wayland-session app' --log-no-syslog
+    
+    # launch SpaceFM via desktop entry
     bindsym --to-code $mod+e exec exec wayland-session app spacefm.desktop
+    
+    # featherpad desktop entry has "standalone-window" action
+    bindsym --to-code $mod+n exec exec wayland-session app featherpad.desktop:standalone-window
 
 When app launching is properly configured, WM service itself can be placed in `session.slice` by setting
 environment variable `UWSM_USE_SESSION_SLICE=true` before generating units
@@ -116,13 +125,15 @@ Start variants:
 - `wayland-session start ${wm_id} with "any complex" arguments`: also adds arguments for particular `@${wm_id}` instance.
 - `-N, -[e]D, -C` can be used to add name, desktop names, description respectively.
 
-If `${wm_id}` ends with `.desktop`, `wayland-session` finds desktop entry in `wayland-sessions` data hierarchy, uses exec arguments and desktop names from it
+If `${wm_id}` ends with `.desktop` or has a `.desktop:some-action` substring, `wayland-session` finds desktop entry in `wayland-sessions` data hierarchy, uses Exec and DesktopNames from it
 (along with name and comment for unit descriptons).
 
 Arguments provided on command line are appended to the command line of desktop entry (unlike apps), no argument processing is done
 (Please [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose) if you encounter any wayland-sessions desktop entry with %-fields).
 
-If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions` data hierarchy.
+If you want to customize WM execution provided with a desktop entry, copy it to `~/.local/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
+
+If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions` data hierarchy (including their actions).
 Selection is saved, previous selection is highlighted (or launched right away in case of `default`). Selected entry is used as `${wm_id}`.
 
 When started, `wayland-session` will hold while wayland session is running, and terminate session if is itself interrupted or terminated.

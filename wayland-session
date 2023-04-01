@@ -192,6 +192,49 @@ def load_lib_paths(subpath):
     return out
 
 
+def entry2dict(entry, entry_action=None) -> dict:
+    """
+    Extracts keys of interest from desktop entry object, returns dict.
+    Takes into account "action" for Name, Exec, Icon
+    """
+    entry_name = os.path.basename(entry.filename)
+    out = {
+        "Comment": entry.getComment(),
+        "Exec": entry.getExec(),
+        "GenericName": entry.getGenericName(),
+        "Icon": entry.getIcon(),
+        "Name": entry.getName(),
+        "DesktopNames": entry.get("DesktopNames", list=True),
+        "Actions": entry.getActions(),
+        "filename": entry.filename,
+    }
+    print_debug("entry2dict initial", out)
+    action_msg = ""
+    if entry_action is not None:
+        action_msg = f' action "{entry_action}"'
+        action_group = f"Desktop Action {entry_action}"
+        if entry_action not in entry.getActions() or action_group not in entry.groups():
+            raise Exception(
+                f'Deskop entry "{entry_name}" does not contain action "{entry_action}"'
+            )
+        entry.defaultGroup = action_group
+        out["Exec"] = entry.getExec()
+        out["Name"] = entry.getName()
+        # icon can fall back
+        if entry.getIcon():
+            out["Icon"] = entry.getIcon()
+        print_debug("entry2dict action", out)
+    if not out["Name"]:
+        raise Exception(f'Deskop entry "{entry_name}"{action_msg} does not have "Name"')
+    if not out["Exec"]:
+        raise Exception(f'Deskop entry "{entry_name}"{action_msg} does not have "Exec"')
+    if not which(shlex.split(out["Exec"])[0]):
+        raise Exception(
+            f'Deskop entry "{entry_name}"{action_msg} Exec does not contain a reachable executable'
+        )
+    return out
+
+
 def get_de(entry_name: str, subpath: str = "wayland-sessions"):
     """
     "which" for desktop entries, takes entry ID or path and hierarchy subpath
@@ -239,13 +282,14 @@ def get_de(entry_name: str, subpath: str = "wayland-sessions"):
     msgs: list = []
     if entry.getHidden():
         msgs.append("Entry is hidden")
+    if not entry.getName:
+        msgs.append("Entry is missing Name")
     if (
         (entry.getTryExec() and not entry.findTryExec())
         or not entry.getExec()
         or not which(shlex.split(entry.getExec())[0])  # type: ignore
     ):
-        msgs.append("Entry is missing an executable")
-
+        msgs.append("Entry Exec has no reachable executable")
     if msgs:
         print_warning("\n".join(msgs))
         return {}
@@ -311,31 +355,41 @@ def select_de():
     entry_files.sort()
 
     # fill choces list with [Exec, Name], filtered
-    for entry in entry_files:
-        try:
-            entry = DesktopEntry(entry)
-        except:
-            # just skip unparsable entry
+    for entry_file in entry_files:
+        entry = get_de(entry_file)
+        if not entry:
+            # just skip it
             continue
-        # skip inaccessible executables or hidden entries
-        if (
-            entry.getHidden()
-            or entry.getNoDisplay()
-            or (entry.getTryExec() and not entry.findTryExec())
-            or not entry.getExec()
-            or not which(
-                shlex.split(str(entry.getExec()))[0]
-            )  # apparently this might return a float?
-        ):
-            continue
-        name: str = (
-            entry.getName() or os.path.splitext(os.path.basename(entry.filename))[0]
-        )  # type: ignore
+
+        entry_filename: str = os.path.basename(entry.filename)
+        name: str = entry.getName()
         generic_name: str = entry.getGenericName()
-        comment: str = entry.getComment()
         description: str = " ".join((name, generic_name))
+        comment: str = entry.getComment()
         # add a choice
-        choices_raw.append((os.path.basename(entry.filename), description, comment))
+        choices_raw.append((entry_filename, description, comment))
+
+        # also enumerate actions
+        for action in entry.getActions():
+            print_debug("parsing aciton", action)
+            action_group: str = f"Desktop Action {action}"
+            if action_group not in entry.groups():
+                continue
+
+            # switch to action group
+            entry.defaultGroup = action_group
+            if (
+                not entry.getExec()
+                or not which(shlex.split(str(entry.getExec()))[0])
+                or not entry.getName()
+            ):
+                continue
+
+            # action_description: str = f" ╰─▶ {entry.getName()}"
+            action_description: str = f" ╰▶ {entry.getName()}"
+
+            # add a choice
+            choices_raw.append((f"{entry_filename}:{action}", action_description, ""))
 
     # find longest description
     description_length: int = 0
@@ -344,10 +398,14 @@ def select_de():
             description_length = len(choice[1])
 
     # pretty format choices
+    col_overhead = 10
+    col = os.get_terminal_size().columns
     for choice in choices_raw:
         choices.append(choice[0])
         if choice[2]:
-            choices.append(f"{choice[1].ljust(description_length)} ({choice[2]})")
+            choices.append(
+                f"{choice[1].ljust(description_length)}  {textwrap.shorten(choice[2], col - description_length - col_overhead)}"
+            )
         else:
             choices.append(choice[1])
 
@@ -375,7 +433,7 @@ def select_de():
         "Universal Wayland Session Manager",
         "--title",
         "Choose compositor",
-        "--nocancel",
+        # "--nocancel",
         *(("--default-item", default) if default else ""),
         "--menu",
         "",
@@ -387,36 +445,7 @@ def select_de():
     ]
 
     # replace whiptail theme with simple default colors
-    whiptail_env = dict(os.environ) | {
-        "TERM": "linux",
-        "NEWT_COLORS": ";".join(
-            [
-                "root=default,default",
-                "border=default,default",
-                "window=default,default",
-                "shadow=default,default",
-                "title=black,lightgray",
-                "button=default,default",
-                "actbutton=black,lightgray",
-                "compactbutton=default,default",
-                "checkbox=default,default",
-                "actcheckbox=black,lightgray",
-                "entry=default,default",
-                "disentry=default,default",
-                "label=default,default",
-                "listbox=default,default",
-                "actlistbox=black,lightgray",
-                "sellistbox=black,lightgray",
-                "actsellistbox=black,lightgray",
-                "textbox=default,default",
-                "acttextbox=black,lightgray",
-                "emptyscale=default,default",
-                "fullscale=default,default",
-                "helpline=default,default",
-                "roottext=default,default",
-            ]
-        ),
-    }
+    whiptail_env = dict(os.environ) | {"NEWT_MONO": "true"}
     # run whiptail, capture stderr
     p = subprocess.run(
         argv, env=whiptail_env, stderr=subprocess.PIPE, text=True, check=False
@@ -1113,7 +1142,7 @@ def parse_args():
     parsers["wm_args"] = argparse.ArgumentParser(add_help=False)
     parsers["wm_args"].add_argument(
         "wm",
-        metavar="{wm,wm.desktop}",
+        metavar="{wm,wm.desktop[:action]}",
         help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries.',
     )
     parsers["wm_args"].add_argument(
@@ -1204,7 +1233,7 @@ def parse_args():
     parsers["stop"].add_argument(
         "-r",
         nargs="?",
-        metavar="wm,wm.desktop",
+        metavar="wm,wm.desktop[:action]",
         default=False,
         dest="remove_units",
         help="also remove units (all or only wm-specific)",
@@ -1233,7 +1262,7 @@ def parse_args():
         description="Launches application as a scope in specific slice.",
     )
     parsers["app"].add_argument(
-        "cmd", metavar="{cmd,app.desktop}", help="executable or desktop entry"
+        "cmd", metavar="{cmd,app.desktop[:action]}", help="executable or desktop entry"
     )
     parsers["app"].add_argument(
         "args",
@@ -1393,7 +1422,7 @@ def parse_args():
     )
     parsers["exec"].add_argument(
         "wm",
-        metavar="{wm,wm.desktop}",
+        metavar="{wm,wm.desktop[:action]}",
         help="executable or desktop entry (used as WM ID)",
     )
     parsers["exec"].add_argument(
@@ -2043,7 +2072,7 @@ def path2url(arg):
     return f"file:{urlparse.quote(arg)}"
 
 
-def gen_entry_args(entry, args):
+def gen_entry_args(entry, args, entry_action=None):
     """
     Takes DesktopEntry object and additional args, returns rendered argv as (cmd, args).
     "args" can be a list of args or a list of lists of args if multiple instances of cmd
@@ -2059,7 +2088,10 @@ def gen_entry_args(entry, args):
     # %k entry path
     # %i --icon getIcon() if getIcon()
 
-    entry_argv = shlex.split(entry.getExec())
+    entry_dict = entry2dict(entry, entry_action=entry_action)
+
+    entry_argv = shlex.split(entry_dict["Exec"])
+
     entry_cmd, entry_args = entry_argv[0], entry_argv[1:]
     print_debug("entry_cmd, entry_args pre:", entry_cmd, entry_args)
 
@@ -2158,15 +2190,15 @@ def gen_entry_args(entry, args):
                 print_debug(f"added {arg}, expand: {expand}, {entry_args}")
 
         elif entry_arg == "%c":
-            entry_args[idx + expand] = entry.getName()
+            entry_args[idx + expand] = entry_dict["Name"]
             print_debug(f"replaced, expand: {expand}. {entry_args}")
         elif entry_arg == "%k":
-            entry_args[idx + expand] = entry.filename
+            entry_args[idx + expand] = entry_dict["filename"]
             print_debug(f"replaced, expand: {expand}. {entry_args}")
         elif entry_arg == "%i":
-            if entry.getIcon():
+            if entry_dict["Icon"]:
                 entry_args[idx + expand] = "--icon"
-                entry_args.insert(idx + expand + 1, entry.getIcon())
+                entry_args.insert(idx + expand + 1, entry_dict["Icon"])
                 expand += 1
                 print_debug(f"replaced and expanded, expand: {expand}. {entry_args}")
             else:
@@ -2178,7 +2210,14 @@ def gen_entry_args(entry, args):
 
     # fail if arguments not supported, but requested
     if args and not encountered_fu:
-        raise Exception(f'Entry "{os.path.basename(entry.filename)}" does not support arguments')
+        if not entry_action:
+            raise Exception(
+                f'Entry "{os.path.basename(entry.filename)}" does not support arguments'
+            )
+        else:
+            raise Exception(
+                f'Entry "{os.path.basename(entry.filename)}" action "{entry_action}" does not support arguments'
+            )
 
     # iterative arguments required
     if len(args) > 1 and encountered_fu in ["%f", "%u"]:
@@ -2204,18 +2243,30 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
     """
 
     # parse desktop entry, update cmd, cmd_args, app_name
-    if cmd.endswith(".desktop"):
-        entry = get_de(cmd, subpath="applications")
+    if cmd.endswith(".desktop") or ".desktop:" in cmd:
+        # separate action
+        if ":" in cmd and cmd.count(":") == 1:
+            entry_name, entry_action = cmd.split(":")
+        elif ":" in cmd and cmd.count(":") > 1:
+            raise Exception(f'Invalid desktop entry with action "{cmd}"')
+        else:
+            entry_name, entry_action = cmd, ""
+
+        print_debug("entry_name, entry_action:", entry_name, entry_action)
+
+        entry = get_de(entry_name, subpath="applications")
 
         if not entry:
             raise Exception(f'Could not find or parse deskop entry "{cmd}"')
 
-        # regenerate command and args according to entry
-        cmd, cmd_args = gen_entry_args(entry, cmd_args)
-
         # get unlocalized entry name if no override
         if not app_name:
             app_name = entry.get("Name", locale=False)
+
+        # regenerate command and args according to entry
+        cmd, cmd_args = gen_entry_args(
+            entry, cmd_args, entry_action=entry_action or None
+        )
 
         # iterative execution is required
         if cmd_args and isinstance(cmd_args[0], (list, tuple)):
@@ -2357,7 +2408,7 @@ def fill_wm_globals():
       wm_cli_name
       wm_description
       wm_cli_description
-    based on args or desktop entry.
+    based on args or desktop entry
     """
 
     global wm_argv
@@ -2379,16 +2430,28 @@ def fill_wm_globals():
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
-    elif not re.search(r"\A[a-zA-Z0-9_.-]+\Z", wm_id, flags=re.MULTILINE):
+    if not re.search(r"\A[a-zA-Z0-9_:.-]+\Z", wm_id, flags=re.MULTILINE):
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
-    elif wm_id.endswith(".desktop"):
+    if wm_id.endswith(".desktop") or ".desktop:" in wm_id:
         print_debug(f"WM ID is a desktop entry: {wm_id}")
-        # if WM ID is a desktop entry id
+
+        # separate action
+        if ":" in wm_id and wm_id.count(":") == 1:
+            entry_name, entry_action = wm_id.split(":")
+        elif ":" in wm_id and wm_id.count(":") > 1:
+            raise Exception(f'Invalid desktop entry with action "{wm_id}"')
+        else:
+            entry_name, entry_action = wm_id, ""
+
+        if not entry_name:
+            raise Exception(f'Invalid desktop entry with action "{wm_id}"')
+
+        # parse entry
         try:
             # find and parse entry
-            entry = get_de(wm_id)
+            entry = get_de(entry_name)
             if not entry:
                 raise Exception(f'Could not find and parse entry "{wm_id}"')
         except Exception as E:
@@ -2396,16 +2459,13 @@ def fill_wm_globals():
             sys.exit(1)
 
         print_debug("entry", entry)
-        print_debug(
-            "names",
-            entry.getName() or "No Name",
-            entry.getGenericName() or "No GenericName",
-        )
+
+        entry_dict = entry2dict(entry, entry_action=entry_action or None)
 
         # combine exec from entry and arguments
         # TODO: either drop this behavior, or add support for % fields
         # not that wayland session entries will ever use them
-        wm_argv = shlex.split(entry.getExec()) + args.args
+        wm_argv = shlex.split(entry_dict["Exec"]) + args.args
 
         # this does not happen in aux exec mode
         if "desktop_names" in args:
@@ -2428,9 +2488,9 @@ def fill_wm_globals():
                 sys.exit(1)
             # prepend desktop names from entry
             else:
-                if entry.get("DesktopNames", "").rstrip("; \t\n"):
+                if entry_dict["DesktopNames"]:
                     wm_desktop_names = (
-                        sane_split(entry.get("DesktopNames", "").rstrip("; \t\n"), ";")
+                        entry_dict["DesktopNames"]
                         + [wm_argv[0]]
                         + sane_split(args.desktop_names, ":")
                     )
@@ -2441,17 +2501,17 @@ def fill_wm_globals():
 
             if args.wm_name:
                 wm_name = args.wm_name
-            elif entry.getName() and not entry.getGenericName():
-                wm_name = entry.getName()
-            elif not entry.getName() and entry.getGenericName():
-                wm_name = f"{wm_argv[0]} {entry.getGenericName()}"
-            elif entry.getName() and entry.getGenericName():
-                wm_name = f"{entry.getName()} {entry.getGenericName()}"
+            elif entry_dict["Name"] and not entry_dict["GenericName"]:
+                wm_name = entry_dict["Name"]
+            elif not entry_dict["Name"] and entry_dict["GenericName"]:
+                wm_name = f"{wm_argv[0]} {entry_dict['GenericName']}"
+            elif entry_dict["Name"] and entry_dict["GenericName"]:
+                wm_name = f"{entry_dict['Name']} {entry_dict['GenericName']}"
 
             if args.wm_comment:
                 wm_description = args.wm_comment
             else:
-                wm_description = entry.getComment()
+                wm_description = entry_dict["Comment"]
 
     else:
         # WM id is an executable
@@ -2594,9 +2654,12 @@ if __name__ == "__main__":
             )
         )
 
-        if is_active(verbose=True) and not args.dry_run:
+        if is_active(verbose=True):
             print_error("Another WM is already running.")
-            sys.exit(1)
+            if not args.dry_run:
+                sys.exit(1)
+            else:
+                print_ok("...but this is dry run, so the dream continues.")
 
         generate_units()
 
