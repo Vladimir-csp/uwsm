@@ -1163,15 +1163,17 @@ def parse_args():
             """
         ),
     )
-    use_session_slice = os.getenv('UWSM_USE_SESSION_SLICE', 'false')
-    if use_session_slice not in ('true', 'false'):
-        print_warning(f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false"')
+    use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", "false")
+    if use_session_slice not in ("true", "false"):
+        print_warning(
+            f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false"'
+        )
         use_session_slice = "false"
     parsers["start"].add_argument(
         "-S",
         action="store_true",
         dest="use_session_slice",
-        default=use_session_slice == 'true',
+        default=use_session_slice == "true",
         help=f"launch WM in session.slice ({'already' if use_session_slice == 'true' else 'can be'} preset by UWSM_USE_SESSION_SLICE env var)",
     )
     parsers["start"].add_argument(
@@ -1247,7 +1249,9 @@ def parse_args():
     )
     app_unit_type_default = os.getenv("UWSM_APP_UNIT_TYPE", "scope")
     if app_unit_type_default not in ("scope", "service"):
-        print_warning(f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope"')
+        print_warning(
+            f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope"'
+        )
         app_unit_type_default = "scope"
     parsers["app"].add_argument(
         "-t",
@@ -2195,20 +2199,18 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
             sys.exit(1)
         cmd_unit_substring = p.stdout.strip()
 
-        unit_name = (
-            f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
-        )
+        unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
     else:
         if not unit_name.endswith(f".{app_unit_type}"):
             raise Exception(
                 f'Only ".{app_unit_type}" is supported as unit suffix for {app_unit_type} unit type'
             )
 
-    print_debug(
+    execlp_args = (
         "systemd-run",
         "systemd-run",
         "--user",
-        f"--{app_unit_type}",
+        *(["--scope"] if app_unit_type == "scope" else []),
         "--slice",
         slice_name,
         "-u",
@@ -2219,19 +2221,8 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
         *(cmd_args),
     )
 
-    os.execlp(
-        "systemd-run",
-        "systemd-run",
-        "--user",
-        "--scope",
-        "--slice",
-        slice_name,
-        "-u",
-        unit_name,
-        "-qG",
-        cmd,
-        *(cmd_args),
-    )
+    print_debug("os.execlp", *(execlp_args))
+    os.execlp(*(execlp_args))
 
 
 def fill_wm_globals():
@@ -2326,7 +2317,9 @@ def fill_wm_globals():
                         + sane_split(args.desktop_names, ":")
                     )
                 else:
-                    wm_desktop_names = [wm_argv[0]] + sane_split(args.desktop_names, ":")
+                    wm_desktop_names = [wm_argv[0]] + sane_split(
+                        args.desktop_names, ":"
+                    )
 
             if args.wm_name:
                 wm_name = args.wm_name
@@ -2366,7 +2359,7 @@ def fill_wm_globals():
     wm_cli_args = args.args
     # this does not happen in aux exec mode
     if "desktop_names" in args:
-        wm_cli_desktop_names = sane_split(args.desktop_names, ':')
+        wm_cli_desktop_names = sane_split(args.desktop_names, ":")
         wm_cli_desktop_names_exclusive = args.desktop_names_exclusive
         wm_cli_name = args.wm_name
         wm_cli_description = args.wm_comment

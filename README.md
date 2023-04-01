@@ -97,6 +97,8 @@ When app launching is properly configured, WM service itself can be placed in `s
 environment variable `UWSM_USE_SESSION_SLICE=true` before generating units
 (best to export this in `profile` before `wayland-session` invocation). Or by adding `-S` argument to `start` subcommand.
 
+Apps can also be launched as services by adding `-t service` argument or setting default for `-t` via `UWSM_APP_UNIT_TYPE` env var.
+
 ## Operation
 
 ### Short story:
