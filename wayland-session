@@ -13,6 +13,7 @@ Inspired by and uses some techniques from:
 
 import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal
 from io import StringIO
+from urllib import parse as urlparse
 from typing import List, Type, IO, Any
 from xdg.DesktopEntry import DesktopEntry, which
 from xdg import BaseDirectory
@@ -1112,7 +1113,7 @@ def parse_args():
     parsers["wm_args"] = argparse.ArgumentParser(add_help=False)
     parsers["wm_args"].add_argument(
         "wm",
-        metavar="{wm|wm.desktop}",
+        metavar="{wm,wm.desktop}",
         help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries.',
     )
     parsers["wm_args"].add_argument(
@@ -1203,7 +1204,7 @@ def parse_args():
     parsers["stop"].add_argument(
         "-r",
         nargs="?",
-        metavar="wm|wm.desktop",
+        metavar="wm,wm.desktop",
         default=False,
         dest="remove_units",
         help="also remove units (all or only wm-specific)",
@@ -1238,7 +1239,7 @@ def parse_args():
         "args",
         metavar="...",
         nargs=argparse.REMAINDER,
-        help="arguments (not for desktop entries)",
+        help="arguments for application",
     )
     parsers["app"].add_argument(
         "-s",
@@ -1392,7 +1393,7 @@ def parse_args():
     )
     parsers["exec"].add_argument(
         "wm",
-        metavar="{wm|wm.desktop}",
+        metavar="{wm,wm.desktop}",
         help="executable or desktop entry (used as WM ID)",
     )
     parsers["exec"].add_argument(
@@ -2035,123 +2036,237 @@ def cleanup_env():
         print_ok(f'Removed "{os.path.basename(cleanup_file)}"')
 
 
-def gen_entry_args(entry, args):
-    "Takes DesktopEntry object and additional args, returns rendered argv"
+def path2url(arg):
+    "If argument is not an url, convert to url"
+    if urlparse.urlparse(arg).scheme:
+        return arg
+    return f"file:{urlparse.quote(arg)}"
 
-    # TODO:
+
+def gen_entry_args(entry, args):
+    """
+    Takes DesktopEntry object and additional args, returns rendered argv as (cmd, args).
+    "args" can be a list of args or a list of lists of args if multiple instances of cmd
+    are required.
+    """
+
+    # Parsing of fields:
     # %f single path, run multiple instances per path
     # %F multiple paths as args
-    # %u single url, convert local path to 'file:' url, run multiple instances per url
-    # %U multiple urls as args
-    # DONE:
+    # %u single url, convert non-url to 'file:' url, run multiple instances per url
+    # %U multiple urls as args, convert non-url to 'file:' url
     # %c translated Name=
     # %k entry path
     # %i --icon getIcon() if getIcon()
 
     entry_argv = shlex.split(entry.getExec())
-    print_debug("entry_argv pre", entry_argv)
+    entry_cmd, entry_args = entry_argv[0], entry_argv[1:]
+    print_debug("entry_cmd, entry_args pre:", entry_cmd, entry_args)
 
-    # search for fields to expand or pop
+    ## search for fields to expand or pop
+    # expansion counter
     expand = 0
+    # %[fFuU] recorder
     encountered_fu = ""
-    for idx, arg in enumerate(entry_argv[1:].copy(), start=1):
-        print_debug(f"parsing argument {idx}: {arg}")
-        if arg == "%f":
+
+    for idx, entry_arg in enumerate(entry_args.copy()):
+        print_debug(f"parsing argument {idx + 1}: {entry_arg}")
+        if entry_arg == "%f":
             if encountered_fu:
                 raise Exception(
-                    f'Desktop entry has conflicting args: "{encountered_fu}", "{arg}"'
+                    f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
-            encountered_fu = arg
-            if args:
-                raise Exception('"%f" is not supported yet')
-            else:
-                encountered_fu = arg
-                entry_argv.pop(idx + expand)
+            encountered_fu = entry_arg
+
+            if len(args) <= 1:
+                # pop field arg
+                entry_args.pop(idx + expand)
                 expand -= 1
-                print_debug(f"popped, expand: {expand}. {entry_argv}")
-        elif arg == "%F":
+                print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
+
+                if args:
+                    # replace field with single argument
+                    entry_args.insert(idx + expand, args[0])
+                    expand += 1
+                    print_debug(f"added {args[0]}, expand: {expand}, {entry_args}")
+
+            else:
+                # leave field arg for later iterative replacement
+                print_debug(f"ignored {entry_arg}, expand: {expand}, {entry_args}")
+
+        elif entry_arg == "%F":
             if encountered_fu:
                 raise Exception(
-                    f'Desktop entry has conflicting args: "{encountered_fu}", "{arg}"'
+                    f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
-            encountered_fu = arg
-            if args:
-                raise Exception('"%F" is not supported yet')
-            else:
-                entry_argv.pop(idx + expand)
-                expand -= 1
-                print_debug(f"popped, expand: {expand}. {entry_argv}")
-        elif arg == "%u":
-            if encountered_fu:
-                raise Exception(
-                    f'Desktop entry has conflicting args: "{encountered_fu}", "{arg}"'
-                )
-            encountered_fu = arg
-            if args:
-                raise Exception('"%u" is not supported yet')
-            else:
-                entry_argv.pop(idx + expand)
-                expand -= 1
-                print_debug(f"popped, expand: {expand}. {entry_argv}")
-        elif arg == "%U":
-            if encountered_fu:
-                raise Exception(
-                    f'Desktop entry has conflicting args: "{encountered_fu}", "{arg}"'
-                )
-            encountered_fu = arg
-            if args:
-                raise Exception('"%U" is not supported yet')
-            else:
-                entry_argv.pop(idx + expand)
-                expand -= 1
-                print_debug(f"popped, expand: {expand}. {entry_argv}")
-        elif arg == "%c":
-            entry_argv[idx + expand] = entry.getName()
-            print_debug(f"replaced, expand: {expand}. {entry_argv}")
-        elif arg == "%k":
-            entry_argv[idx + expand] = entry.filename
-            print_debug(f"replaced, expand: {expand}. {entry_argv}")
-        elif arg == "%i":
-            if entry.getIcon():
-                entry_argv[idx + expand] = "--icon"
-                entry_argv.insert(idx + expand + 1, entry.getIcon())
+            encountered_fu = entry_arg
+
+            # pop field arg
+            entry_args.pop(idx + expand)
+            expand -= 1
+            print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
+
+            # replace with arguments
+            for arg in args:
+                entry_args.insert(idx + expand, arg)
                 expand += 1
-                print_debug(f"replaced and expanded, expand: {expand}. {entry_argv}")
+                print_debug(f"added {arg}, expand: {expand}, {entry_args}")
+
+        elif entry_arg == "%u":
+            if encountered_fu:
+                raise Exception(
+                    f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
+                )
+            encountered_fu = entry_arg
+
+            if len(args) <= 1:
+                # pop field arg
+                entry_args.pop(idx + expand)
+                expand -= 1
+                print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
+
+                if args:
+                    # replace field with single argument
+                    # convert to url, assume file
+                    arg = path2url(args[0])
+                    entry_args.insert(idx + expand, arg)
+                    expand += 1
+                    print_debug(f"added {arg}, expand: {expand}, {entry_args}")
+
             else:
-                entry_argv.pop(idx + expand)
+                # leave field arg for later iterative replacement
+                print_debug(f"ignored {entry_arg}, expand: {expand}, {entry_args}")
+
+        elif entry_arg == "%U":
+            if encountered_fu:
+                raise Exception(
+                    f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
+                )
+            encountered_fu = entry_arg
+
+            # pop field arg
+            entry_args.pop(idx + expand)
+            expand -= 1
+            print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
+
+            # replace with arguments
+            for arg in args:
+                # urify if not an url, assume file
+                arg = path2url(arg)
+                entry_args.insert(idx + expand, arg)
+                expand += 1
+                print_debug(f"added {arg}, expand: {expand}, {entry_args}")
+
+        elif entry_arg == "%c":
+            entry_args[idx + expand] = entry.getName()
+            print_debug(f"replaced, expand: {expand}. {entry_args}")
+        elif entry_arg == "%k":
+            entry_args[idx + expand] = entry.filename
+            print_debug(f"replaced, expand: {expand}. {entry_args}")
+        elif entry_arg == "%i":
+            if entry.getIcon():
+                entry_args[idx + expand] = "--icon"
+                entry_args.insert(idx + expand + 1, entry.getIcon())
+                expand += 1
+                print_debug(f"replaced and expanded, expand: {expand}. {entry_args}")
+            else:
+                entry_args.pop(idx + expand)
                 expand -= 1
                 print_debug(f"popped, expand: {expand}")
 
-    print_debug("entry_argv post", entry_argv)
+    print_debug("entry_cmd, entry_args post:", entry_cmd, entry_args)
 
-    return entry_argv
+    # fail if arguments not supported, but requested
+    if args and not encountered_fu:
+        raise Exception(f'Entry "{os.path.basename(entry.filename)}" does not support arguments')
+
+    # iterative arguments required
+    if len(args) > 1 and encountered_fu in ["%f", "%u"]:
+        iterated_entry_args = []
+        field_index = entry_args.index(encountered_fu)
+        for arg in args:
+            cur_entry_args = entry_args.copy()
+            if encountered_fu == "%u":
+                arg = path2url(arg)
+            cur_entry_args[field_index] = arg
+            iterated_entry_args.append(cur_entry_args)
+            print_debug("added iter args", cur_entry_args)
+
+        return (entry_cmd, iterated_entry_args)
+
+    return (entry_cmd, entry_args)
 
 
-def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
-    "Exec given command via systemd-run in specific scope."
+def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=False):
+    """
+    Exec given command or desktop entry via systemd-run in specific scope.
+    Or fork and return subprocess object.
+    """
 
     # parse desktop entry, update cmd, cmd_args, app_name
     if cmd.endswith(".desktop"):
-        if cmd_args:
-            raise Exception("Passing args to desktop entry is not implemented yet")
-
         entry = get_de(cmd, subpath="applications")
 
         if not entry:
             raise Exception(f'Could not find or parse deskop entry "{cmd}"')
 
-        entry_argv = gen_entry_args(entry, cmd_args)
+        # regenerate command and args according to entry
+        cmd, cmd_args = gen_entry_args(entry, cmd_args)
 
+        # get unlocalized entry name if no override
         if not app_name:
             app_name = entry.get("Name", locale=False)
 
-        print_debug("entry_argv", entry_argv[0])
+        # iterative execution is required
+        if cmd_args and isinstance(cmd_args[0], (list, tuple)):
+            # drop unit_name if multiple instances required
+            if unit_name:
+                print_warning(
+                    f'Dropping unit name "{unit_name}" because entry "{os.path.basename(entry.filename)}" requires multiple instances for given arguments'
+                )
+                unit_name = ""
 
-        if isinstance(entry_argv[0], str):
-            # single command
-            cmd, cmd_args = entry_argv[0], entry_argv[1:]
-        elif isinstance(entry_argv[0], (list, tuple)):
-            raise Exception("Not implemented")
+            # call forking self for each instance
+            sub_apps = []
+            for args_instance in cmd_args:
+                sub_apps.append(
+                    app(
+                        cmd,
+                        args_instance,
+                        slice_name,
+                        app_unit_type,
+                        app_name,
+                        unit_name,
+                        fork=True,
+                    )
+                )
+
+            # prepare poll registry
+            sub_apps_rc = [None for n in range(0, len(sub_apps))]
+
+            # function for map()
+            def is_int(checkvar):
+                "checks if given var is int"
+                return isinstance(checkvar, int)
+
+            # poll subprocesses until they are finished
+            while not all(map(is_int, sub_apps_rc)):
+                for idx, sub_app in enumerate(sub_apps):
+                    if not is_int(sub_apps_rc[idx]):
+                        sub_apps_rc[idx] = sub_app.poll()
+                        if is_int(sub_apps_rc[idx]) and sub_apps_rc[idx]:
+                            print_error(
+                                f'Process "{shlex.join(sub_app.args)}" finished with {sub_apps_rc[idx]}'
+                            )
+                        elif is_int(sub_apps_rc[idx]) and not sub_apps_rc[idx]:
+                            print_normal(
+                                f'Process "{shlex.join(sub_app.args)}" finished with {sub_apps_rc[idx]}'
+                            )
+                time.sleep(0.1)
+
+            if any(sub_apps_rc):
+                sys.exit(1)
+            sys.exit(0)
 
     print_debug("cmd", cmd, "cmd_args", cmd_args)
 
@@ -2206,8 +2321,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
                 f'Only ".{app_unit_type}" is supported as unit suffix for {app_unit_type} unit type'
             )
 
-    execlp_args = (
-        "systemd-run",
+    final_args = (
         "systemd-run",
         "--user",
         *(["--scope"] if app_unit_type == "scope" else []),
@@ -2221,8 +2335,12 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name):
         *(cmd_args),
     )
 
-    print_debug("os.execlp", *(execlp_args))
-    os.execlp(*(execlp_args))
+    print_debug("final_args", *(final_args))
+
+    if fork:
+        return subprocess.Popen(final_args)
+
+    os.execlp(final_args[0], *(final_args))
 
 
 def fill_wm_globals():
@@ -2261,7 +2379,7 @@ def fill_wm_globals():
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
-    elif not re.search("\A[a-zA-Z0-9_.-]+\Z", wm_id, flags=re.MULTILINE):
+    elif not re.search(r"\A[a-zA-Z0-9_.-]+\Z", wm_id, flags=re.MULTILINE):
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
@@ -2293,7 +2411,7 @@ def fill_wm_globals():
         if "desktop_names" in args:
             # check desktop names
             if args.desktop_names and not re.search(
-                "\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z",
+                r"\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z",
                 args.desktop_names,
                 flags=re.MULTILINE,
             ):

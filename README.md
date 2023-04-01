@@ -34,6 +34,7 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
   - Data taken from entry (Can be amended or overridden via cli arguments):
     - `Exec` for argument list
     - `DesktopNames` for `XDG_CURRENT_DESKTOP` and `XDG_SESSION_DESKTOP`
+    - `Name` and `Comment` for unit `Description`
   - Entries can be overridden, masked or added in `${XDG_DATA_HOME}/wayland-sessions/`
   - Optional interactive selector (requires whiptail), choice is saved in `wayland-session-default-id`
 - Can run with arbitrary WM command line (saved as a unit drop-in)
@@ -43,8 +44,8 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
 - Try best to shutdown session cleanly via a net of dependencies between units
 - Provide helpers for various operations:
   - finalizing service startup (WM service unit uses `Type=notify`) and exporting variables set by WM
-  - launching applications in proper slices
-  - checking conditions for launch at login
+  - launching applications as scopes or services in proper slices
+  - checking conditions for launch at login (for integration into login shell profile)
 
 ## Installation
 
@@ -83,9 +84,15 @@ It generates special nested slices that will also receive stop action ordered be
 
 `app-*@autostart.service` units are also modified to be started in `app-graphical.slice`.
 
-To launch an app scoped inside one of those slices, use `wayland-session app [-s a|b|s|custom.slice] your_app [with args]`.
+To launch an app scoped inside one of those slices, use:
 
-Launching desktop entries is partially supported (without arguments):  `wayland-session app [-s a|b|s|custom.slice] your_app.desktop`.
+`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app [with args]`
+
+Launching desktop entries is also supported:
+
+`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app.desktop [with args]`
+
+In this case args must be supported by the entry according to [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/latest/).
 
 Example snippet for sway config to launch terminal, app launcher and file manager scoped in default (`a`) `app-graphical.slice`:
 
@@ -109,18 +116,20 @@ Start variants:
 - `wayland-session start ${wm_id} with "any complex" arguments`: also adds arguments for particular `@${wm_id}` instance.
 - `-N, -[e]D, -C` can be used to add name, desktop names, description respectively.
 
-If `${wm_id}` ends with `.desktop`, `wayland-session` finds desktop entry in `wayland-sessions`, uses exec arguments and desktop names from it
+If `${wm_id}` ends with `.desktop`, `wayland-session` finds desktop entry in `wayland-sessions` data hierarchy, uses exec arguments and desktop names from it
 (along with name and comment for unit descriptons).
-Arguments provided on command line are appended to the command line of desktop entry (unlike apps).
 
-If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions`.
+Arguments provided on command line are appended to the command line of desktop entry (unlike apps), no argument processing is done
+(Please [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose) if you encounter any wayland-sessions desktop entry with %-fields).
+
+If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions` data hierarchy.
 Selection is saved, previous selection is highlighted (or launched right away in case of `default`). Selected entry is used as `${wm_id}`.
 
-When started, `wayland-session` will hold while wayland session is running, and terminate session if interrupted or terminated.
+When started, `wayland-session` will hold while wayland session is running, and terminate session if is itself interrupted or terminated.
 
 To launch automatically after login on virtual console 1, if systemd is at `graphical.target`, add this to shell profile:
 
-    if wayland-session check may-start && wayland-session start select
+    if wayland-session check may-start && wayland-session start -o select
     then
     	exec wayland-session start default
     fi
