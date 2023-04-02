@@ -9,4 +9,25 @@ quirks_wayfire() {
 	else
 		XWAYLAND=true
 	fi
+
+	# append "wlroots" to XDG_CURRENT_DESKTOP if not already there
+	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]
+	then
+		WLR_FOUND=false
+		OIFS="$IFS"
+		IFS=':'
+		for DN in $XDG_CURRENT_DESKTOP
+		do
+			if [ "$DN" = "wlroots" ]
+			then
+				WLR_FOUND=true
+				break
+			fi
+		done
+		IFS="$OIFS"
+		if [ "$WLR_FOUND" = "false" ]
+		then
+			export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots"
+		fi
+	fi
 }

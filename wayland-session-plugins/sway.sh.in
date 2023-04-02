@@ -1,8 +1,6 @@
 #!/bin/false
 
 quirks_sway() {
-	UWSM_VARS_IMPORT_BACK="${UWSM_VARS_IMPORT_BACK} I3SOCK SWAYSOCK"
-	ALWAYS_CLEANUP_VARS="${UWSM_VARS_IMPORT_BACK} I3SOCK SWAYSOCK"
 	# detect disabled xwayland
 	if grep -qE '^[[:space:]]*xwayland[[:space:]]+disable' "${XDG_CONFIG_HOME}/sway/config" 2>/dev/null
 	then
@@ -10,18 +8,25 @@ quirks_sway() {
 	else
 		XWAYLAND=true
 	fi
+
+	# append "wlroots" to XDG_CURRENT_DESKTOP if not already there
+	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]
+	then
+		WLR_FOUND=false
+		OIFS="$IFS"
+		IFS=':'
+		for DN in $XDG_CURRENT_DESKTOP
+		do
+			if [ "$DN" = "wlroots" ]
+			then
+				WLR_FOUND=true
+				break
+			fi
+		done
+		IFS="$OIFS"
+		if [ "$WLR_FOUND" = "false" ]
+		then
+			export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots"
+		fi
+	fi
 }
-
-# this does not work, as SWAYSOCK is inaccessible from context of ExecStop
-# and any attempt to get it via env or systemctl --user show-environment failed so far.
-#generate_units_sway() {
-#	# requires SWAYSOCK in UWSM_VARS_IMPORT_BACK
-#	update_unit "wayland-wm@sway.service.d/exit.conf" <<- EOF
-#		[Service]
-#		ExecStop=swaymsg exit
-#	EOF
-#}
-
-#remove_units_sway() {
-#	remove_unit "wayland-wm@sway.service.d/exit.conf"
-#}
