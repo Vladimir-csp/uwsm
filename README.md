@@ -54,7 +54,7 @@ WIP. Use at your onw risk. Breaking changes are being introduced. See commit mes
 
 Put `wayland-session` executable somewhere in `$PATH`.
 
-Put `wayland-session-plugins` dir somewhere in `/lib:/usr/lib:/usr/local/lib:${HOME}/.local/lib`
+Put `wayland-session-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
 
 ### 2. Vars set by WM and Startup notification
 
@@ -278,6 +278,7 @@ Variables available to plugins:
   - `__WM_BIN_ID__` - processed first item of wm argv.
   - `__WM_DESKTOP_NAMES__` - ':'-separated desktop names from `DesktopNames=` of entry and `-D` cli argument
   - `__WM_FIRST_DESKTOP_NAME__` - first of the above.
+  - `__WM_DESKTOP_NAMES_EXCLUSIVE__` - (`true`|`false`) `__WM_DESKTOP_NAMES__` came from cli argument and marked as exclusive
 
 Functions available to plugins:
   - `load_config_env` - sources `$1` files from config hierarchy.

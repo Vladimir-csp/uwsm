@@ -182,7 +182,7 @@ def load_lib_paths(subpath):
     out = []
     for path in reversed(
         os.getenv(
-            "UWSM_PLUGIN_PREFIX_PATHS",
+            "UWSM_PLUGIN_PREFIX_PATH",
             f"{os.getenv('HOME')}/.local/lib:/usr/local/lib:/usr/lib:/lib",
         ).split(":")
     ):
@@ -1642,6 +1642,7 @@ def prepare_env_gen_sh(random_mark):
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(wm_desktop_names[0])}
+        __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if wm_cli_desktop_names_exclusive else 'false'}
         """
     )
 
@@ -2243,7 +2244,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
     """
 
     # parse desktop entry, update cmd, cmd_args, app_name
-    if cmd.endswith(".desktop") or ".desktop:" in cmd:
+    if cmd.endswith(".desktop") or (".desktop:" in cmd and not cmd.endswith(".desktop:")):
         # separate action
         if ":" in cmd and cmd.count(":") == 1:
             entry_name, entry_action = cmd.split(":")
@@ -2251,6 +2252,9 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
             raise Exception(f'Invalid desktop entry with action "{cmd}"')
         else:
             entry_name, entry_action = cmd, ""
+
+        if not entry_name:
+            raise Exception(f'Invalid desktop entry with action string "{cmd}"')
 
         print_debug("entry_name, entry_action:", entry_name, entry_action)
 
@@ -2434,7 +2438,7 @@ def fill_wm_globals():
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
-    if wm_id.endswith(".desktop") or ".desktop:" in wm_id:
+    if wm_id.endswith(".desktop") or (".desktop:" in wm_id and not wm_id.endswith(".desktop:")):
         print_debug(f"WM ID is a desktop entry: {wm_id}")
 
         # separate action
@@ -2446,7 +2450,7 @@ def fill_wm_globals():
             entry_name, entry_action = wm_id, ""
 
         if not entry_name:
-            raise Exception(f'Invalid desktop entry with action "{wm_id}"')
+            raise Exception(f'Invalid desktop entry with action string "{wm_id}"')
 
         # parse entry
         try:
