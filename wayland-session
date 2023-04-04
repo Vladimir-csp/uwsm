@@ -49,39 +49,6 @@ class Varnames:
     never_cleanup = {"SSH_AGENT_LAUNCHER", "SSH_AUTH_SOCK", "SSH_AGENT_PID"}
 
 
-def dedent(data: str) -> str:
-    "Applies dedent, lstrips newlines, rstrips except single newline"
-    data = textwrap.dedent(data).lstrip("\n")
-    return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
-
-
-def wrap_pgs(data: str, maxwidth: int = 0) -> str:
-    """
-    Splits paragrpaphs by "\n\n", applies wrap of no more than maxsize to each non-indented one
-    If maxwidth == 0, just rejoins each non-indented paragraph into single line
-    """
-    try:
-        width = os.get_terminal_size().columns
-    except:
-        # default for not being in interactive terminal
-        width = 80
-    if maxwidth < width:
-        width = maxwidth
-    paragraphs = data.split("\n\n")
-    for idx, paragraph in enumerate(paragraphs):
-        # do not touch indented paragraphs
-        indented = False
-        for line in paragraph.splitlines():
-            if line.startswith(" "):
-                indented = True
-        if not indented:
-            if width == 0:
-                paragraphs[idx] = " ".join(paragraph.splitlines())
-            else:
-                paragraphs[idx] = "\n".join(textwrap.wrap(paragraph, width=width))
-    return "\n\n".join(paragraphs)
-
-
 class Styles:
     "Terminal control characters for color and style"
     reset = "\033[0m"
@@ -98,15 +65,52 @@ class Styles:
     flash = "\033[5m"
 
 
+def dedent(data: str) -> str:
+    "Applies dedent, lstrips newlines, rstrips except single newline"
+    data = textwrap.dedent(data).lstrip("\n")
+    return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
+
+
+def wrap_pgs(data: str, maxwidth: int = 0) -> str:
+    """
+    Splits paragrpaphs by "\n\n", applies wrap of no more than maxwidth to each non-indented one
+    If maxwidth == 0, just rejoins each non-indented paragraph into single line
+    """
+    try:
+        width = os.get_terminal_size().columns
+    except:
+        # default for not being in interactive terminal
+        width = 80
+    if maxwidth < width:
+        width = maxwidth
+    paragraphs = data.split("\n\n")
+    for idx, paragraph in enumerate(paragraphs):
+        # do not touch indented paragraphs
+        indented = False
+        for line in paragraph.splitlines():
+            if line.startswith(" ") or line.startswith("\t"):
+                indented = True
+        if not indented:
+            if width == 0:
+                paragraphs[idx] = " ".join(paragraph.splitlines())
+            else:
+                paragraphs[idx] = "\n".join(textwrap.wrap(paragraph, width=width))
+    return "\n\n".join(paragraphs)
+
+
 def random_hex(length: int = 16) -> str:
     "Returns random hex string of length"
     return "".join([random.choice(list("0123456789abcdef")) for _ in range(length)])
 
 
-def sane_split(string: str, delimiter) -> List[str]:
+def sane_split(string: str, delimiter: str) -> List[str]:
     "Splits string by delimiter, but returns empty list on empty string"
     if not isinstance(string, str):
-        raise Exception(f"This is not a string: {string}")
+        raise TypeError(f'"string" should be a string, got: {type(string)}')
+    if not isinstance(delimiter, str):
+        raise TypeError(f'"delimiter" should be a string, got: {type(delimiter)}')
+    if not delimiter:
+        raise ValueError('"delimiter" should not be empty')
     return string.split(delimiter) if string else []
 
 
@@ -119,31 +123,29 @@ def print_normal(*what, **how):
 def print_ok(*what, **how):
     "Prints in green"
     print(Styles.green, end="", flush=True)
-    print(*what, **how, flush=True, end="")
-    print(Styles.reset, file=sys.stderr, flush=True)
+    print(*what, **how, flush=True)
+    print(Styles.reset, end="", flush=True)
 
 
 def print_warning(*what, **how):
     "Prints in yellow"
     print(Styles.yellow, end="", flush=True)
-    print(*what, **how, flush=True, end="")
-    print(Styles.reset, file=sys.stderr, flush=True)
+    print(*what, **how, flush=True)
+    print(Styles.reset, end="", flush=True)
 
 
 def print_error(*what, **how):
     "Prints in red to stderr"
     print(Styles.red, end="", file=sys.stderr, flush=True)
-    print(*what, **how, file=sys.stderr, flush=True, end="")
-    print(Styles.reset, file=sys.stderr, flush=True)
+    print(*what, **how, file=sys.stderr, flush=True)
+    print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
 def print_debug(*what, **how):
     "Prints to stderr if DEBUG=N where N > 0"
     if int(os.getenv("DEBUG", "0")) > 0:
-        print(
-            "DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True, end=""
-        )
-        print(Styles.reset, file=sys.stderr, flush=True)
+        print("DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True)
+        print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
 def print_style(stls, *what, **how):
@@ -152,8 +154,8 @@ def print_style(stls, *what, **how):
         stls = [stls]
     for style in stls:
         print(style, end="", flush=True)
-    print(*what, **how, flush=True, end="")
-    print(Styles.reset, file=sys.stderr, flush=True)
+    print(*what, **how, flush=True)
+    print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
 def relax_validation(exception):
@@ -214,7 +216,7 @@ def entry2dict(entry, entry_action=None) -> dict:
         action_msg = f' action "{entry_action}"'
         action_group = f"Desktop Action {entry_action}"
         if entry_action not in entry.getActions() or action_group not in entry.groups():
-            raise Exception(
+            raise RuntimeError(
                 f'Deskop entry "{entry_name}" does not contain action "{entry_action}"'
             )
         entry.defaultGroup = action_group
@@ -225,11 +227,15 @@ def entry2dict(entry, entry_action=None) -> dict:
             out["Icon"] = entry.getIcon()
         print_debug("entry2dict action", out)
     if not out["Name"]:
-        raise Exception(f'Deskop entry "{entry_name}"{action_msg} does not have "Name"')
+        raise RuntimeError(
+            f'Deskop entry "{entry_name}"{action_msg} does not have "Name"'
+        )
     if not out["Exec"]:
-        raise Exception(f'Deskop entry "{entry_name}"{action_msg} does not have "Exec"')
+        raise RuntimeError(
+            f'Deskop entry "{entry_name}"{action_msg} does not have "Exec"'
+        )
     if not which(shlex.split(out["Exec"])[0]):
-        raise Exception(
+        raise RuntimeError(
             f'Deskop entry "{entry_name}"{action_msg} Exec does not contain a reachable executable'
         )
     return out
@@ -272,8 +278,8 @@ def get_de(entry_name: str, subpath: str = "wayland-sessions"):
     # parse entry
     try:
         entry = DesktopEntry(entry_path)
-    except Exception as E:
-        print_error(E)
+    except Exception as caught_exception:
+        print_error(caught_exception)
         return {}
 
     print_debug(entry)
@@ -308,8 +314,8 @@ def get_default_de():
                             wmid = line.strip()
                             print_ok(f"Got default WM ID: {wmid}")
                             return wmid
-            except Exception as E:
-                print_error(E)
+            except Exception as caught_exception:
+                print_error(caught_exception)
                 continue
     return ""
 
@@ -333,8 +339,8 @@ def select_de():
     'Uses whiptail to select among "wayland-sessions" desktop entries'
 
     if not which("whiptail"):
-        raise Exception(
-            '"whiptail" is not in path, "select" and "default" are not supported'
+        raise FileNotFoundError(
+            '"whiptail" is not in PATH, "select" and "default" are not supported'
         )
 
     default: str = get_default_de()
@@ -410,10 +416,12 @@ def select_de():
             choices.append(choice[1])
 
     if not choices:
-        raise Exception("No choices found")
+        raise RuntimeError("No choices found")
 
     if len(choices) % 2 != 0:
-        raise Exception(f"Choices for whiptail are not even: {choices}")
+        raise ValueError(
+            f"Choices for whiptail are not even ({len(choices)}): {choices}"
+        )
 
     # drop default if not among choices
     if default and default not in choices[::2]:
@@ -447,18 +455,18 @@ def select_de():
     # replace whiptail theme with simple default colors
     whiptail_env = dict(os.environ) | {"NEWT_MONO": "true"}
     # run whiptail, capture stderr
-    p = subprocess.run(
+    sprc = subprocess.run(
         argv, env=whiptail_env, stderr=subprocess.PIPE, text=True, check=False
     )
-    print_debug(p)
+    print_debug(sprc)
 
-    return p.stderr.strip() if p.returncode == 0 and p.stderr else ""
+    return sprc.stderr.strip() if sprc.returncode == 0 and sprc.stderr else ""
 
 
 def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     "Returns tuple: 0) path in category, level dir, 1) unit subpath"
     if os.path.isabs(unit):
-        raise Exception("Passed absolute path to get_unit_path")
+        raise RuntimeError("Passed absolute path to get_unit_path")
 
     unit = os.path.normpath(unit)
 
@@ -472,10 +480,10 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
             print_error("Fatal: empty or undefined XDG_RUNTIME_DIR")
             sys.exit(0)
     else:
-        raise Exception(f"category {category} is not supported")
+        raise RuntimeError(f"category {category} is not supported")
 
     if level not in ["user"]:
-        raise Exception(f"level {level} is not supported")
+        raise RuntimeError(f"level {level} is not supported")
 
     unit_dir = os.path.normpath(os.path.join(unit_path, "systemd", level))
     return (unit_dir, unit)
@@ -483,7 +491,7 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
 
 def get_active_wm_id():
     "Finds running wayland-wm@*.service, returns specifier"
-    p = subprocess.run(
+    sprc = subprocess.run(
         [
             "systemctl",
             "--user",
@@ -498,23 +506,23 @@ def get_active_wm_id():
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if not p.stdout.strip() or p.returncode != 0:
-        raise Exception(p.stdout, p.stderr)
+    print_debug(sprc)
+    if not sprc.stdout.strip() or sprc.returncode != 0:
+        raise RuntimeError(sprc.stdout, sprc.stderr)
 
-    active_id = p.stdout.strip()
+    active_id = sprc.stdout.strip()
 
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["systemd-escape", "--unescape", "--instance", active_id],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if not p.stdout.strip() or p.returncode != 0:
-        raise Exception(p.stdout, p.stderr)
+    print_debug(sprc)
+    if not sprc.stdout.strip() or sprc.returncode != 0:
+        raise RuntimeError(sprc.stdout, sprc.stderr)
 
-    return p.stdout.strip()
+    return sprc.stdout.strip()
 
 
 def is_active(check_wm_id="", verbose=False):
@@ -525,7 +533,7 @@ def is_active(check_wm_id="", verbose=False):
         check_unit = "wayland-wm@*.service"
     check_unit_generic = "wayland-wm@*.service"
 
-    p = subprocess.run(
+    sprc = subprocess.run(
         [
             "systemctl",
             "--user",
@@ -540,22 +548,22 @@ def is_active(check_wm_id="", verbose=False):
         capture_output=True,
         check=False,
     )
-    print_debug(p)
+    print_debug(sprc)
 
-    if p.returncode != 0:
+    if sprc.returncode != 0:
         # list-units always returns 0
-        raise Exception(p.stdout, p.stderr, p.returncode)
+        raise RuntimeError(sprc.stdout, sprc.stderr, sprc.returncode)
 
-    if p.stdout.strip():
+    if sprc.stdout.strip():
         if verbose:
-            if p.stdout.strip():
-                print_normal(p.stdout.strip())
-            if p.stderr.strip():
-                print_error(p.stderr.strip())
+            if sprc.stdout.strip():
+                print_normal(sprc.stdout.strip())
+            if sprc.stderr.strip():
+                print_error(sprc.stderr.strip())
         return True
 
     if verbose:
-        p = subprocess.run(
+        sprc = subprocess.run(
             [
                 "systemctl",
                 "--user",
@@ -570,12 +578,12 @@ def is_active(check_wm_id="", verbose=False):
             capture_output=True,
             check=False,
         )
-        print_debug(p)
+        print_debug(sprc)
         # don't bother for returncode here
-        if p.stdout.strip():
-            print_normal(p.stdout.strip())
-        if p.stderr.strip():
-            print_error(p.stderr.strip())
+        if sprc.stdout.strip():
+            print_normal(sprc.stdout.strip())
+        if sprc.stderr.strip():
+            print_error(sprc.stderr.strip())
 
     return False
 
@@ -591,20 +599,20 @@ def reload_systemd():
         return True
 
     print_normal("Reloading systemd user manager")
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["systemctl", "--user", "daemon-reload", "-q"],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.stdout.strip():
-        print_normal(p.stdout.strip())
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
+    print_debug(sprc)
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
 
-    if p.returncode != 0:
-        raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
+    if sprc.returncode != 0:
+        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
 
     units_changed = False
     return True
@@ -622,7 +630,7 @@ def update_unit(unit, data):
         r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)$",
         unit,
     ):
-        raise Exception(
+        raise ValueError(
             f"Trying to update unit with unsupported extension {unit.split('.')[-1]}: {unit}"
         )
 
@@ -630,7 +638,7 @@ def update_unit(unit, data):
         unit_dir, unit = ("/", os.path.normpath(unit))
     else:
         if unit.count("/") > 1:
-            raise Exception(
+            raise ValueError(
                 f"Only single subdir supported for relative unit, got {unit.count('/')} ({unit})"
             )
         unit_dir, unit = get_unit_path(unit)
@@ -681,7 +689,7 @@ def remove_unit(unit):
         r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)$",
         unit,
     ):
-        raise Exception(
+        raise ValueError(
             f"Trying to remove unit with unsupported extension {unit.split('.')[-1]}"
         )
 
@@ -689,7 +697,7 @@ def remove_unit(unit):
         unit_dir, unit = ("/", os.path.normpath(unit))
     else:
         if unit.count("/") > 1:
-            raise Exception(
+            raise ValueError(
                 f"Only single subdir supported for relative unit, got {unit.count('/')} ({unit})"
             )
         unit_dir, unit = get_unit_path(unit)
@@ -1048,17 +1056,17 @@ def remove_units(only=None):
     if not only:
         only = ""
     check_dir, _ = get_unit_path("")
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["grep", "-rlF", f"X-UWSM-ID={only}", check_dir],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.returncode != 0 or not p.stdout.strip():
+    print_debug(sprc)
+    if sprc.returncode != 0 or not sprc.stdout.strip():
         return
 
-    files = p.stdout.splitlines()
+    files = sprc.stdout.splitlines()
     files = [f.removeprefix(check_dir.rstrip("/") + "/") for f in files]
 
     for file in sorted(files):
@@ -1070,7 +1078,7 @@ def parse_args():
     "Parses args, returns tuple with args and a dict of parsers"
 
     # keep parsers in a dict
-    parsers = dict()
+    parsers = {}
 
     # main parser with subcommands
     parsers["main"] = argparse.ArgumentParser(
@@ -1433,8 +1441,12 @@ def parse_args():
     return (args, parsers)
 
 
-def finalize(additional_vars=[]):
+def finalize(additional_vars=None):
     "Optionally takes list of additional vars. Exports defined subset of WAYLAND_DISPLAY, DISPLAY, additional vars."
+
+    if additional_vars is None:
+        additional_vars = []
+
     if not os.getenv("WAYLAND_DISPLAY", ""):
         print_error(
             "WAYLAND_DISPLAY is not defined or empty. Are we being run by a wayland compositor or not?"
@@ -1468,32 +1480,32 @@ def finalize(additional_vars=[]):
     print_normal(
         "Exporting variables to systemd_user_manager:\n  " + "\n  ".join(export_vars)
     )
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["dbus-update-activation-environment", "--systemd", *(export_vars)],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.stdout.strip():
-        print_normal(p.stdout.strip())
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
-    if p.returncode != 0:
+    print_debug(sprc)
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
+    if sprc.returncode != 0:
         sys.exit(1)
 
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["systemctl", "--user", "import-environment", *(export_vars)],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.stdout.strip():
-        print_normal(p.stdout.strip())
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
-    if p.returncode != 0:
+    print_debug(sprc)
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
+    if sprc.returncode != 0:
         sys.exit(1)
 
     # if no prior failures, exec systemd-notify
@@ -1507,44 +1519,44 @@ def finalize(additional_vars=[]):
 
 def get_systemd_varnames():
     "Returns set of env names from systemd user manager"
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["systemctl", "--user", "show-environment"],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.returncode != 0:
-        raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
+    print_debug(sprc)
+    if sprc.returncode != 0:
+        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
     # Systemctl always returns one value per line
     # Either var=value or var=$'complex\nescaped\nvalue'.
     # Seems to be safe to use .splitlines().
     # If values are needed, they can be rendered
-    return {v.split("=")[0] for v in p.stdout.splitlines()}
+    return {v.split("=")[0] for v in sprc.stdout.splitlines()}
 
 
 def get_fg_vt(verbose: bool = False):
     "Returns number of foreground VT or None"
-    p = subprocess.run(["fgconsole"], text=True, capture_output=True, check=False)
-    print_debug(p)
+    sprc = subprocess.run(["fgconsole"], text=True, capture_output=True, check=False)
+    print_debug(sprc)
 
-    if p.stderr.strip():
+    if sprc.stderr.strip():
         if verbose:
-            print_error(f"fgconsole error:\n{p.stderr.strip()}")
+            print_error(f"fgconsole error:\n{sprc.stderr.strip()}")
 
-    if p.returncode != 0:
+    if sprc.returncode != 0:
         if verbose:
             print_error(
-                f"Could not determine foreground VT, fgconsole returned {p.returncode}"
+                f"Could not determine foreground VT, fgconsole returned {sprc.returncode}"
             )
         return None
 
-    fgvt = p.stdout.strip()
+    fgvt = sprc.stdout.strip()
 
     if not fgvt or not fgvt.isnumeric():
         if verbose:
             print_error(
-                f'Could not determine foreground VT, fgconsole output: "{p.stdout.strip()}"'
+                f'Could not determine foreground VT, fgconsole output: "{sprc.stdout.strip()}"'
             )
         return None
 
@@ -1552,26 +1564,26 @@ def get_fg_vt(verbose: bool = False):
     return fgvt
 
 
-def get_session_by_vt(vt: int, verbose: bool = False):
+def get_session_by_vt(v_term: int, verbose: bool = False):
     "Takes VT number, returns associated XDG session ID or None"
 
     # get session list
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["loginctl", "list-sessions", "--no-legend", "--no-pager"],
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.returncode != 0:
+    print_debug(sprc)
+    if sprc.returncode != 0:
         if verbose:
-            print_error(f'"{shlex.join(p.args)}" returned {p.returncode}')
+            print_error(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
         return None
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
 
     # iterate over sessions
-    for line in p.stdout.splitlines():
+    for line in sprc.stdout.splitlines():
         # id is the first number in line, can be space-padded, so strip
         session_id = line.strip().split(" ")[0]
         if not session_id.isnumeric():
@@ -1580,7 +1592,7 @@ def get_session_by_vt(vt: int, verbose: bool = False):
             continue
 
         # get session user and VTNr
-        p2 = subprocess.run(
+        sprc2 = subprocess.run(
             [
                 "loginctl",
                 "show-session",
@@ -1594,20 +1606,20 @@ def get_session_by_vt(vt: int, verbose: bool = False):
             capture_output=True,
             check=False,
         )
-        print_debug(p2)
-        if p2.returncode != 0:
+        print_debug(sprc2)
+        if sprc2.returncode != 0:
             if verbose:
-                print_error(f'"{shlex.join(p2.args)}" returned {p2.returncode}')
+                print_error(f'"{shlex.join(sprc2.args)}" returned {sprc2.returncode}')
             continue
-        if p2.stderr.strip():
-            print_error(p.stderr.strip())
+        if sprc2.stderr.strip():
+            print_error(sprc.stderr.strip())
 
         # order is not governed by arguments, seems to be alphabetic, but sort to be sure
-        props = sorted(p2.stdout.splitlines())
+        props = sorted(sprc2.stdout.splitlines())
         if len(props) != 2:
             if verbose:
                 print_error(
-                    f'{shlex.join(p2.args)}" printed unparseable properties:\n{p2.stdout.strip()}'
+                    f'{shlex.join(sprc2.args)}" printed unparseable properties:\n{sprc2.stdout.strip()}'
                 )
             continue
         user: str = props[0].split("=")[1]
@@ -1615,14 +1627,16 @@ def get_session_by_vt(vt: int, verbose: bool = False):
 
         if not user:
             if verbose:
-                print_error(f'{shlex.join(p2.args)}" printed empty user')
+                print_error(f'{shlex.join(sprc2.args)}" printed empty user')
             continue
         if not vtnr.isnumeric():
             if verbose:
-                print_error(f'{shlex.join(p2.args)}" printed malformed vtnr: "{vtnr}"')
+                print_error(
+                    f'{shlex.join(sprc2.args)}" printed malformed vtnr: "{vtnr}"'
+                )
             continue
 
-        if int(vtnr) == vt and user == os.getlogin():
+        if int(vtnr) == v_term and user == os.getlogin():
             session_id = int(session_id)
             return session_id
 
@@ -1762,7 +1776,7 @@ def filter_varnames(data):
     Accepts dicts of env or lists, tuples, sets of names. Returns only valid.
     """
     if not isinstance(data, (dict, set, list, tuple)):
-        raise Exception(f"Received {type(data)}")
+        raise TypeError(f"Received {type(data)}")
     varname_regexp = r"^([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)$"
 
     if isinstance(data, dict):
@@ -1773,7 +1787,7 @@ def filter_varnames(data):
         return data
 
     if isinstance(data, (set, list, tuple)):
-        new_data = list()
+        new_data = []
         for var in data:
             if not re.search(varname_regexp, var):
                 print_warning(f'Encountered illegal var "{var}"')
@@ -1785,6 +1799,8 @@ def filter_varnames(data):
             return tuple(new_data)
         if isinstance(data, list):
             return new_data
+
+    raise RuntimeError(f'Should not get here with data "{data}" ({type(data)})')
 
 
 def prepare_env():
@@ -1801,19 +1817,19 @@ def prepare_env():
     env_pre = filter_varnames(dict(os.environ))
 
     # override XDG_VTNR and XDG_SESSION_ID right away, they are in Varnames.always_export
-    vt = get_fg_vt()
-    if vt is None:
-        raise Exception("Could not determine foreground VT")
-    session_id = get_session_by_vt(vt)
+    v_term = get_fg_vt()
+    if v_term is None:
+        raise RuntimeError("Could not determine foreground VT")
+    session_id = get_session_by_vt(v_term)
     if session_id is None:
-        raise Exception("Could not determine session of foreground VT")
-    env_pre.update({"XDG_VTNR": str(vt), "XDG_SESSION_ID": str(session_id)})
+        raise RuntimeError("Could not determine session of foreground VT")
+    env_pre.update({"XDG_VTNR": str(v_term), "XDG_SESSION_ID": str(session_id)})
 
     # Run shell code to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
 
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["sh", "-"],
         text=True,
         input=shell_code,
@@ -1821,35 +1837,37 @@ def prepare_env():
         env=env_pre,
         check=False,
     )
-    print_debug(p)
+    print_debug(sprc)
 
     # cut everything before and including random mark, also the last \0
     # treat stdout before the mark as messages
-    mark_position = p.stdout.find(random_mark)
+    mark_position = sprc.stdout.find(random_mark)
     if mark_position < 0:
         # print whole stdout
-        if p.stdout.strip():
-            print_normal(p.stdout.strip())
+        if sprc.stdout.strip():
+            print_normal(sprc.stdout.strip())
         # print any stderr as errors
-        if p.stderr.strip():
-            print_error(p.stderr.strip())
-        raise Exception("No env mark in shell output!")
+        if sprc.stderr.strip():
+            print_error(sprc.stderr.strip())
+        raise RuntimeError(
+            f'Env output mark "{random_mark}" not found in shell output!'
+        )
 
-    stdout_msg = p.stdout[0:mark_position]
-    stdout = p.stdout[mark_position + len(random_mark) :].rstrip("\0")
+    stdout_msg = sprc.stdout[0:mark_position]
+    stdout = sprc.stdout[mark_position + len(random_mark) :].rstrip("\0")
 
     # print stdout if any
     if stdout_msg.strip():
         print_normal(stdout_msg.strip())
     # print any stderr as errors
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
 
-    if p.returncode != 0:
-        raise Exception(f"Shell returned {returncode}!")
+    if sprc.returncode != 0:
+        raise RuntimeError(f"Shell returned {returncode}!")
 
     # parse env
-    env_post = dict()
+    env_post = {}
     for env in stdout.split("\0"):
         env = env.split("=", maxsplit=1)
         if len(env) == 2:
@@ -1920,36 +1938,36 @@ def prepare_env():
     )
     print_normal(set_env_msg)
     # export env by running systemctl in set_env environment
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["systemctl", "--user", "import-environment"] + sorted(set_env.keys()),
         env=env_post,
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.stdout.strip():
-        print_normal(p.stdout.strip())
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
-    if p.returncode != 0:
-        raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
+    print_debug(sprc)
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
+    if sprc.returncode != 0:
+        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
 
     # export env by running dbus-update-activation-environment in set_env environment
-    p = subprocess.run(
+    sprc = subprocess.run(
         ["dbus-update-activation-environment", "--systemd"] + sorted(set_env.keys()),
         env=env_post,
         text=True,
         capture_output=True,
         check=False,
     )
-    print_debug(p)
-    if p.stdout.strip():
-        print_normal(p.stdout.strip())
-    if p.stderr.strip():
-        print_error(p.stderr.strip())
-    if p.returncode != 0:
-        raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
+    print_debug(sprc)
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
+    if sprc.returncode != 0:
+        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
 
     if unset_varnames:
         # print message about env unset
@@ -1960,19 +1978,19 @@ def prepare_env():
         print_normal(unset_varnames_msg)
 
         # unset env by running systemctl
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemctl", "--user", "unset-environment"] + sorted(unset_varnames),
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
-        if p.stdout.strip():
-            print_normal(p.stdout.strip())
-        if p.stderr.strip():
-            print_error(p.stderr.strip())
-        if p.returncode != 0:
-            raise Exception(f'"{shlex.join(p.args)}" returned {p.returncode}')
+        print_debug(sprc)
+        if sprc.stdout.strip():
+            print_normal(sprc.stdout.strip())
+        if sprc.stderr.strip():
+            print_error(sprc.stderr.strip())
+        if sprc.returncode != 0:
+            raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
 
     # print message about future env cleanup
     cleanup_varnames_msg = (
@@ -2031,35 +2049,35 @@ def cleanup_env():
         print_normal(cleanup_varnames_msg)
 
         # nullify vars in dbus environment
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["dbus-update-activation-environment", "--systemd"]
             + sorted([f"{n}=" for n in cleanup_varnames]),
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
-        if p.stdout.strip():
-            print_normal(p.stdout.strip())
-        if p.stderr.strip():
-            print_error(p.stderr.strip())
-        if p.returncode != 0:
+        print_debug(sprc)
+        if sprc.stdout.strip():
+            print_normal(sprc.stdout.strip())
+        if sprc.stderr.strip():
+            print_error(sprc.stderr.strip())
+        if sprc.returncode != 0:
             # just print error here
-            print_error(f'"{shlex.join(p.args)}" returned {returncode}')
+            print_error(f'"{shlex.join(sprc.args)}" returned {returncode}')
 
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemctl", "--user", "unset-environment"] + sorted(cleanup_varnames),
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
-        if p.stdout.strip():
-            print_normal(p.stdout.strip())
-        if p.stderr.strip():
-            print_error(p.stderr.strip())
-        if p.returncode != 0:
-            raise Exception(f'"{shlex.join(p.args)}" returned {returncode}')
+        print_debug(sprc)
+        if sprc.stdout.strip():
+            print_normal(sprc.stdout.strip())
+        if sprc.stderr.strip():
+            print_error(sprc.stderr.strip())
+        if sprc.returncode != 0:
+            raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {returncode}')
 
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
@@ -2106,7 +2124,7 @@ def gen_entry_args(entry, args, entry_action=None):
         print_debug(f"parsing argument {idx + 1}: {entry_arg}")
         if entry_arg == "%f":
             if encountered_fu:
-                raise Exception(
+                raise RuntimeError(
                     f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
             encountered_fu = entry_arg
@@ -2129,7 +2147,7 @@ def gen_entry_args(entry, args, entry_action=None):
 
         elif entry_arg == "%F":
             if encountered_fu:
-                raise Exception(
+                raise RuntimeError(
                     f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
             encountered_fu = entry_arg
@@ -2147,7 +2165,7 @@ def gen_entry_args(entry, args, entry_action=None):
 
         elif entry_arg == "%u":
             if encountered_fu:
-                raise Exception(
+                raise RuntimeError(
                     f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
             encountered_fu = entry_arg
@@ -2172,7 +2190,7 @@ def gen_entry_args(entry, args, entry_action=None):
 
         elif entry_arg == "%U":
             if encountered_fu:
-                raise Exception(
+                raise RuntimeError(
                     f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
             encountered_fu = entry_arg
@@ -2210,15 +2228,15 @@ def gen_entry_args(entry, args, entry_action=None):
     print_debug("entry_cmd, entry_args post:", entry_cmd, entry_args)
 
     # fail if arguments not supported, but requested
-    if args and not encountered_fu:
-        if not entry_action:
-            raise Exception(
-                f'Entry "{os.path.basename(entry.filename)}" does not support arguments'
-            )
-        else:
-            raise Exception(
-                f'Entry "{os.path.basename(entry.filename)}" action "{entry_action}" does not support arguments'
-            )
+    if args and not encountered_fu and entry_action:
+        raise RuntimeError(
+            f'Entry "{os.path.basename(entry.filename)}" action "{entry_action}" does not support arguments'
+        )
+
+    if args and not encountered_fu and not entry_action:
+        raise RuntimeError(
+            f'Entry "{os.path.basename(entry.filename)}" does not support arguments'
+        )
 
     # iterative arguments required
     if len(args) > 1 and encountered_fu in ["%f", "%u"]:
@@ -2244,24 +2262,26 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
     """
 
     # parse desktop entry, update cmd, cmd_args, app_name
-    if cmd.endswith(".desktop") or (".desktop:" in cmd and not cmd.endswith(".desktop:")):
+    if cmd.endswith(".desktop") or (
+        ".desktop:" in cmd and not cmd.endswith(".desktop:")
+    ):
         # separate action
         if ":" in cmd and cmd.count(":") == 1:
             entry_name, entry_action = cmd.split(":")
         elif ":" in cmd and cmd.count(":") > 1:
-            raise Exception(f'Invalid desktop entry with action "{cmd}"')
+            raise ValueError(f'Invalid desktop entry with action "{cmd}"')
         else:
             entry_name, entry_action = cmd, ""
 
         if not entry_name:
-            raise Exception(f'Invalid desktop entry with action string "{cmd}"')
+            raise ValueError(f'Invalid desktop entry with action string "{cmd}"')
 
         print_debug("entry_name, entry_action:", entry_name, entry_action)
 
         entry = get_de(entry_name, subpath="applications")
 
         if not entry:
-            raise Exception(f'Could not find or parse deskop entry "{cmd}"')
+            raise FileNotFoundError(f'Could not find or parse deskop entry "{cmd}"')
 
         # get unlocalized entry name if no override
         if not app_name:
@@ -2340,39 +2360,39 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
 
     if not unit_name:
         # use XDG_SESSION_DESKTOP as part of scope name
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemd-escape", os.getenv("XDG_SESSION_DESKTOP", "uwsm")],
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
+        print_debug(sprc)
 
-        if p.returncode != 0 or not p.stdout.strip():
-            print_error(p.stderr.strip())
+        if sprc.returncode != 0 or not sprc.stdout.strip():
+            print_error(sprc.stderr.strip())
             print_error("Could not escape sequence for scope name")
             sys.exit(1)
-        desktop_unit_substring = p.stdout.strip()
+        desktop_unit_substring = sprc.stdout.strip()
 
         # use app cmd as part of scope name
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemd-escape", app_name or os.path.basename(cmd)],
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
+        print_debug(sprc)
 
-        if p.returncode != 0 or not p.stdout.strip():
-            print_error(p.stderr.strip())
+        if sprc.returncode != 0 or not sprc.stdout.strip():
+            print_error(sprc.stderr.strip())
             print_error("Could not escape sequence for scope name")
             sys.exit(1)
-        cmd_unit_substring = p.stdout.strip()
+        cmd_unit_substring = sprc.stdout.strip()
 
         unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
     else:
         if not unit_name.endswith(f".{app_unit_type}"):
-            raise Exception(
+            raise ValueError(
                 f'Only ".{app_unit_type}" is supported as unit suffix for {app_unit_type} unit type'
             )
 
@@ -2438,28 +2458,30 @@ def fill_wm_globals():
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
-    if wm_id.endswith(".desktop") or (".desktop:" in wm_id and not wm_id.endswith(".desktop:")):
+    if wm_id.endswith(".desktop") or (
+        ".desktop:" in wm_id and not wm_id.endswith(".desktop:")
+    ):
         print_debug(f"WM ID is a desktop entry: {wm_id}")
 
         # separate action
         if ":" in wm_id and wm_id.count(":") == 1:
             entry_name, entry_action = wm_id.split(":")
         elif ":" in wm_id and wm_id.count(":") > 1:
-            raise Exception(f'Invalid desktop entry with action "{wm_id}"')
+            raise ValueError(f'Invalid desktop entry with action "{wm_id}"')
         else:
             entry_name, entry_action = wm_id, ""
 
         if not entry_name:
-            raise Exception(f'Invalid desktop entry with action string "{wm_id}"')
+            raise ValueError(f'Invalid desktop entry with action string "{wm_id}"')
 
         # parse entry
         try:
             # find and parse entry
             entry = get_de(entry_name)
             if not entry:
-                raise Exception(f'Could not find and parse entry "{wm_id}"')
-        except Exception as E:
-            print_error(E)
+                raise FileNotFoundError(f'Could not find and parse entry "{wm_id}"')
+        except Exception as caught_exception:
+            print_error(caught_exception)
             sys.exit(1)
 
         print_debug("entry", entry)
@@ -2548,14 +2570,14 @@ def fill_wm_globals():
 
         # deduplicate desktop names preserving order
         ddn = []
-        for dn in wm_cli_desktop_names:
-            if dn not in ddn:
-                ddn.append(dn)
+        for desktop_name in wm_cli_desktop_names:
+            if desktop_name not in ddn:
+                ddn.append(desktop_name)
         wm_cli_desktop_names = ddn
         ddn = []
-        for dn in wm_desktop_names:
-            if dn not in ddn:
-                ddn.append(dn)
+        for desktop_name in wm_desktop_names:
+            if desktop_name not in ddn:
+                ddn.append(desktop_name)
         wm_desktop_names = ddn
 
     # id for functions and env loading
@@ -2569,18 +2591,18 @@ def stop_wm():
     if is_active():
         print_normal("Stopping WM")
         if not args.dry_run:
-            p = subprocess.run(
+            sprc = subprocess.run(
                 ["systemctl", "--user", "stop", "wayland-wm@*.service"],
                 text=True,
                 capture_output=True,
                 check=False,
             )
-            print_debug(p)
-            if p.stdout.strip():
-                print_normal(p.stdout.strip())
-            if p.stderr.strip():
-                print_error(p.stderr.strip())
-            returncode = p.returncode
+            print_debug(sprc)
+            if sprc.stdout.strip():
+                print_normal(sprc.stdout.strip())
+            if sprc.stderr.strip():
+                print_error(sprc.stderr.strip())
+            returncode = sprc.returncode
         else:
             returncode = 0
     else:
@@ -2639,8 +2661,8 @@ if __name__ == "__main__":
                 else:
                     print_error("No WM was selected")
                     sys.exit(1)
-            except Exception as E:
-                print_error(E)
+            except Exception as caught_exception:
+                print_error(caught_exception)
                 sys.exit(1)
 
         fill_wm_globals()
@@ -2681,14 +2703,14 @@ if __name__ == "__main__":
         else:
             print_normal(f"Starting {wm_id}...")
 
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemctl", "is-active", "-q", "graphical.target"],
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
-        if p.returncode != 0:
+        print_debug(sprc)
+        if sprc.returncode != 0:
             print_warning(
                 dedent(
                     """
@@ -2709,15 +2731,15 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTERM, trap_stopper)
         signal.signal(signal.SIGHUP, trap_stopper)
 
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemctl", "--user", "start", "--wait", f"wayland-wm@{wm_id}.service"],
             check=False,
         )
-        print_debug(p)
+        print_debug(sprc)
 
         # in case systemctl is killed, run trap_stopper.
         # reuse second arg for systemctl returncode
-        trap_stopper(0, p.returncode)
+        trap_stopper(0, sprc.returncode)
 
     #### STOP
     elif args.mode == "stop":
@@ -2750,8 +2772,8 @@ if __name__ == "__main__":
                 app_name=args.app_name,
                 unit_name=args.unit_name,
             )
-        except Exception as E:
-            print_error(E)
+        except Exception as caught_exception:
+            print_error(caught_exception)
             sys.exit(1)
 
     #### CHECK
@@ -2762,7 +2784,7 @@ if __name__ == "__main__":
             sys.exit(1)
 
     elif args.mode == "check" and args.checker == "may-start":
-        dealbreakers = list()
+        dealbreakers = []
         if is_active():
             dealbreakers.append("Another WM is running")
 
@@ -2775,9 +2797,9 @@ if __name__ == "__main__":
                 parent_cmdline = parent_cmdline.strip()
             print_debug(f"parent_pid: {os.getppid()}")
             print_debug(f"parent_cmdline: {parent_cmdline}")
-        except Exception as E:
+        except Exception as caught_exception:
             print_error("Could not determine parent process command")
-            print_error(E)
+            print_error(caught_exception)
             sys.exit(1)
         if not parent_cmdline.startswith("-"):
             dealbreakers.append("Not in login shell")
@@ -2795,18 +2817,18 @@ if __name__ == "__main__":
                 )
 
         # check for graphical target
-        p = subprocess.run(
+        sprc = subprocess.run(
             ["systemctl", "is-active", "-q", "graphical.target"],
             text=True,
             capture_output=True,
             check=False,
         )
-        print_debug(p)
-        if p.stdout.strip():
-            print_normal(p.stdout.strip())
-        if p.stderr.strip():
-            print_normal(p.stderr.strip())
-        if p.returncode != 0:
+        print_debug(sprc)
+        if sprc.stdout.strip():
+            print_normal(sprc.stdout.strip())
+        if sprc.stderr.strip():
+            print_normal(sprc.stderr.strip())
+        if sprc.returncode != 0:
             dealbreakers.append("System has not reached graphical.target")
 
         if dealbreakers:
@@ -2832,12 +2854,12 @@ if __name__ == "__main__":
             try:
                 prepare_env()
                 sys.exit(0)
-            except Exception as E:
-                print_error(E)
+            except Exception as caught_exception:
+                print_error(caught_exception)
                 try:
                     cleanup_env()
-                except Exception as E:
-                    print_error(E)
+                except Exception as caught_exception:
+                    print_error(caught_exception)
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
             if is_active("", True):
@@ -2847,8 +2869,8 @@ if __name__ == "__main__":
                 try:
                     cleanup_env()
                     sys.exit(0)
-                except Exception as E:
-                    print_error(E)
+                except Exception as caught_exception:
+                    print_error(caught_exception)
                     sys.exit(1)
         elif args.aux_action == "exec":
             fill_wm_globals()
