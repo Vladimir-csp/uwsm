@@ -11,7 +11,7 @@ Inspired by and uses some techniques from:
  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 """
 
-import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal
+import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal, traceback
 from io import StringIO
 from urllib import parse as urlparse
 from typing import List, Type, IO, Any
@@ -158,6 +158,16 @@ def print_style(stls, *what, **how):
     print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
+def print_error_or_traceback(exception) -> None:
+    "Depending on DEBUG, print nice error or entire exception traceback"
+    if int(os.getenv("DEBUG", "0")) > 0:
+        print(Styles.red, end="", file=sys.stderr, flush=True)
+        traceback.print_exception(exception, file=sys.stderr)
+        print(Styles.reset, end="", file=sys.stderr, flush=True)
+    else:
+        print_error(exception)
+
+
 def relax_validation(exception):
     "takes pyxdg ValidationError and ignores [stupid] failures"
     ignore_lines = r"ValidationError in file| is not a registered |Invalid key: "
@@ -279,7 +289,7 @@ def get_de(entry_name: str, subpath: str = "wayland-sessions"):
     try:
         entry = DesktopEntry(entry_path)
     except Exception as caught_exception:
-        print_error(caught_exception)
+        print_error_or_traceback(caught_exception)
         return {}
 
     print_debug(entry)
@@ -315,7 +325,7 @@ def get_default_de():
                             print_ok(f"Got default WM ID: {wmid}")
                             return wmid
             except Exception as caught_exception:
-                print_error(caught_exception)
+                print_error_or_traceback(caught_exception)
                 continue
     return ""
 
@@ -2481,7 +2491,7 @@ def fill_wm_globals():
             if not entry:
                 raise FileNotFoundError(f'Could not find and parse entry "{wm_id}"')
         except Exception as caught_exception:
-            print_error(caught_exception)
+            print_error_or_traceback(caught_exception)
             sys.exit(1)
 
         print_debug("entry", entry)
@@ -2662,7 +2672,7 @@ if __name__ == "__main__":
                     print_error("No WM was selected")
                     sys.exit(1)
             except Exception as caught_exception:
-                print_error(caught_exception)
+                print_error_or_traceback(caught_exception)
                 sys.exit(1)
 
         fill_wm_globals()
@@ -2773,7 +2783,7 @@ if __name__ == "__main__":
                 unit_name=args.unit_name,
             )
         except Exception as caught_exception:
-            print_error(caught_exception)
+            print_error_or_traceback(caught_exception)
             sys.exit(1)
 
     #### CHECK
@@ -2799,7 +2809,7 @@ if __name__ == "__main__":
             print_debug(f"parent_cmdline: {parent_cmdline}")
         except Exception as caught_exception:
             print_error("Could not determine parent process command")
-            print_error(caught_exception)
+            print_error_or_traceback(caught_exception)
             sys.exit(1)
         if not parent_cmdline.startswith("-"):
             dealbreakers.append("Not in login shell")
@@ -2855,11 +2865,11 @@ if __name__ == "__main__":
                 prepare_env()
                 sys.exit(0)
             except Exception as caught_exception:
-                print_error(caught_exception)
+                print_error_or_traceback(caught_exception)
                 try:
                     cleanup_env()
                 except Exception as caught_exception:
-                    print_error(caught_exception)
+                    print_error_or_traceback(caught_exception)
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
             if is_active("", True):
@@ -2870,7 +2880,7 @@ if __name__ == "__main__":
                     cleanup_env()
                     sys.exit(0)
                 except Exception as caught_exception:
-                    print_error(caught_exception)
+                    print_error_or_traceback(caught_exception)
                     sys.exit(1)
         elif args.aux_action == "exec":
             fill_wm_globals()
