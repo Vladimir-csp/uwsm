@@ -3,9 +3,10 @@
 Experimental tool that wraps any standalone Wayland WM into a set of systemd units to
 provide graphical user session with environment management, XDG autostart support, clean shutdown.
 
-WIP. Use at your onw risk. Breaking changes are being introduced. See commit messages.
+WIP(ish). Use at your onw risk.
 
-**(!) python rewrite in v0.5 changed and regrouped some arguments, cut shell plugins scope**.
+The main structure of subcommands and features is more or less settled and will likely not receive any drastic changes
+unless some illuminative idea comes by. Nonetheless, keep an eye for commits with `[Breaking]` messages.
 
 ## Concepts and features
 
@@ -267,18 +268,18 @@ which has a potential for nasty loops if run unconditionally. Other conditions a
 
 Shell plugins provide WM-specific functions during environment preparation.
 
-Named `${wm_bin_id}.sh.in`, they should only contain specifically named functions.
+Named `${__WM_BIN_ID__}.sh.in`, they should only contain specifically named functions.
 
-`${wm_bin_id}` is derived from the item 0 of WM argv by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
+`${__WM_BIN_ID__}` is derived from the item 0 of WM argv by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
 
 It is used as plugin id and suffix in function names.
 
 Variables available to plugins:
-  - `__WM_ID__` - WM ID, first argument of `start`
-  - `__WM_BIN_ID__` - processed first item of wm argv.
-  - `__WM_DESKTOP_NAMES__` - ':'-separated desktop names from `DesktopNames=` of entry and `-D` cli argument
+  - `__WM_ID__` - WM ID, effective first argument of `start`.
+  - `__WM_BIN_ID__` - processed first item of WM argv.
+  - `__WM_DESKTOP_NAMES__` - `:`-separated desktop names from `DesktopNames=` of entry and `-D` cli argument.
   - `__WM_FIRST_DESKTOP_NAME__` - first of the above.
-  - `__WM_DESKTOP_NAMES_EXCLUSIVE__` - (`true`|`false`) `__WM_DESKTOP_NAMES__` came from cli argument and marked as exclusive
+  - `__WM_DESKTOP_NAMES_EXCLUSIVE__` - (`true`|`false`) `__WM_DESKTOP_NAMES__` came from cli argument and are marked as exclusive.
 
 Functions available to plugins:
   - `load_config_env` - sources `$1` files from config hierarchy.
