@@ -1058,28 +1058,33 @@ def generate_units():
     # )
 
 
-def remove_units(only=None):
+def remove_units(only=None) -> None:
     """
     Removes units by X-UWSM-ID= attribute.
     if wm_id is given as argument, only remove X-UWSM-ID={wm_id}, else remove all.
     """
     if not only:
         only = ""
+    mark_attr = f"X-UWSM-ID={only}"
     check_dir, _ = get_unit_path("")
-    sprc = subprocess.run(
-        ["grep", "-rlF", f"X-UWSM-ID={only}", check_dir],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.returncode != 0 or not sprc.stdout.strip():
-        return
+    unit_files = []
 
-    files = sprc.stdout.splitlines()
-    files = [f.removeprefix(check_dir.rstrip("/") + "/") for f in files]
+    for dir, _, files in os.walk(check_dir):
+        for file in sorted(files):
+            file_path = os.path.join(dir, file)
+            print_debug("checking for removal", file_path)
+            with open(file_path, "r", encoding="UTF=8") as unit_file:
+                for line in unit_file.readlines():
+                    if (only and line.strip() == mark_attr) or (
+                        not only and line.strip().startswith(mark_attr)
+                    ):
+                        unit_files.append(
+                            file_path.removeprefix(check_dir.rstrip("/") + "/")
+                        )
+                        print_debug(f"{mark_attr} found")
+                        break
 
-    for file in sorted(files):
+    for file in unit_files:
         remove_unit(file)
     return
 
