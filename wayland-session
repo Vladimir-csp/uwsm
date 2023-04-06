@@ -1547,31 +1547,27 @@ def get_systemd_varnames():
 
 def get_fg_vt(verbose: bool = False):
     "Returns number of foreground VT or None"
-    sprc = subprocess.run(["fgconsole"], text=True, capture_output=True, check=False)
-    print_debug(sprc)
-
-    if sprc.stderr.strip():
-        if verbose:
-            print_error(f"fgconsole error:\n{sprc.stderr.strip()}")
-
-    if sprc.returncode != 0:
-        if verbose:
+    try:
+        with open(
+            "/sys/class/tty/tty0/active", "r", encoding="UTF-8"
+        ) as active_tty_attr:
+            fgvt = active_tty_attr.read()
+        fgvt = fgvt.strip()
+        if not fgvt.startswith("tty"):
             print_error(
-                f"Could not determine foreground VT, fgconsole returned {sprc.returncode}"
+                f'Reading "/sys/class/tty/tty0/active" returned "{fgvt}", expected "tty[0-9]"!'
             )
-        return None
-
-    fgvt = sprc.stdout.strip()
-
-    if not fgvt or not fgvt.isnumeric():
-        if verbose:
+            return None
+        fgvt_num = fgvt.removeprefix("tty")
+        if not fgvt_num.isnumeric():
             print_error(
-                f'Could not determine foreground VT, fgconsole output: "{sprc.stdout.strip()}"'
+                f'Reading "/sys/class/tty/tty0/active" returned "{fgvt}", could not extract number!'
             )
+            return None
+        return int(fgvt_num)
+    except Exception as caught_exception:
+        print_error_or_traceback(caught_exception)
         return None
-
-    fgvt = int(fgvt)
-    return fgvt
 
 
 def get_session_by_vt(v_term: int, verbose: bool = False):
@@ -1786,7 +1782,7 @@ def filter_varnames(data):
     Accepts dicts of env or lists, tuples, sets of names. Returns only valid.
     """
     if not isinstance(data, (dict, set, list, tuple)):
-        raise TypeError(f"Received {type(data)}")
+        raise TypeError(f"Expected dict|set|list|tuple, received {type(data)}")
     varname_regexp = r"^([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)$"
 
     if isinstance(data, dict):
