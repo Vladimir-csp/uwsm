@@ -1069,20 +1069,26 @@ def remove_units(only=None) -> None:
     check_dir, _ = get_unit_path("")
     unit_files = []
 
-    for dir, _, files in os.walk(check_dir):
+    for dir, _, files in sorted(os.walk(check_dir)):
         for file in sorted(files):
             file_path = os.path.join(dir, file)
-            print_debug("checking for removal", file_path)
-            with open(file_path, "r", encoding="UTF=8") as unit_file:
-                for line in unit_file.readlines():
-                    if (only and line.strip() == mark_attr) or (
-                        not only and line.strip().startswith(mark_attr)
-                    ):
-                        unit_files.append(
-                            file_path.removeprefix(check_dir.rstrip("/") + "/")
-                        )
-                        print_debug(f"{mark_attr} found")
-                        break
+            if not os.path.isfile(file_path):
+                print_debug("skipping, not a file:", file_path)
+                continue
+            print_debug("checking for removal:", file_path)
+            try:
+                with open(file_path, "r", encoding="UTF=8") as unit_file:
+                    for line in unit_file.readlines():
+                        if (only and line.strip() == mark_attr) or (
+                            not only and line.strip().startswith(mark_attr)
+                        ):
+                            unit_files.append(
+                                file_path.removeprefix(check_dir.rstrip("/") + "/")
+                            )
+                            print_debug(f"found {mark_attr}")
+                            break
+            except:
+                pass
 
     for file in unit_files:
         remove_unit(file)
@@ -2600,8 +2606,8 @@ def fill_wm_globals():
 def stop_wm():
     "Stops WM if active, returns int returncode"
     if is_active():
-        print_normal("Stopping WM")
         if not args.dry_run:
+            print_normal("Stopping WM")
             sprc = subprocess.run(
                 ["systemctl", "--user", "stop", "wayland-wm@*.service"],
                 text=True,
@@ -2615,6 +2621,7 @@ def stop_wm():
                 print_error(sprc.stderr.strip())
             returncode = sprc.returncode
         else:
+            print_normal("Will stop WM")
             returncode = 0
     else:
         print_normal("WM is not running")
