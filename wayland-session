@@ -2406,7 +2406,13 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
             sys.exit(1)
         cmd_unit_substring = sprc.stdout.strip()
 
-        unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
+        if app_unit_type == "scope":
+            unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
+        elif app_unit_type == "service":
+            unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}@{random_hex(8)}.{app_unit_type}"
+        else:
+            raise ValueError(f'Invalid app_unit_type "{app_unit_type}"')
+
     else:
         if not unit_name.endswith(f".{app_unit_type}"):
             raise ValueError(
