@@ -2318,9 +2318,13 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
                 )
                 unit_name = ""
 
-            # call forking self for each instance
+            # background processes container
             sub_apps = []
+            # poll registry container
+            sub_apps_rc = []
+            # call forking self for each instance
             for args_instance in cmd_args:
+                # launch app in background
                 sub_apps.append(
                     app(
                         cmd,
@@ -2332,30 +2336,28 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
                         fork=True,
                     )
                 )
-
-            # prepare poll registry
-            sub_apps_rc = [None for n in range(0, len(sub_apps))]
+                # add placeholder for rc
+                sub_apps_rc.append(None)
 
             # function for map()
             def is_int(checkvar):
                 "checks if given var is int"
                 return isinstance(checkvar, int)
 
-            # poll subprocesses until they are finished
+            # poll subprocesses until they are all finished
             while not all(map(is_int, sub_apps_rc)):
                 for idx, sub_app in enumerate(sub_apps):
                     if not is_int(sub_apps_rc[idx]):
                         sub_apps_rc[idx] = sub_app.poll()
-                        if is_int(sub_apps_rc[idx]) and sub_apps_rc[idx]:
-                            print_error(
-                                f'Process "{shlex.join(sub_app.args)}" finished with {sub_apps_rc[idx]}'
-                            )
-                        elif is_int(sub_apps_rc[idx]) and not sub_apps_rc[idx]:
-                            print_normal(
-                                f'Process "{shlex.join(sub_app.args)}" finished with {sub_apps_rc[idx]}'
-                            )
+                        if is_int(sub_apps_rc[idx]):
+                            proc_exit_msg = f'systemd-run for "{shlex.join(sub_app.args[sub_app.args.index("--") + 1:])}" returned {sub_apps_rc[idx]}'
+                            if sub_apps_rc[idx] == 0:
+                                print_normal(proc_exit_msg)
+                            else:
+                                print_error(proc_exit_msg)
                 time.sleep(0.1)
 
+            # if there is any non-zero rc
             if any(sub_apps_rc):
                 sys.exit(1)
             sys.exit(0)
