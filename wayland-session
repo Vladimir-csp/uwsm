@@ -402,7 +402,8 @@ def select_de():
                 continue
 
             # action_description: str = f" ╰─▶ {entry.getName()}"
-            action_description: str = f" ╰▶ {entry.getName()}"
+            # action_description: str = f" ╰▶ {entry.getName()}"
+            action_description: str = f" └▶ {entry.getName()}"
 
             # add a choice
             choices_raw.append((f"{entry_filename}:{action}", action_description, ""))
