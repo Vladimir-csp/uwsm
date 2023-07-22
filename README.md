@@ -132,7 +132,7 @@ If `${wm_id}` ends with `.desktop` or has a `.desktop:some-action` substring, `w
 Arguments provided on command line are appended to the command line of desktop entry (unlike apps), no argument processing is done
 (Please [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose) if you encounter any wayland-sessions desktop entry with %-fields).
 
-If you want to customize WM execution provided with a desktop entry, copy it to `~/.local/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
+If you want to customize WM execution provided with a desktop entry, copy it to `~/.local/share/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
 
 If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions` data hierarchy (including their actions).
 Selection is saved, previous selection is highlighted (or launched right away in case of `default`). Selected entry is used as `${wm_id}`.
