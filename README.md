@@ -94,7 +94,8 @@ Launching desktop entries is also supported:
 
 `wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app.desktop[:action] [with args]`
 
-In this case args must be supported by the entry or its selected action according to [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
+In this case args must be supported by the entry or its selected action according to
+[XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
 
 Example snippet for sway config on how to launch apps:
 
@@ -126,22 +127,27 @@ Start variants:
 - `wayland-session start ${wm_id} with "any complex" arguments`: also adds arguments for particular `@${wm_id}` instance.
 - `-N, -[e]D, -C` can be used to add name, desktop names, description respectively.
 
-If `${wm_id}` ends with `.desktop` or has a `.desktop:some-action` substring, `wayland-session` finds desktop entry in `wayland-sessions` data hierarchy, uses Exec and DesktopNames from it
+If `${wm_id}` ends with `.desktop` or has a `.desktop:some-action` substring, `wayland-session` finds desktop entry
+in `wayland-sessions` data hierarchy, uses Exec and DesktopNames from it
 (along with name and comment for unit descriptons).
 
 Arguments provided on command line are appended to the command line of desktop entry (unlike apps), no argument processing is done
 (Please [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose) if you encounter any wayland-sessions desktop entry with %-fields).
 
-If you want to customize WM execution provided with a desktop entry, copy it to `~/.local/share/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
+If you want to customize WM execution provided with a desktop entry, copy it to `~/.local/share/wayland-sessions/` and
+change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
 
-If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions` data hierarchy (including their actions).
-Selection is saved, previous selection is highlighted (or launched right away in case of `default`). Selected entry is used as `${wm_id}`.
+If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in `wayland-sessions`
+data hierarchy (including their actions). Selection is saved, previous selection is highlighted
+(or launched right away in case of `default`). Selected entry is used as `${wm_id}`.
+
+There is also a separate `select` action (`wayland-session select`) that only selects and saves default `${wm_id}` and does nothing else.
 
 When started, `wayland-session` will hold while wayland session is running, and terminate session if is itself interrupted or terminated.
 
 To launch automatically after login on virtual console 1, if systemd is at `graphical.target`, add this to shell profile:
 
-    if wayland-session check may-start && wayland-session start -o select
+    if wayland-session check may-start && wayland-session select
     then
     	exec wayland-session start default
     fi
@@ -218,8 +224,12 @@ Those variable names, plus `varnames.always_cleanup` minus `varnames.never_clean
 Activation environments will also need to receive essential variables like `WAYLAND_DISPLAY`
 to launch graphical applications successfully.
 
-`wayland-session finalize [VAR [VAR2...]]` runs
-`dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]`, `systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]`, `systemd-notify --ready`.
+`wayland-session finalize [VAR [VAR2...]]` runs:
+
+    dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
+    systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
+    systemd-notify --ready
+
 The first two together might be an overkill.
 
 Only defined variables are used. Variables that are not blacklisted by `varnames.never_cleanup` set are also added to cleanup list in runtime dir.

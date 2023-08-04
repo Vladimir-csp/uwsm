@@ -322,7 +322,6 @@ def get_default_de():
                     for line in cmd_cache_file.readlines():
                         if line.strip():
                             wmid = line.strip()
-                            print_ok(f"Got default WM ID: {wmid}")
                             return wmid
             except Exception as caught_exception:
                 print_error_or_traceback(caught_exception)
@@ -332,28 +331,30 @@ def get_default_de():
 
 def save_default_de(default):
     "Gets saves WM desktop entry ID from wayland-session-default-id file in config hierarchy"
-    if not args.dry_run:
+    if "dry_run" not in args or not args.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
             os.mkdir(BaseDirectory.xdg_config_home)
         config = os.path.join(
             BaseDirectory.xdg_config_home, "wayland-session-default-id"
         )
         with open(config, "w", encoding="UTF-8") as config:
-            config.write(default)
+            config.write(default + "\n")
             print_ok(f"Saved default WM ID: {default}")
     else:
         print_ok(f"Would save default WM ID: {default}")
 
 
-def select_de():
-    'Uses whiptail to select among "wayland-sessions" desktop entries'
+def select_de(default="", just_confirm=False):
+    """
+    Uses whiptail to select among "wayland-sessions" desktop entries.
+    Takes a "default" to preselect, "just_confirm" flag to return a found default right away
+    """
 
     if not which("whiptail"):
         raise FileNotFoundError(
             '"whiptail" is not in PATH, "select" and "default" are not supported'
         )
 
-    default: str = get_default_de()
     seen_entries: List[str] = []
     entry_files: List[str] = []
     choices_raw: List[tuple[str]] = []
@@ -439,7 +440,7 @@ def select_de():
         default = ""
 
     # just spit out default if requested and found
-    if default and args.wm == "default":
+    if default and just_confirm:
         for choice in choices[::2]:
             if choice == default:
                 return choice
@@ -1204,6 +1205,21 @@ def parse_args():
         dest="wm_comment",
         default="",
         help="Fancy description for WM (filled from desktop entry by default)",
+    )
+
+    # select subcommand
+    parsers["select"] = parsers["main_subparsers"].add_parser(
+        "select",
+        help="Select default WM entry",
+        description="Invokes whiptail menu for selecting wayland-sessions desktop entries.",
+        epilog=dedent(
+            """
+            Invokes a whiptail menu to select a default session among desktop entries in
+            wayland-sessions XDG data hierarchy. Writes to ${XDG_CONFIG_HOME}/wayland-session-default-id
+            Nothing else is done.
+
+            """
+        ),
     )
 
     # start subcommand
@@ -2675,14 +2691,34 @@ if __name__ == "__main__":
 
     print_debug("args", args)
 
+    #### SELECT
+    if args.mode == "select":
+        try:
+            default_id = get_default_de()
+            select_wm_id = select_de(default_id)
+            if select_wm_id:
+                if select_wm_id == default_id:
+                    print_normal(f"Default WM ID unchanged: {select_wm_id}")
+                else:
+                    save_default_de(select_wm_id)
+                sys.exit(0)
+            else:
+                print_error("No WM was selected")
+                sys.exit(1)
+        except Exception as caught_exception:
+            print_error_or_traceback(caught_exception)
+            sys.exit(1)
+
     #### START
-    if args.mode == "start":
+    elif args.mode == "start":
         # Get ID from whiptail menu
         if args.wm in ["select", "default"]:
             try:
-                select_wm_id = select_de()
+                default_id = get_default_de()
+                select_wm_id = select_de(default_id, args.wm == "default")
                 if select_wm_id:
-                    save_default_de(select_wm_id)
+                    if select_wm_id != default_id:
+                        save_default_de(select_wm_id)
                     # update args.wm in place
                     args.wm = select_wm_id
                 else:
