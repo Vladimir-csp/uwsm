@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Kanshi
+GenericName=Wayland Output Manager
+Comment=Manages output hotplug via saved profiles
+Categories=Utility;
+Keywords=wayland;outputs;hotplug;
+TryExec=kanshi
+Exec=kanshi
+StartupNotify=false
+Terminal=false
+Icon=display
+OnlyShowIn=wlroots

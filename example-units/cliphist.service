@@ -1,13 +1,12 @@
 [Unit]
-Description=Highly customizable Wayland bar for Sway and Wlroots based compositors.
-Documentation=https://github.com/Alexays/Waybar/wiki/
+Description=Clipboard history “manager” for wayland
+Documentation=https://github.com/sentriz/cliphist
 # order startup after WM
 After=graphical-session.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/waybar
-ExecReload=kill -SIGUSR2 $MAINPID
+ExecStart=wl-paste --watch cliphist store -max-items 10
 Restart=on-failure
 Slice=app-graphical.slice
 

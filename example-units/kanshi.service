@@ -1,13 +1,13 @@
 [Unit]
-Description=Highly customizable Wayland bar for Sway and Wlroots based compositors.
-Documentation=https://github.com/Alexays/Waybar/wiki/
+Description=Kanshi Wayland output manager
+Documentation=https://git.sr.ht/~emersion/kanshi/refs
 # order startup after WM
 After=graphical-session.target
 
 [Service]
 Type=exec
-ExecStart=/usr/bin/waybar
-ExecReload=kill -SIGUSR2 $MAINPID
+ExecStart=/usr/bin/kanshi
+ExecReload=kill -SIGHUP $MAINPID
 Restart=on-failure
 Slice=app-graphical.slice
 

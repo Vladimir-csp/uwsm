@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Cliphist
+GenericName=Clipboard history manager
+Comment=Saves clipboard objects
+Categories=Utility;
+Keywords=wayland;clipboard;
+TryExec=cliphist
+Exec=wl-paste --watch cliphist store -max-items 10
+StartupNotify=false
+Terminal=false
+Icon=clipboard
+OnlyShowIn=wlroots
