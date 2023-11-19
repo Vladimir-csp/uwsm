@@ -318,6 +318,7 @@ Functions that can be added by plugins:
   - `load_wm_env_${__WM_BIN_ID__}` - replaces env loading. `load_wm_env` can be called inside to combine standard and custom loading.
 
 Example:
+
     #!/bin/false
 
     # function to make arbitrary actions before loading wayland-session-env-${__WM_ID__}
