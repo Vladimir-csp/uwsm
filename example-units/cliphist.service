@@ -6,15 +6,15 @@ After=graphical-session.target
 
 [Service]
 Type=exec
+# Repurpose XDG Autostart filtering
+ExecCondition=/lib/systemd/systemd-xdg-autostart-condition "wlroots:sway:Wayfire:labwc" ""
 ExecStart=wl-paste --watch cliphist store -max-items 10
 Restart=on-failure
 Slice=app-graphical.slice
 
 [Install]
-# Get started via specific WMs
-WantedBy=wayland-wm@sway.service
-WantedBy=wayland-wm@wayfire.service
-WantedBy=wayland-wm@labwc.service
-WantedBy=wayland-wm@sway.desktop.service
-WantedBy=wayland-wm@wayfire.desktop.service
-WantedBy=wayland-wm@labwc.desktop.service
+WantedBy=graphical-session.target
+# Alternatively can be wanted by specific WMs
+#WantedBy=wayland-wm@sway.service
+#WantedBy=wayland-wm@wayfire.service
+#WantedBy=wayland-wm@labwc.service
