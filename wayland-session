@@ -1715,33 +1715,29 @@ def prepare_env_gen_sh(random_mark):
         """
         load_config_env() {
         	#### iterate config dirs in increasing importance and source additional env from relative path in $1
+        	__ALL_XDG_CONFIG_DIRS_ITER__="${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}"
         	__ALL_XDG_CONFIG_DIRS_REV__=''
         	__CONFIG_DIR__=''
         	OIFS="$IFS"
-        	IFS=":"
-        	for __CONFIG_DIR__ in ${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}
-        	do
+        	IFS=':'
+        	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_ITER__}; do
         		IFS="$OIFS"
         		# fill list in reverse order
-        		if [ -n "${__CONFIG_DIR__}" ]
-        		then
-        			__ALL_XDG_CONFIG_DIRS_REV__="${__ALL_XDG_CONFIG_DIRS_REV__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__CONFIG_DIR__}"
+        		if [ -n "${__CONFIG_DIR__}" ]; then
+        			__ALL_XDG_CONFIG_DIRS_REV__="${__CONFIG_DIR__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__ALL_XDG_CONFIG_DIRS_REV__}"
         		fi
         	done
         	IFS=":"
-        	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}
-        	do
+        	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}; do
         		IFS="$OIFS"
-        		if [ -r "${__CONFIG_DIR__}/${1}" ]
-        		then
+        		if [ -r "${__CONFIG_DIR__}/${1}" ]; then
         			echo "Loading environment from ${__CONFIG_DIR__}/${1}"
-        			#set -a
         			. "${__CONFIG_DIR__}/${1}"
-        			#set +a
         		fi
         	done
         	IFS="$OIFS"
         	unset __CONFIG_DIR__
+        	unset __ALL_XDG_CONFIG_DIRS_ITER__
         	unset __ALL_XDG_CONFIG_DIRS_REV__
         	return 0
         }
@@ -1772,21 +1768,19 @@ def prepare_env_gen_sh(random_mark):
         export XDG_SESSION_TYPE="wayland"
 
         #### apply quirks
-        if type "quirks_${__WM_BIN_ID__}" >/dev/null
-        then
-                echo "Applying quirks for ${__WM_BIN_ID__}"
-                "quirks_${__WM_BIN_ID__}" || return $?
+        if type "quirks_${__WM_BIN_ID__}" >/dev/null; then
+        	echo "Applying quirks for ${__WM_BIN_ID__}"
+        	"quirks_${__WM_BIN_ID__}" || return $?
         fi
 
         load_common_env || return $?
 
-        if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null
-        then
-                echo "Loading ENV for ${__WM_BIN_ID__}"
-                "load_wm_env_${__WM_BIN_ID__}" || return $?
+        if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null; then
+        	echo "Loading ENV for ${__WM_BIN_ID__}"
+        	"load_wm_env_${__WM_BIN_ID__}" || return $?
         else
-                load_wm_env || return $?
-                true
+        	load_wm_env || return $?
+        	true
         fi
         """
     )
