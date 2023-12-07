@@ -1,4 +1,5 @@
 #!/bin/false
+# sourced by uwsm environment preloader
 
 quirks_sway() {
 	# detect disabled xwayland
@@ -12,21 +13,9 @@ quirks_sway() {
 	# append "wlroots" to XDG_CURRENT_DESKTOP if not already there
 	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]
 	then
-		WLR_FOUND=false
-		OIFS="$IFS"
-		IFS=':'
-		for DN in $XDG_CURRENT_DESKTOP
-		do
-			if [ "$DN" = "wlroots" ]
-			then
-				WLR_FOUND=true
-				break
-			fi
-		done
-		IFS="$OIFS"
-		if [ "$WLR_FOUND" = "false" ]
-		then
-			export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots"
-		fi
+		case "A:${XDG_CURRENT_DESKTOP}:Z" in
+		*:wlroots:*) true ;;
+		*) export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots" ;;
+		esac
 	fi
 }
