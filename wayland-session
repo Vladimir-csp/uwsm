@@ -211,7 +211,7 @@ def entry2dict(entry, entry_action=None) -> dict:
     Extracts keys of interest from desktop entry object, returns dict.
     Takes into account "action" for Name, Exec, Icon
     """
-    entry_name = os.path.basename(entry.filename)
+    entry_id = os.path.basename(entry.filename)
     out = {
         "Comment": entry.getComment(),
         "Exec": entry.getExec(),
@@ -229,7 +229,7 @@ def entry2dict(entry, entry_action=None) -> dict:
         action_group = f"Desktop Action {entry_action}"
         if entry_action not in entry.getActions() or action_group not in entry.groups():
             raise RuntimeError(
-                f'Deskop entry "{entry_name}" does not contain action "{entry_action}"'
+                f'Deskop entry "{entry_id}" does not contain action "{entry_action}"'
             )
         entry.defaultGroup = action_group
         out["Exec"] = entry.getExec()
@@ -240,79 +240,103 @@ def entry2dict(entry, entry_action=None) -> dict:
         print_debug("entry2dict action", out)
     if not out["Name"]:
         raise RuntimeError(
-            f'Deskop entry "{entry_name}"{action_msg} does not have "Name"'
+            f'Deskop entry "{entry_id}"{action_msg} does not have "Name"'
         )
     if not out["Exec"]:
         raise RuntimeError(
-            f'Deskop entry "{entry_name}"{action_msg} does not have "Exec"'
+            f'Deskop entry "{entry_id}"{action_msg} does not have "Exec"'
         )
     if not which(shlex.split(out["Exec"])[0]):
         raise RuntimeError(
-            f'Deskop entry "{entry_name}"{action_msg} Exec does not contain a reachable executable'
+            f'Deskop entry "{entry_id}"{action_msg} Exec does not contain a reachable executable'
         )
     return out
 
 
-def get_de(entry_name: str, subpath: str = "wayland-sessions"):
+def find_de(subpath: str, search_entry_id: str = None):
     """
-    "which" for desktop entries, takes entry ID or path and hierarchy subpath
-    "wayland-sessions", "applications", etc..., default "wayland-sessions"
-    returns DesktopEntry object or empty dict
+    Takes data hierarchy subpath and optional entry ID
+    returns list of tuples of [(entry_id, file path)]: single entry if ID is given
+    or all of them if not
+    """
+    seen_ids = set()
+    results = []
+    # iterate over data paths
+    for data_dir in BaseDirectory.load_data_paths(subpath):
+        # walk tree relative to data_dir
+        for dirpath, dirnames, filenames in os.walk(data_dir, followlinks=True):
+            for filename in filenames:
+                # get only valid files
+                if re.search(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop$", filename):
+                    filepath = os.path.join(dirpath, filename)
+                    # get proper entry id relative to data_dir with path delimiters replaced by '-'
+                    check_entry_id = os.path.relpath(filepath, data_dir).replace(
+                        "/", "-"
+                    )
+                    # if searching for particualr entry
+                    if search_entry_id:
+                        # and it matches, return it
+                        if check_entry_id == search_entry_id:
+                            return [(check_entry_id, filepath)]
+                    # else add first encountered entry
+                    elif check_entry_id not in seen_ids:
+                        results.append((check_entry_id, filepath))
+                        seen_ids.add(check_entry_id)
+    return results
+
+
+def get_de(subpath: str, search_entry_id: str = None, warnings: bool = True):
+    """
+    Takes data hierarchy subpath and optional entry ID
+    returns list of tuples of [(entry_id, DesktopEntry object or empty dict)]
+    single entry if ID is given or all of them if not
     """
 
-    if not entry_name.endswith(".desktop"):
-        print_error(f'Invalid entry name "{entry_name}"')
-        return {}
-
-    # if absolute path, use it
-    if os.path.isabs(entry_name):
-        entry_path = entry_name
-        print_debug(f'Entry path is absolute: "{entry_name}"')
-
-    # or find highest priority entry in data hierarchy
-    else:
-        print_debug(
-            f'Entry path is relative: "{entry_name}"\n searching in "{list(BaseDirectory.load_data_paths(subpath))}"'
-        )
-        entry_path = list(
-            BaseDirectory.load_data_paths(
-                os.path.normpath(os.path.join(subpath, entry_name))
-            )
-        )
-        if entry_path:
-            entry_path = entry_path[0]
-        else:
-            entry_path = ""
-
-    if not entry_path:
-        return {}
-
-    # parse entry
-    try:
-        entry = DesktopEntry(entry_path)
-    except Exception as caught_exception:
-        print_error_or_traceback(caught_exception)
-        return {}
-
-    print_debug(entry)
-
-    # inaccessible executables or hidden entries
-    msgs: list = []
-    if entry.getHidden():
-        msgs.append("Entry is hidden")
-    if not entry.getName:
-        msgs.append("Entry is missing Name")
-    if (
-        (entry.getTryExec() and not entry.findTryExec())
-        or not entry.getExec()
-        or not which(shlex.split(entry.getExec())[0])  # type: ignore
+    if search_entry_id and not re.search(
+        r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop$", search_entry_id
     ):
-        msgs.append("Entry Exec has no reachable executable")
-    if msgs:
-        print_warning("\n".join(msgs))
-        return {}
+        print_error(f'Invalid entry ID "{entry_id}"')
+        return []
 
-    return entry
+    print_debug(
+        f'searching for entry ID "{search_entry_id}" in {subpath} data hierarchy'
+    )
+    entry_paths = find_de(subpath, search_entry_id)
+
+    if not entry_paths:
+        return []
+
+    results = []
+    # parse entries
+    for entry_id, entry_path in entry_paths:
+        try:
+            entry = DesktopEntry(entry_path)
+        except Exception as caught_exception:
+            print_error_or_traceback(caught_exception)
+            continue
+
+        print_debug(entry)
+
+        # check for inaccessible executables or hidden entries
+        msgs: list = []
+        if entry.getHidden():
+            msgs.append("entry is hidden")
+        if not entry.getName:
+            msgs.append("entry is missing Name")
+        if (
+            (entry.getTryExec() and not entry.findTryExec())
+            or not entry.getExec()
+            or not which(shlex.split(entry.getExec())[0])  # type: ignore
+        ):
+            msgs.append("entry Exec has no reachable executable")
+        if msgs:
+            if warnings:
+                print_warning(f"Discarded {entry_id}: " +", ".join(msgs))
+            continue
+
+        results.append((entry_id, entry))
+
+    return results
 
 
 def get_default_de():
@@ -357,36 +381,25 @@ def select_de(default="", just_confirm=False):
             '"whiptail" is not in PATH, "select" and "default" are not supported'
         )
 
-    seen_entries: List[str] = []
-    entry_files: List[str] = []
+    session_entries = []
     choices_raw: List[tuple[str]] = []
     choices: List[str] = []
 
-    # find relevant desktop entries as first found paths in data hierarchy
-    for ws_dir in BaseDirectory.load_data_paths("wayland-sessions"):
-        if os.path.isdir(ws_dir):
-            os.chdir(ws_dir)
-            for file in os.listdir():
-                if os.path.splitext(file)[1] == ".desktop" and file not in seen_entries:
-                    seen_entries.append(file)
-                    entry_files.append(os.path.join(ws_dir, file))
-
-    entry_files.sort()
+    session_entries = get_de("wayland-sessions", warnings=False)
+    session_entries.sort()
 
     # fill choces list with [Exec, Name], filtered
-    for entry_file in entry_files:
-        entry = get_de(entry_file)
+    for entry_id, entry in session_entries:
         if not entry:
             # just skip it
             continue
 
-        entry_filename: str = os.path.basename(entry.filename)
         name: str = entry.getName()
         generic_name: str = entry.getGenericName()
         description: str = " ".join((name, generic_name))
         comment: str = entry.getComment()
         # add a choice
-        choices_raw.append((entry_filename, description, comment))
+        choices_raw.append((entry_id, description, comment))
 
         # also enumerate actions
         for action in entry.getActions():
@@ -409,7 +422,7 @@ def select_de(default="", just_confirm=False):
             action_description: str = f" └▶ {entry.getName()}"
 
             # add a choice
-            choices_raw.append((f"{entry_filename}:{action}", action_description, ""))
+            choices_raw.append((f"{entry_id}:{action}", action_description, ""))
 
     # find longest description
     description_length: int = 0
@@ -999,7 +1012,8 @@ def generate_units():
         # add preloader customization tweak
         update_unit(
             wm_specific_preloader,
-            "\n".join(wm_specific_preloader_data),
+            # those strings already have newlines
+            "".join(wm_specific_preloader_data),
         )
     else:
         # remove customization tweak
@@ -1009,7 +1023,8 @@ def generate_units():
         # add main service customization tweak
         update_unit(
             wm_specific_service,
-            "\n".join(wm_specific_service_data),
+            # those strings already have newlines
+            "".join(wm_specific_service_data),
         )
     else:
         # remove customization tweak
@@ -2294,26 +2309,26 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
     """
 
     # parse desktop entry, update cmd, cmd_args, app_name
-    if cmd.endswith(".desktop") or (
-        ".desktop:" in cmd and not cmd.endswith(".desktop:")
-    ):
+    if cmd.endswith(".desktop") or ".desktop:" in cmd:
         # separate action
-        if ":" in cmd and cmd.count(":") == 1:
-            entry_name, entry_action = cmd.split(":")
-        elif ":" in cmd and cmd.count(":") > 1:
-            raise ValueError(f'Invalid desktop entry with action "{cmd}"')
+        if ":" in cmd:
+            entry_id, entry_action = cmd.split(":", maxsplit=1)
+            if not re.search(r"^[a-zA-Z0-9-]*$", entry_action):
+                raise ValueError(f'Invalid desktop entry action "{entry_action}"')
         else:
-            entry_name, entry_action = cmd, ""
+            entry_id, entry_action = cmd, ""
+        if not re.search(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop$", entry_id):
+            raise ValueError(f'Invalid desktop entry ID "{entry_id}"')
 
-        if not entry_name:
-            raise ValueError(f'Invalid desktop entry with action string "{cmd}"')
+        print_debug("entry_id, entry_action:", entry_id, entry_action)
 
-        print_debug("entry_name, entry_action:", entry_name, entry_action)
+        entries = get_de("applications", entry_id)
 
-        entry = get_de(entry_name, subpath="applications")
-
-        if not entry:
+        print_debug("got entrires", entries)
+        if not entries:
             raise FileNotFoundError(f'Could not find or parse deskop entry "{cmd}"')
+        else:
+            entry = entries[0][1]
 
         # get unlocalized entry name if no override
         if not app_name:
@@ -2505,21 +2520,23 @@ def fill_wm_globals():
 
         # separate action
         if ":" in wm_id and wm_id.count(":") == 1:
-            entry_name, entry_action = wm_id.split(":")
+            entry_id, entry_action = wm_id.split(":")
         elif ":" in wm_id and wm_id.count(":") > 1:
             raise ValueError(f'Invalid desktop entry with action "{wm_id}"')
         else:
-            entry_name, entry_action = wm_id, ""
+            entry_id, entry_action = wm_id, ""
 
-        if not entry_name:
+        if not entry_id:
             raise ValueError(f'Invalid desktop entry with action string "{wm_id}"')
 
         # parse entry
         try:
             # find and parse entry
-            entry = get_de(entry_name)
-            if not entry:
+            entries = get_de("wayland-sessions", entry_id)
+            if not entries:
                 raise FileNotFoundError(f'Could not find and parse entry "{wm_id}"')
+            else:
+                entry = entries[0][1]
         except Exception as caught_exception:
             print_error_or_traceback(caught_exception)
             sys.exit(1)
@@ -2532,6 +2549,8 @@ def fill_wm_globals():
         # TODO: either drop this behavior, or add support for % fields
         # not that wayland session entries will ever use them
         wm_argv = shlex.split(entry_dict["Exec"]) + args.args
+
+        # TODO: Detect self_name or self_path here if used inside desktop entry.
 
         # this does not happen in aux exec mode
         if "desktop_names" in args:
