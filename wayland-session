@@ -525,6 +525,30 @@ def select_de(default="", just_confirm=False):
     return sprc.stderr.strip() if sprc.returncode == 0 and sprc.stderr else ""
 
 
+def systemd_escape(strings, se_args: list = []) -> str:
+    "passes string(s) (string or list) through systemd-escape, optional se_args list of systemd-escape args"
+    if isinstance(strings, str):
+        strings = [strings]
+    sprc = subprocess.run(
+        ["systemd-escape", *se_args, *strings],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    print_debug(sprc)
+
+    if sprc.returncode != 0 or not sprc.stdout.strip():
+        raise RuntimeError(
+            f'Could not escape sequence "{strings}":\n{sprc.stderr.strip()}'
+        )
+    output = sane_split(sprc.stdout.strip(), " ")
+    if len(output) == 1:
+        return output[0]
+    if len(output) > 1:
+        return output
+    raise RuntimeError(f'Could not escape sequence "{strings}"')
+
+
 def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     "Returns tuple: 0) path in category, level dir, 1) unit subpath"
     if os.path.isabs(unit):
@@ -574,23 +598,15 @@ def get_active_wm_id():
 
     active_id = sprc.stdout.strip()
 
-    sprc = subprocess.run(
-        ["systemd-escape", "--unescape", "--instance", active_id],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if not sprc.stdout.strip() or sprc.returncode != 0:
-        raise RuntimeError(sprc.stdout, sprc.stderr)
-
-    return sprc.stdout.strip()
+    return systemd_escape(active_id, ["--unescape", "--instance"])
 
 
 def is_active(check_wm_id="", verbose=False):
     "Checks if generic or specific wm_id is in active or activating state, returns bool"
     if check_wm_id:
-        check_unit = f"wayland-wm@{check_wm_id}.service"
+        # escape wm_id for systemd
+        check_wm_id_unit_string = systemd_escape(check_wm_id)
+        check_unit = f"wayland-wm@{check_wm_id_unit_string}.service"
     else:
         check_unit = "wayland-wm@*.service"
     check_unit_generic = "wayland-wm@*.service"
@@ -646,6 +662,8 @@ def is_active(check_wm_id="", verbose=False):
             print_normal(sprc.stdout.strip())
         if sprc.stderr.strip():
             print_error(sprc.stderr.strip())
+        if check_unit != check_unit_generic:
+            print_normal(f'"{check_unit}" is not active')
 
     return False
 
@@ -964,8 +982,10 @@ def generate_units():
     )
 
     # WM-specific additions from cli or desktop entry via drop-ins
-    wm_specific_preloader = f"wayland-wm-env@{wm_id}.service.d/50_custom.conf"
-    wm_specific_service = f"wayland-wm@{wm_id}.service.d/50_custom.conf"
+    wm_specific_preloader = (
+        f"wayland-wm-env@{wm_id_unit_string}.service.d/50_custom.conf"
+    )
+    wm_specific_service = f"wayland-wm@{wm_id_unit_string}.service.d/50_custom.conf"
     wm_specific_preloader_data = [
         dedent(
             f"""
@@ -1145,8 +1165,12 @@ def remove_units(only=None) -> None:
     return
 
 
-def parse_args(args=None):
+def parse_args(custom_args=None):
     "Parses args, returns tuple with args and a dict of parsers, takes optional custom 'args'"
+    print_debug(
+        f"parsing {'argv' if not custom_args else 'custom args'}",
+        custom_args or sys.argv[1:],
+    )
 
     # keep parsers in a dict
     parsers = {}
@@ -1516,7 +1540,7 @@ def parse_args(args=None):
         help="executable or desktop entry (used as WM ID), may be followed by arbitrary arguments",
     )
 
-    args = parsers["main"].parse_args(args=None)
+    args = parsers["main"].parse_args(custom_args)
     return (args, parsers)
 
 
@@ -2424,35 +2448,14 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         sys.exit(1)
 
     if not unit_name:
-        # use XDG_SESSION_DESKTOP as part of scope name
-        sprc = subprocess.run(
-            ["systemd-escape", os.getenv("XDG_SESSION_DESKTOP", "uwsm")],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-
-        if sprc.returncode != 0 or not sprc.stdout.strip():
-            print_error(sprc.stderr.strip())
-            print_error("Could not escape sequence for scope name")
-            sys.exit(1)
-        desktop_unit_substring = sprc.stdout.strip()
-
+        # use first XDG_CURRENT_DESKTOP as part of scope name
         # use app cmd as part of scope name
-        sprc = subprocess.run(
-            ["systemd-escape", app_name or os.path.basename(cmd)],
-            text=True,
-            capture_output=True,
-            check=False,
+        desktop_unit_substring, cmd_unit_substring = systemd_escape(
+            [
+                sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0],
+                app_name or os.path.basename(cmd),
+            ]
         )
-        print_debug(sprc)
-
-        if sprc.returncode != 0 or not sprc.stdout.strip():
-            print_error(sprc.stderr.strip())
-            print_error("Could not escape sequence for scope name")
-            sys.exit(1)
-        cmd_unit_substring = sprc.stdout.strip()
 
         if app_unit_type == "scope":
             unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
@@ -2495,6 +2498,7 @@ def fill_wm_globals():
       wm_cmdline
       wm_cli_args
       wm_id
+      wm_id_unit_string
       wm_bin_id
       wm_desktop_names
       wm_desktop_names_lowercase
@@ -2513,6 +2517,8 @@ def fill_wm_globals():
     global wm_cli_args
     # Internal WM ID (first of cli args)
     global wm_id
+    # escaped string for unit specifier
+    global wm_id_unit_string
     # processed function-friendly wm_cmdline[0]
     global wm_bin_id
     # XDG_CURRENT_DESKTOP list
@@ -2542,6 +2548,9 @@ def fill_wm_globals():
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
+    # escape wm_id for systemd
+    wm_id_unit_string = systemd_escape(wm_id)
+
     # detect and parse desktop entry
     entry_id, entry_action = arg_entry_or_executable(wm_id) or (None, None)
     if entry_id:
@@ -2566,39 +2575,43 @@ def fill_wm_globals():
         # get Exec from entry as wm_cmdline
         wm_cmdline = shlex.split(entry_dict["Exec"])
 
+        print_debug(
+            f"self_name: {self_name()}\nwm_cmdline[0]: {os.path.basename(wm_cmdline[0])}"
+        )
         # if desktop entry uses us, deal with the other self.
         entry_uwsm_args = None
-        if os.path.basename(wm_cmdline[0]) == self_name:
+        if os.path.basename(wm_cmdline[0]) == self_name():
             try:
                 if "start" not in wm_cmdline or wm_cmdline[1] != "start":
-                    raise DataError(
-                        f'Entry "{wm_id}" uses {self_name}, but the second argument "{wm_cmdline[1]}" is not "start"!'
+                    raise ValueError(
+                        f'Entry "{wm_id}" uses {self_name()}, but the second argument "{wm_cmdline[1]}" is not "start"!'
                     )
                 # cut ourselves from cmdline
                 wm_cmdline = wm_cmdline[1:]
 
-                print_normal(f'Entry "{wm_id}" uses {self_name}, reparsing args...')
+                print_normal(f'Entry "{wm_id}" uses {self_name()}, reparsing args...')
                 # reparse args from entry into separate namespace
-                entry_uwsm_args, _ = parse_args(args=wm_cmdline)
+                entry_uwsm_args, _ = parse_args(wm_cmdline)
+                print_debug("entry_uwsm_args", entry_uwsm_args)
 
                 # check for various incompatibilities
                 if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]):
-                    raise DataError(
-                        f'Entry "{wm_id}" uses {self_name} that points to a desktop entry!'
+                    raise ValueError(
+                        f'Entry "{wm_id}" uses {self_name()} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
                     )
                 if entry_uwsm_args.dry_run:
-                    raise DataError(
-                        f'Entry "{wm_id}" uses {self_name} in "dry run" mode!'
+                    raise ValueError(
+                        f'Entry "{wm_id}" uses {self_name()} in "dry run" mode!'
                     )
                 if entry_uwsm_args.only_generate:
-                    raise DataError(
-                        f'Entry "{wm_id}" uses {self_name} in "only generate" mode!'
+                    raise ValueError(
+                        f'Entry "{wm_id}" uses {self_name()} in "only generate" mode!'
                     )
                 if entry_uwsm_args.desktop_names and not Val.dn_colon.search(
                     entry_uwsm_args.desktop_names
                 ):
-                    raise DataError(
-                        f'Entry "{wm_id}" uses {self_name} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
+                    raise ValueError(
+                        f'Entry "{wm_id}" uses {self_name()} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
                     )
 
                 # replace wm_cmdline with args.wm_cmdline from entry
@@ -2637,7 +2650,7 @@ def fill_wm_globals():
             elif entry_uwsm_args and entry_uwsm_args.desktop_names_exclusive:
                 if not entry_uwsm_args.desktop_names:
                     print_error(
-                        f'{self_name} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"'
+                        f'{self_name()} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"'
                     )
                     sys.exit(1)
                 else:
@@ -2716,6 +2729,9 @@ def fill_wm_globals():
 
     # id for functions and env loading
     wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_cmdline[0])
+
+    # lowercase versions
+    wm_desktop_names_lowercase = [s.lower() for s in wm_desktop_names]
 
     return True
 
@@ -2887,7 +2903,13 @@ if __name__ == "__main__":
         signal.signal(signal.SIGHUP, trap_stopper)
 
         sprc = subprocess.run(
-            ["systemctl", "--user", "start", "--wait", f"wayland-wm@{wm_id}.service"],
+            [
+                "systemctl",
+                "--user",
+                "start",
+                "--wait",
+                f"wayland-wm@{wm_id_unit_string}.service",
+            ],
             check=False,
         )
         print_debug(sprc)
