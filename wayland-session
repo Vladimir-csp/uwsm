@@ -67,6 +67,21 @@ class Styles:
     flash = "\033[5m"
 
 
+class Val:
+    "Compiled re patterns for validation"
+    wm_id = re.compile(r"\A[a-zA-Z0-9_:.-]+\Z", re.MULTILINE)
+    dn_colon = re.compile(r"\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z", re.MULTILINE)
+    de_id = re.compile(r"\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop\Z", re.MULTILINE)
+    da_id = re.compile(r"\A[a-zA-Z0-9-]+\Z", re.MULTILINE)
+    unit_ext = re.compile(
+        r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)\Z",
+        re.MULTILINE,
+    )
+    sh_varname = re.compile(
+        r"\A([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)\Z", re.MULTILINE
+    )
+
+
 def dedent(data: str) -> str:
     "Applies dedent, lstrips newlines, rstrips except single newline"
     data = textwrap.dedent(data).lstrip("\n")
@@ -171,10 +186,12 @@ def print_error_or_traceback(exception) -> None:
 
 
 def relax_validation(exception):
-    "takes pyxdg ValidationError and ignores [stupid] failures"
-    ignore_lines = r"ValidationError in file| is not a registered |Invalid key: "
+    "takes pyxdg ValidationError and ignores some [stupid] failures"
+    ignore_lines = re.compile(
+        r"ValidationError in file| is not a registered |Invalid key: "
+    )
     msgs = str(exception).splitlines()
-    return all(re.search(ignore_lines, line) for line in msgs)
+    return all(ignore_lines.search(line) for line in msgs)
 
 
 def self_name():
@@ -204,6 +221,26 @@ def load_lib_paths(subpath):
         if os.path.isfile(file):
             out.append(file)
     return out
+
+
+def arg_entry_or_executable(arg):
+    """
+    check if argument is entry_id or entry_id:action_id (and validate) or nothing like.
+    return tuple (entry_id, action_id) or False
+    """
+    if arg.endswith(".desktop") or ".desktop:" in arg:
+        # separate action
+        if ":" in arg:
+            entry_id, entry_action = arg.split(":", maxsplit=1)
+            if entry_action and not Val.da_id.search(entry_action):
+                raise ValueError(f'Invalid desktop entry action "{entry_action}"')
+        else:
+            entry_id, entry_action = arg, ""
+        if not Val.de_id.search(entry_id):
+            raise ValueError(f'Invalid desktop entry ID "{entry_id}"')
+        return (entry_id, entry_action)
+    else:
+        return False
 
 
 def entry2dict(entry, entry_action=None) -> dict:
@@ -267,7 +304,7 @@ def find_de(subpath: str, search_entry_id: str = None):
         for dirpath, dirnames, filenames in os.walk(data_dir, followlinks=True):
             for filename in filenames:
                 # get only valid files
-                if re.search(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop$", filename):
+                if Val.de_id.search(filename):
                     filepath = os.path.join(dirpath, filename)
                     # get proper entry id relative to data_dir with path delimiters replaced by '-'
                     check_entry_id = os.path.relpath(filepath, data_dir).replace(
@@ -292,9 +329,7 @@ def get_de(subpath: str, search_entry_id: str = None, warnings: bool = True):
     single entry if ID is given or all of them if not
     """
 
-    if search_entry_id and not re.search(
-        r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop$", search_entry_id
-    ):
+    if search_entry_id and not Val.de_id.search(search_entry_id):
         print_error(f'Invalid entry ID "{entry_id}"')
         return []
 
@@ -331,7 +366,7 @@ def get_de(subpath: str, search_entry_id: str = None, warnings: bool = True):
             msgs.append("entry Exec has no reachable executable")
         if msgs:
             if warnings:
-                print_warning(f"Discarded {entry_id}: " +", ".join(msgs))
+                print_warning(f"Discarded {entry_id}: " + ", ".join(msgs))
             continue
 
         results.append((entry_id, entry))
@@ -653,10 +688,7 @@ def update_unit(unit, data):
 
     global units_changed
 
-    if not re.search(
-        r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)$",
-        unit,
-    ):
+    if not Val.unit_ext.search(unit):
         raise ValueError(
             f"Trying to update unit with unsupported extension {unit.split('.')[-1]}: {unit}"
         )
@@ -703,6 +735,8 @@ def update_unit(unit, data):
     else:
         print_ok(f'Will update "{unit}"')
 
+    print_debug(data)
+
     units_changed = True
     return True
 
@@ -712,10 +746,7 @@ def remove_unit(unit):
 
     global units_changed
 
-    if not re.search(
-        r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)$",
-        unit,
-    ):
+    if not Val.unit_ext.search(unit):
         raise ValueError(
             f"Trying to remove unit with unsupported extension {unit.split('.')[-1]}"
         )
@@ -969,17 +1000,17 @@ def generate_units():
         wm_specific_service_data.append(
             dedent(
                 f"""
-                Description=Main service for {', '.join((s for s in (wm_name or wm_argv[0], wm_description) if s))}
+                Description=Main service for {', '.join((s for s in (wm_name or wm_cmdline[0], wm_description) if s))}
                 """
             )
         )
 
     # exclusive desktop names were given on command line
     if wm_cli_desktop_names_exclusive:
-        prepend: str = f" -eD {':'.join(wm_cli_desktop_names)}"
+        prepend: str = f" -eD \"{':'.join(wm_cli_desktop_names)}\""
     # desktop names differ from just executable name
-    elif wm_desktop_names != [wm_argv[0]]:
-        prepend: str = f" -D {':'.join(wm_desktop_names)}"
+    elif wm_desktop_names != [wm_cmdline[0]]:
+        prepend: str = f" -D \"{':'.join(wm_desktop_names)}\""
     else:
         prepend: str = ""
 
@@ -1189,19 +1220,18 @@ def parse_args():
     # wm arguments for potential reuse via parents
     parsers["wm_args"] = argparse.ArgumentParser(add_help=False)
     parsers["wm_args"].add_argument(
-        "wm",
-        metavar="{wm,wm.desktop[:action]}",
-        help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries.',
-    )
-    parsers["wm_args"].add_argument(
-        "args", metavar="...", nargs=argparse.REMAINDER, help="any additional arguments"
+        "wm_cmdline",
+        metavar="args",
+        # like argparse.REMINDER but behaves as '+'
+        nargs=argparse.PARSER,
+        help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries. Can be followed by arbitrary arguments.',
     )
     parsers["wm_args"].add_argument(
         "-D",
         metavar="name[:name...]",
         dest="desktop_names",
         default="",
-        help="names for XDG_CURRENT_DESKTOP (:-separated)",
+        help="names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point.",
     )
     parsers["wm_args"].add_argument(
         "-e",
@@ -1322,16 +1352,14 @@ def parse_args():
     parsers["app"] = parsers["main_subparsers"].add_parser(
         "app",
         help="Scoped app launcher",
-        description="Launches application as a scope in specific slice.",
+        description="Launches application as a scope or service in specific slice.",
     )
     parsers["app"].add_argument(
-        "cmd", metavar="{cmd,app.desktop[:action]}", help="executable or desktop entry"
-    )
-    parsers["app"].add_argument(
-        "args",
-        metavar="...",
-        nargs=argparse.REMAINDER,
-        help="arguments for application",
+        "cmdline",
+        metavar="args",
+        # like argparse.REMINDER but behaves as '+'
+        nargs=argparse.PARSER,
+        help="executable or desktop entry, can be followed by arguments",
     )
     parsers["app"].add_argument(
         "-s",
@@ -1447,7 +1475,7 @@ def parse_args():
         type=int,
         # default does not work here
         default=[1],
-        nargs=argparse.REMAINDER,
+        nargs="*",
         help="VT numbers allowed for start (default: %(default)s)",
     )
     parsers["may_start"].add_argument(
@@ -1458,7 +1486,7 @@ def parse_args():
     parsers["aux"] = parsers["main_subparsers"].add_parser(
         "aux",
         help="Auxillary functions",
-        description="Can only be called by systemd user manager, used in units Exec*",
+        description="Can only be called by systemd user manager, used in units Exec*= keys",
     )
     parsers["aux_subparsers"] = parsers["aux"].add_subparsers(
         title="Action subcommands",
@@ -1484,12 +1512,10 @@ def parse_args():
         description="Used in ExecStart of wayland-wm@.service.",
     )
     parsers["exec"].add_argument(
-        "wm",
-        metavar="{wm,wm.desktop[:action]}",
-        help="executable or desktop entry (used as WM ID)",
-    )
-    parsers["exec"].add_argument(
-        "args", metavar="...", nargs=argparse.REMAINDER, help="any additional arguments"
+        "wm_cmdline",
+        nargs="+",
+        metavar="wm",
+        help="executable or desktop entry (used as WM ID), may be followed by arbitrary arguments",
     )
 
     args = parsers["main"].parse_args()
@@ -1706,7 +1732,9 @@ def prepare_env_gen_sh(random_mark):
         __WM_ID__={shlex.quote(wm_id)}
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
+        __WM_DESKTOP_NAMES_LOWERCASE__={shlex.quote(':'.join(wm_desktop_names_lowercase))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(wm_desktop_names[0])}
+        __WM_FIRST_DESKTOP_NAME_LOWERCASE__={shlex.quote(wm_desktop_names_lowercase[0])}
         __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if wm_cli_desktop_names_exclusive else 'false'}
         """
     )
@@ -1824,11 +1852,10 @@ def filter_varnames(data):
     """
     if not isinstance(data, (dict, set, list, tuple)):
         raise TypeError(f"Expected dict|set|list|tuple, received {type(data)}")
-    varname_regexp = r"^([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)$"
 
     if isinstance(data, dict):
         for var in list(data.keys()):
-            if not re.search(varname_regexp, var):
+            if not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}"')
                 data.pop(var)
         return data
@@ -1836,7 +1863,7 @@ def filter_varnames(data):
     if isinstance(data, (set, list, tuple)):
         new_data = []
         for var in data:
-            if not re.search(varname_regexp, var):
+            if not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}"')
             else:
                 new_data.append(var)
@@ -1858,7 +1885,7 @@ def prepare_env():
     Saves list for later cleanup.
     """
 
-    print_normal(f"Preparing environment for {wm_name or wm_argv[0]}...")
+    print_normal(f"Preparing environment for {wm_name or wm_cmdline[0]}...")
 
     # get current ENV
     env_pre = filter_varnames(dict(os.environ))
@@ -2308,18 +2335,9 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
     Or fork and return subprocess object.
     """
 
-    # parse desktop entry, update cmd, cmd_args, app_name
-    if cmd.endswith(".desktop") or ".desktop:" in cmd:
-        # separate action
-        if ":" in cmd:
-            entry_id, entry_action = cmd.split(":", maxsplit=1)
-            if not re.search(r"^[a-zA-Z0-9-]*$", entry_action):
-                raise ValueError(f'Invalid desktop entry action "{entry_action}"')
-        else:
-            entry_id, entry_action = cmd, ""
-        if not re.search(r"^[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop$", entry_id):
-            raise ValueError(f'Invalid desktop entry ID "{entry_id}"')
-
+    # detect desktop entry, update cmd, cmd_args, app_name
+    entry_id, entry_action = arg_entry_or_executable(cmd) or (None, None)
+    if entry_id:
         print_debug("entry_id, entry_action:", entry_id, entry_action)
 
         entries = get_de("applications", entry_id)
@@ -2476,11 +2494,12 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
 def fill_wm_globals():
     """
     Fills global vars:
-      wm_argv
+      wm_cmdline
       wm_cli_args
       wm_id
       wm_bin_id
       wm_desktop_names
+      wm_desktop_names_lowercase
       wm_cli_desktop_names
       wm_cli_desktop_names_exclusive
       wm_name
@@ -2490,44 +2509,45 @@ def fill_wm_globals():
     based on args or desktop entry
     """
 
-    global wm_argv
+    # Full final WM cmdline (list)
+    global wm_cmdline
+    # WM arguments that were given on CLI
     global wm_cli_args
+    # Internal WM ID (first of cli args)
     global wm_id
+    # processed function-friendly wm_cmdline[0]
     global wm_bin_id
+    # XDG_CURRENT_DESKTOP list
     global wm_desktop_names
+    global wm_desktop_names_lowercase
+    # list of -D value
     global wm_cli_desktop_names
+    # -e flag bool
     global wm_cli_desktop_names_exclusive
+    # Final WM Name
     global wm_name
+    # value of -N
     global wm_cli_name
+    # Fina WM Description
     global wm_description
+    # value of -C
     global wm_cli_description
 
-    wm_id = args.wm
+    wm_id = args.wm_cmdline[0]
 
     if not wm_id:
         print_error("WM is not provided")
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
-    if not re.search(r"\A[a-zA-Z0-9_:.-]+\Z", wm_id, flags=re.MULTILINE):
+    if not Val.wm_id.search(wm_id):
         print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
         sys.exit(1)
 
-    if wm_id.endswith(".desktop") or (
-        ".desktop:" in wm_id and not wm_id.endswith(".desktop:")
-    ):
+    # detect and parse desktop entry
+    entry_id, entry_action = arg_entry_or_executable(wm_id) or (None, None)
+    if entry_id:
         print_debug(f"WM ID is a desktop entry: {wm_id}")
-
-        # separate action
-        if ":" in wm_id and wm_id.count(":") == 1:
-            entry_id, entry_action = wm_id.split(":")
-        elif ":" in wm_id and wm_id.count(":") > 1:
-            raise ValueError(f'Invalid desktop entry with action "{wm_id}"')
-        else:
-            entry_id, entry_action = wm_id, ""
-
-        if not entry_id:
-            raise ValueError(f'Invalid desktop entry with action string "{wm_id}"')
 
         # parse entry
         try:
@@ -2548,20 +2568,18 @@ def fill_wm_globals():
         # combine exec from entry and arguments
         # TODO: either drop this behavior, or add support for % fields
         # not that wayland session entries will ever use them
-        wm_argv = shlex.split(entry_dict["Exec"]) + args.args
+        wm_cmdline = shlex.split(entry_dict["Exec"]) + args.wm_cmdline[1:]
 
         # TODO: Detect self_name or self_path here if used inside desktop entry.
 
-        # this does not happen in aux exec mode
+        # use existence of args.desktop_names as a condition
+        # as this does not happen in aux exec mode
         if "desktop_names" in args:
             # check desktop names
-            if args.desktop_names and not re.search(
-                r"\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z",
-                args.desktop_names,
-                flags=re.MULTILINE,
-            ):
+            if args.desktop_names and not Val.dn_colon.search(args.desktop_names):
                 print_error(f"Got malformed desktop names: {args.desktop_names}")
                 sys.exit(1)
+            ## throw stuff into wm_desktop_names, deduplication comes later
             # set exclusive desktop names
             if args.desktop_names_exclusive and args.desktop_names:
                 wm_desktop_names = sane_split(args.desktop_names, ":")
@@ -2571,25 +2589,22 @@ def fill_wm_globals():
                     'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"'
                 )
                 sys.exit(1)
-            # prepend desktop names from entry
+            # prepend desktop names from entry and existing environment
+            # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP set
             else:
-                if entry_dict["DesktopNames"]:
-                    wm_desktop_names = (
-                        entry_dict["DesktopNames"]
-                        + [wm_argv[0]]
-                        + sane_split(args.desktop_names, ":")
-                    )
-                else:
-                    wm_desktop_names = [wm_argv[0]] + sane_split(
-                        args.desktop_names, ":"
-                    )
+                wm_desktop_names = (
+                    sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
+                    + entry_dict.get("DesktopNames", [])
+                    + [wm_cmdline[0]]
+                    + sane_split(args.desktop_names, ":")
+                )
 
             if args.wm_name:
                 wm_name = args.wm_name
             elif entry_dict["Name"] and not entry_dict["GenericName"]:
                 wm_name = entry_dict["Name"]
             elif not entry_dict["Name"] and entry_dict["GenericName"]:
-                wm_name = f"{wm_argv[0]} {entry_dict['GenericName']}"
+                wm_name = f"{wm_cmdline[0]} {entry_dict['GenericName']}"
             elif entry_dict["Name"] and entry_dict["GenericName"]:
                 wm_name = f"{entry_dict['Name']} {entry_dict['GenericName']}"
 
@@ -2605,21 +2620,18 @@ def fill_wm_globals():
             print_error(f'"{wm_id}" is not in PATH.')
             sys.exit(1)
 
-        # combine argv
-        wm_argv = [wm_id] + args.args
-
         # this does not happen in aux exec mode
         if "desktop_names" in args:
             # fill other data
             if args.desktop_names_exclusive:
                 wm_desktop_names = sane_split(args.desktop_names, ":")
             else:
-                wm_desktop_names = [wm_argv[0]] + sane_split(args.desktop_names, ":")
+                wm_desktop_names = [wm_cmdline[0]] + sane_split(args.desktop_names, ":")
             wm_name = args.wm_name
             wm_description = args.wm_comment
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
-    wm_cli_args = args.args
+    wm_cli_args = args.wm_cmdline[1:]
     # this does not happen in aux exec mode
     if "desktop_names" in args:
         wm_cli_desktop_names = sane_split(args.desktop_names, ":")
@@ -2640,7 +2652,7 @@ def fill_wm_globals():
         wm_desktop_names = ddn
 
     # id for functions and env loading
-    wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_argv[0])
+    wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_cmdline[0])
 
     return True
 
@@ -2691,7 +2703,7 @@ def trap_stopper(signal=0, stack_frame=None):
 if __name__ == "__main__":
     # define globals
     units_changed: bool = False
-    wm_argv: List[str] = []
+    wm_cmdline: List[str] = []
     wm_cli_args: List[str] = []
     wm_id: str = ""
     wm_bin_id: str = ""
@@ -2729,15 +2741,15 @@ if __name__ == "__main__":
     #### START
     elif args.mode == "start":
         # Get ID from whiptail menu
-        if args.wm in ["select", "default"]:
+        if args.wm_cmdline[0] in ["select", "default"]:
             try:
                 default_id = get_default_de()
-                select_wm_id = select_de(default_id, args.wm == "default")
+                select_wm_id = select_de(default_id, args.wm_cmdline[0] == "default")
                 if select_wm_id:
                     if select_wm_id != default_id:
                         save_default_de(select_wm_id)
-                    # update args.wm in place
-                    args.wm = select_wm_id
+                    # update args.wm_cmdline in place
+                    args.wm_cmdline = [select_wm_id]
                 else:
                     print_error("No WM was selected")
                     sys.exit(1)
@@ -2751,7 +2763,7 @@ if __name__ == "__main__":
             dedent(
                 f"""
                     Selected WM ID: {wm_id}
-                      Command Line: {shlex.join(wm_argv)}
+                      Command Line: {shlex.join(wm_cmdline)}
                   Plugin/binary ID: {wm_bin_id}
                      Desktop Names: {':'.join(wm_desktop_names)}
                               Name: {wm_name}
@@ -2845,8 +2857,8 @@ if __name__ == "__main__":
     elif args.mode == "app":
         try:
             app(
-                cmd=args.cmd,
-                cmd_args=args.args,
+                cmd=args.cmdline[0],
+                cmd_args=args.cmdline[1:],
                 slice_name=args.slice_name,
                 app_unit_type=args.app_unit_type,
                 app_name=args.app_name,
@@ -2954,6 +2966,6 @@ if __name__ == "__main__":
                     sys.exit(1)
         elif args.aux_action == "exec":
             fill_wm_globals()
-            print_debug(wm_argv)
-            print_normal(f"Starting: {shlex.join(wm_argv)}")
-            os.execlp(wm_argv[0], *(wm_argv))
+            print_debug(wm_cmdline)
+            print_normal(f"Starting: {shlex.join(wm_cmdline)}")
+            os.execlp(wm_cmdline[0], *(wm_cmdline))
