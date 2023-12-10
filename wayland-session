@@ -1145,8 +1145,8 @@ def remove_units(only=None) -> None:
     return
 
 
-def parse_args():
-    "Parses args, returns tuple with args and a dict of parsers"
+def parse_args(args=None):
+    "Parses args, returns tuple with args and a dict of parsers, takes optional custom 'args'"
 
     # keep parsers in a dict
     parsers = {}
@@ -1222,8 +1222,7 @@ def parse_args():
     parsers["wm_args"].add_argument(
         "wm_cmdline",
         metavar="args",
-        # like argparse.REMINDER but behaves as '+'
-        nargs=argparse.PARSER,
+        nargs="+",
         help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries. Can be followed by arbitrary arguments.',
     )
     parsers["wm_args"].add_argument(
@@ -1357,8 +1356,7 @@ def parse_args():
     parsers["app"].add_argument(
         "cmdline",
         metavar="args",
-        # like argparse.REMINDER but behaves as '+'
-        nargs=argparse.PARSER,
+        nargs="+",
         help="executable or desktop entry, can be followed by arguments",
     )
     parsers["app"].add_argument(
@@ -1518,7 +1516,7 @@ def parse_args():
         help="executable or desktop entry (used as WM ID), may be followed by arbitrary arguments",
     )
 
-    args = parsers["main"].parse_args()
+    args = parsers["main"].parse_args(args=None)
     return (args, parsers)
 
 
@@ -2565,52 +2563,117 @@ def fill_wm_globals():
 
         entry_dict = entry2dict(entry, entry_action=entry_action or None)
 
-        # combine exec from entry and arguments
+        # get Exec from entry as wm_cmdline
+        wm_cmdline = shlex.split(entry_dict["Exec"])
+
+        # if desktop entry uses us, deal with the other self.
+        entry_uwsm_args = None
+        if os.path.basename(wm_cmdline[0]) == self_name:
+            try:
+                if "start" not in wm_cmdline or wm_cmdline[1] != "start":
+                    raise DataError(
+                        f'Entry "{wm_id}" uses {self_name}, but the second argument "{wm_cmdline[1]}" is not "start"!'
+                    )
+                # cut ourselves from cmdline
+                wm_cmdline = wm_cmdline[1:]
+
+                print_normal(f'Entry "{wm_id}" uses {self_name}, reparsing args...')
+                # reparse args from entry into separate namespace
+                entry_uwsm_args, _ = parse_args(args=wm_cmdline)
+
+                # check for various incompatibilities
+                if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]):
+                    raise DataError(
+                        f'Entry "{wm_id}" uses {self_name} that points to a desktop entry!'
+                    )
+                if entry_uwsm_args.dry_run:
+                    raise DataError(
+                        f'Entry "{wm_id}" uses {self_name} in "dry run" mode!'
+                    )
+                if entry_uwsm_args.only_generate:
+                    raise DataError(
+                        f'Entry "{wm_id}" uses {self_name} in "only generate" mode!'
+                    )
+                if entry_uwsm_args.desktop_names and not Val.dn_colon.search(
+                    entry_uwsm_args.desktop_names
+                ):
+                    raise DataError(
+                        f'Entry "{wm_id}" uses {self_name} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
+                    )
+
+                # replace wm_cmdline with args.wm_cmdline from entry
+                wm_cmdline = entry_uwsm_args.wm_cmdline
+
+            except Exception as caught_exception:
+                print_error_or_traceback(caught_exception)
+                sys.exit(1)
+
+        # combine Exec from entry and arguments
         # TODO: either drop this behavior, or add support for % fields
         # not that wayland session entries will ever use them
-        wm_cmdline = shlex.split(entry_dict["Exec"]) + args.wm_cmdline[1:]
-
-        # TODO: Detect self_name or self_path here if used inside desktop entry.
+        wm_cmdline = wm_cmdline + args.wm_cmdline[1:]
 
         # use existence of args.desktop_names as a condition
-        # as this does not happen in aux exec mode
+        # because this does not happen in aux exec mode
         if "desktop_names" in args:
             # check desktop names
             if args.desktop_names and not Val.dn_colon.search(args.desktop_names):
-                print_error(f"Got malformed desktop names: {args.desktop_names}")
+                print_error(f'Got malformed desktop names: "{args.desktop_names}"')
                 sys.exit(1)
-            ## throw stuff into wm_desktop_names, deduplication comes later
-            # set exclusive desktop names
-            if args.desktop_names_exclusive and args.desktop_names:
-                wm_desktop_names = sane_split(args.desktop_names, ":")
-            # error out on conflicting args
-            if args.desktop_names_exclusive and not args.desktop_names:
-                print_error(
-                    'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"'
-                )
-                sys.exit(1)
+
+            # exclusive CLI desktop names
+            if args.desktop_names_exclusive:
+                # error out on conflicting args
+                if not args.desktop_names:
+                    print_error(
+                        'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"'
+                    )
+                    sys.exit(1)
+                else:
+                    # set exclusive desktop names
+                    wm_desktop_names = sane_split(args.desktop_names, ":")
+
+            # exclusive nested CLI desktop names from entry
+            elif entry_uwsm_args and entry_uwsm_args.desktop_names_exclusive:
+                if not entry_uwsm_args.desktop_names:
+                    print_error(
+                        f'{self_name} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"'
+                    )
+                    sys.exit(1)
+                else:
+                    # set exclusive desktop names
+                    wm_desktop_names = sane_split(entry_uwsm_args.desktop_names, ":")
             # prepend desktop names from entry and existing environment
-            # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP set
+            # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP set by it from DesktopNames
+            # basically just throw stuff into wm_desktop_names, deduplication comes later
             else:
                 wm_desktop_names = (
                     sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
                     + entry_dict.get("DesktopNames", [])
                     + [wm_cmdline[0]]
+                    + (
+                        sane_split(entry_uwsm_args.desktop_names, ":")
+                        if entry_uwsm_args
+                        else []
+                    )
                     + sane_split(args.desktop_names, ":")
                 )
 
+            # fill name and description with fallbacks from: CLI, nested CLI, Entry
             if args.wm_name:
                 wm_name = args.wm_name
+            elif entry_uwsm_args and entry_uwsm_args.wm_name:
+                wm_name = entry_uwsm_args.wm_name
             elif entry_dict["Name"] and not entry_dict["GenericName"]:
                 wm_name = entry_dict["Name"]
-            elif not entry_dict["Name"] and entry_dict["GenericName"]:
-                wm_name = f"{wm_cmdline[0]} {entry_dict['GenericName']}"
             elif entry_dict["Name"] and entry_dict["GenericName"]:
                 wm_name = f"{entry_dict['Name']} {entry_dict['GenericName']}"
 
             if args.wm_comment:
                 wm_description = args.wm_comment
-            else:
+            elif entry_uwsm_args and entry_uwsm_args.wm_comment:
+                wm_description = entry_uwsm_args.wm_comment
+            elif entry_dict["Comment"]:
                 wm_description = entry_dict["Comment"]
 
     else:
