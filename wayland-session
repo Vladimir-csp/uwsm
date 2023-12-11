@@ -2478,7 +2478,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         slice_name,
         "-u",
         unit_name,
-        "-qG",
+        "-qGd",
         "--",
         cmd,
         *(cmd_args),
