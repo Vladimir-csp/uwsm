@@ -1256,7 +1256,14 @@ def parse_args(custom_args=None):
         default="",
         help="names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point.",
     )
-    parsers["wm_args"].add_argument(
+    parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
+    parsers["wm_args_dn_exclusive"].add_argument(
+        "-a",
+        dest="desktop_names_exclusive",
+        action="store_false",
+        help="append desktop names set by -D to other sources (default)",
+    )
+    parsers["wm_args_dn_exclusive"].add_argument(
         "-e",
         dest="desktop_names_exclusive",
         action="store_true",
@@ -1315,12 +1322,20 @@ def parse_args(custom_args=None):
             f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false"'
         )
         use_session_slice = "false"
-    parsers["start"].add_argument(
+    parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
+    parsers["start_slice"].add_argument(
         "-S",
         action="store_true",
         dest="use_session_slice",
         default=use_session_slice == "true",
-        help=f"launch WM in session.slice ({'already' if use_session_slice == 'true' else 'can be'} preset by UWSM_USE_SESSION_SLICE env var)",
+        help=f"launch WM in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}",
+    )
+    parsers["start_slice"].add_argument(
+        "-A",
+        action="store_false",
+        dest="use_session_slice",
+        default=use_session_slice == "true",
+        help=f"launch WM in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}",
     )
     parsers["start"].add_argument(
         "-o",
@@ -2626,6 +2641,8 @@ def fill_wm_globals():
         # not that wayland session entries will ever use them
         wm_cmdline = wm_cmdline + args.wm_cmdline[1:]
 
+        print_debug("wm_cmdline", wm_cmdline)
+
         # use existence of args.desktop_names as a condition
         # because this does not happen in aux exec mode
         if "desktop_names" in args:
@@ -2705,6 +2722,8 @@ def fill_wm_globals():
                 wm_desktop_names = [wm_cmdline[0]] + sane_split(args.desktop_names, ":")
             wm_name = args.wm_name
             wm_description = args.wm_comment
+
+        wm_cmdline = args.wm_cmdline
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
     wm_cli_args = args.wm_cmdline[1:]
