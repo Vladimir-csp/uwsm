@@ -1261,12 +1261,14 @@ def parse_args(custom_args=None):
         "-a",
         dest="desktop_names_exclusive",
         action="store_false",
+        default=False,
         help="append desktop names set by -D to other sources (default)",
     )
     parsers["wm_args_dn_exclusive"].add_argument(
         "-e",
         dest="desktop_names_exclusive",
         action="store_true",
+        default=False,
         help="use desktop names set by -D exclusively, discard other sources",
     )
     parsers["wm_args"].add_argument(
@@ -1769,14 +1771,13 @@ def prepare_env_gen_sh(random_mark):
         __WM_ID__={shlex.quote(wm_id)}
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
-        __WM_DESKTOP_NAMES_LOWERCASE__={shlex.quote(':'.join(wm_desktop_names_lowercase))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(wm_desktop_names[0])}
-        __WM_FIRST_DESKTOP_NAME_LOWERCASE__={shlex.quote(wm_desktop_names_lowercase[0])}
         __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if wm_cli_desktop_names_exclusive else 'false'}
+        __OIFS__=" \t\n"
         """
     )
 
-    # bake plugin load into shell
+    # bake plugin loading into shell code
     shell_plugins = load_lib_paths(f"wayland-session-plugins/{wm_bin_id}.sh.in")
     shell_plugins_load = []
     for plugin in shell_plugins:
@@ -1788,46 +1789,115 @@ def prepare_env_gen_sh(random_mark):
                 """
             )
         )
-    shell_plugins_load = "\n".join(shell_plugins_load)
+    shell_plugins_load = "".join(shell_plugins_load)
 
     # static part
     shell_main_body = dedent(
-        """
-        load_config_env() {
-        	#### iterate config dirs in increasing importance and source additional env from relative path in $1
-        	__ALL_XDG_CONFIG_DIRS_ITER__="${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}"
-        	__ALL_XDG_CONFIG_DIRS_REV__=''
-        	__CONFIG_DIR__=''
-        	OIFS="$IFS"
+        r"""
+        reverse() {
+        	# returns list $1 delimited by ${2:-:} in reverese
+        	__REVERSE_OUT__=''
+        	IFS="${2:-:}"
+        	for __ITEM__ in $1; do
+        		if [ -n "${__ITEM__}" ]; then
+        			__REVERSE_OUT__="${__ITEM__}${__REVERSE_OUT__:+$IFS}${__REVERSE_OUT__}"
+        		fi
+        	done
+        	printf '%s' "${__REVERSE_OUT__}"
+        	unset __REVERSE_OUT__
+        	IFS="${__OIFS__}"
+        }
+
+        lowercase() {
+        	# returns lowercase string
+        	echo "$1" | tr '[:upper:]' '[:lower:]'
+        }
+
+        source_file() {
+        	# sources file if exists, with messaging
+        	if [ -f "${1}" ]; then
+        		if [ -r "${1}" ]; then
+        			echo "Loading environment from \"${1}\""
+        			. "${1}"
+        		else
+        			"Environment file ${1} is not readable" >&2
+        		fi
+        	fi
+        }
+
+        get_all_config_dirs() {
+        	# returns whole XDG_CONFIG hierarchy, :-delimited
+        	printf '%s' "${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}"
+        }
+
+        in_each_config_dir() {
+        	# called for each config dir (decreasing priority)
+        	true
+        }
+
+        in_each_config_dir_reversed() {
+        	# called for each config dir in reverse (increasing priority)
+
+        	# compose sequence of env files from lowercase desktop names in reverse
         	IFS=':'
-        	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_ITER__}; do
-        		IFS="$OIFS"
-        		# fill list in reverse order
-        		if [ -n "${__CONFIG_DIR__}" ]; then
-        			__ALL_XDG_CONFIG_DIRS_REV__="${__CONFIG_DIR__}${__ALL_XDG_CONFIG_DIRS_REV__:+:}${__ALL_XDG_CONFIG_DIRS_REV__}"
-        		fi
+        	__ENV_FILES__=''
+        	for __DNLC__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
+        		IFS="${__OIFS__}"
+        		__ENV_FILES__="wayland-session-env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
         	done
+        	# add common env file at the beginning
+        	__ENV_FILES__="wayland-session-env${__ENV_FILES__:+:}${__ENV_FILES__}"
+        	unset __DNLC__
+
+        	# load env file sequence from this config dir rung
+        	IFS=':'
+        	for __ENV_FILE__ in ${__ENV_FILES__}; do
+        		source_file "${1}/${__ENV_FILE__}"
+        	done
+        	unset __ENV_FILE__
+        	unset __ENV_FILES__
+        	IFS="${__OIFS__}"
+        }
+
+        process_config_dirs() {
+        	# iterate over config dirs (decreasing importance) and call in_each_config_dir* functions
         	IFS=":"
-        	for __CONFIG_DIR__ in ${__ALL_XDG_CONFIG_DIRS_REV__}; do
-        		IFS="$OIFS"
-        		if [ -r "${__CONFIG_DIR__}/${1}" ]; then
-        			echo "Loading environment from ${__CONFIG_DIR__}/${1}"
-        			. "${__CONFIG_DIR__}/${1}"
+        	for __CONFIG_DIR__ in $(get_all_config_dirs); do
+        		IFS="${__OIFS__}"
+        		if type "in_each_config_dir_${__WM_BIN_ID__}" >/dev/null; then
+        			"in_each_config_dir_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
+        		else
+        			in_each_config_dir "${__CONFIG_DIR__}" || return $?
         		fi
         	done
-        	IFS="$OIFS"
         	unset __CONFIG_DIR__
-        	unset __ALL_XDG_CONFIG_DIRS_ITER__
-        	unset __ALL_XDG_CONFIG_DIRS_REV__
+        	IFS="${__OIFS__}"
         	return 0
         }
 
-        load_common_env() {
-        	load_config_env "wayland-session-env"
+        process_config_dirs_reversed() {
+        	# iterate over reverse config dirs (increasing importance) and call in_each_config_dir_reversed* functions
+        	IFS=":"
+        	for __CONFIG_DIR__ in $(reverse "$(get_all_config_dirs)"); do
+        		IFS="${__OIFS__}"
+        		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" >/dev/null; then
+        			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
+        		else
+        			in_each_config_dir_reversed "${__CONFIG_DIR__}" || return $?
+        		fi
+        	done
+        	unset __CONFIG_DIR__
+        	IFS="${__OIFS__}"
+        	return 0
         }
 
         load_wm_env() {
-        	load_config_env "wayland-session-env-${__WM_BIN_ID__}"
+        	# calls reverse config dir processing
+        	if type "process_config_dirs_reversed_${__WM_BIN_ID__}" >/dev/null; then
+        		"process_config_dirs_reversed_${__WM_BIN_ID__}" || return $?
+        	else
+        		process_config_dirs_reversed
+        	fi
         }
 
         #### Basic environment
@@ -1849,17 +1919,14 @@ def prepare_env_gen_sh(random_mark):
 
         #### apply quirks
         if type "quirks_${__WM_BIN_ID__}" >/dev/null; then
-        	echo "Applying quirks for ${__WM_BIN_ID__}"
-        	"quirks_${__WM_BIN_ID__}" || return $?
+        	echo "Applying quirks for \"${__WM_BIN_ID__}\""
+        	"quirks_${__WM_BIN_ID__}" || exit $?
         fi
 
-        load_common_env || return $?
-
         if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null; then
-        	echo "Loading ENV for ${__WM_BIN_ID__}"
-        	"load_wm_env_${__WM_BIN_ID__}" || return $?
+        	"load_wm_env_${__WM_BIN_ID__}" || exit $?
         else
-        	load_wm_env || return $?
+        	load_wm_env || exit $?
         	true
         fi
         """
@@ -1874,10 +1941,15 @@ def prepare_env_gen_sh(random_mark):
     )
 
     shell_full = "\n".join(
-        [shell_definitions, shell_plugins_load, shell_main_body, shell_print_env]
+        [
+            *(["set -x\n"] if int(os.getenv("DEBUG", "0")) > 0 else []),
+            shell_definitions,
+            shell_plugins_load,
+            shell_main_body,
+            *(["set +x\n"] if int(os.getenv("DEBUG", "0")) > 0 else []),
+            shell_print_env,
+        ]
     )
-
-    print_debug(shell_full)
 
     return shell_full
 
@@ -2516,7 +2588,6 @@ def fill_wm_globals():
       wm_id_unit_string
       wm_bin_id
       wm_desktop_names
-      wm_desktop_names_lowercase
       wm_cli_desktop_names
       wm_cli_desktop_names_exclusive
       wm_name
@@ -2538,7 +2609,6 @@ def fill_wm_globals():
     global wm_bin_id
     # XDG_CURRENT_DESKTOP list
     global wm_desktop_names
-    global wm_desktop_names_lowercase
     # list of -D value
     global wm_cli_desktop_names
     # -e flag bool
@@ -2748,9 +2818,6 @@ def fill_wm_globals():
 
     # id for functions and env loading
     wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_cmdline[0])
-
-    # lowercase versions
-    wm_desktop_names_lowercase = [s.lower() for s in wm_desktop_names]
 
     return True
 

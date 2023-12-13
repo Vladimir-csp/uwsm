@@ -7,14 +7,19 @@ quirks_labwc() {
 	then
 		case "A:${XDG_CURRENT_DESKTOP}:Z" in
 		*:wlroots:*) true ;;
-		*) export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots" ;;
+		*)
+			export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots"
+			;;
 		esac
 	fi
+	# Xwayland is always on in labwc
+	XWAYLAND=true
 }
 
-load_wm_env_labwc() {
+in_each_config_dir_reversed_labwc() {
 	# load wm env normally
-	load_wm_env
+	in_each_config_dir_reversed "${1}"
+
 	# also add env from labwc location
-	load_config_env "${__WM_BIN_ID__}/env"
+	source_file "${1}/${__WM_BIN_ID__}/env"
 }
