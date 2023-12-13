@@ -11,41 +11,47 @@ Nonetheless, keep an eye for commits with `[Breaking]` messages.
 
 ## Concepts and features
 
-- Maximum use of systemd units and dependencies for startup, operation, and shutdown
-  - binds to the basic [structure](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units) of `graphical-session-pre.target`, `graphical-session.target`, `xdg-desktop-autostart.target`
-  - adds custom slices `app-graphical.slice`, `background-graphical.slice`, `session-graphical.slice` to put apps in and terminate them cleanly
-  - provides convenient way of [launching apps to those slices](https://systemd.io/DESKTOP_ENVIRONMENTS/#xdg-standardization-for-applications)
+- Uses systemd units and dependencies for startup, operation, and shutdown:
+  - Binds to the basic [structure](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
+    of `graphical-session-pre.target`, `graphical-session.target`, `xdg-desktop-autostart.target`.
+  - Aadds custom nested slices `app-graphical.slice`, `background-graphical.slice`, `session-graphical.slice`
+    to put apps in and terminate them cleanly on exit.
+  - Provides convenient way of [launching apps to those slices](https://systemd.io/DESKTOP_ENVIRONMENTS/#xdg-standardization-for-applications).
 - Systemd units are treated with hierarchy and universality in mind:
-  - templated units with specifiers
-  - named from common to specific where possible
-  - allowing for high-level `name-.d` drop-ins
-- WM-specific behavior can be added by plugins
-  - currently supported: sway, wayfire, labwc
-- Idempotently (well, best-effort-idempotently) handle environment:
+  - Templated units with specifiers.
+  - Named from common to specific where possible.
+  - Allowing for high-level `name-.d` drop-ins.
+- WM-specific behavior can be added by plugins. Currently supported: sway, wayfire, labwc
+- Idempotently (well, best-effort-idempotently) handles environment:
   - On startup environment is prepared by:
     - sourcing shell profile
-    - sourcing common `wayland-session-env` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
-    - sourcing WM-specific `wayland-session-env-${wm_id}` files (from $XDG_CONFIG_DIRS, $XDG_CONFIG_HOME)
-  - Difference between environment state before and after preparation is exported into systemd user manager and dbus activation environment
-  - On shutdown variables that were exported are unset from systemd user manager (dbus activation environment does not support unsetting, so those vars are emptied instead (!))
+    - sourcing `wayland-session-env`, `wayland-session-env-${desktop}` files
+      from each dir of reversed `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}` (in increasing priority),
+      where `${desktop}` is each item of `${XDG_CURRENT_DESKTOP}`, lowercased
+  - Difference between environment state before and after preparation is exported into systemd user manager
+    and dbus activation environment
+  - On shutdown previously exported variables are unset from systemd user manager
+    (dbus activation environment does not support unsetting, so those vars are emptied instead (!))
   - Lists of variables for export and cleanup are determined algorithmically by:
     - comparing environment before and after preparation procedures
     - boolean operations with predefined lists
-- Can work with WM desktop entries from `wayland-sessions` in XDG data hierarchy
-  - Desktop entry is used as WM instance ID
-  - Data taken from entry (Can be amended or overridden via cli arguments):
-    - `Exec` for argument list
-    - `DesktopNames` for `XDG_CURRENT_DESKTOP` and `XDG_SESSION_DESKTOP`
-    - `Name` and `Comment` for unit `Description`
-  - Entries can be overridden, masked or added in `${XDG_DATA_HOME}/wayland-sessions/`
-  - Optional interactive selector (requires whiptail), choice is saved in `wayland-session-default-id`
-  - Desktop entry [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html) are supported
-- Can run with arbitrary WM command line (saved as a unit drop-in)
-- Better control of XDG autostart apps:
-  - XDG autostart services (`app-*@autostart.service` units) are placed into `app-graphical.slice` that receives stop action before WM is stopped.
-  - Can be mass-controlled via stopping and starting `wayland-session-xdg-autostart@${wm_id}.target`
-- Try best to shutdown session cleanly via a net of dependencies between units
-- Provide helpers for various operations:
+- Can work with WM desktop entries from `wayland-sessions` in XDG data hierarchy in two different scenarios:
+  - Actively select and launch WM from Desktop entry (which is used as WM instance ID):
+    - Data taken from entry (Can be amended or overridden via cli arguments):
+      - `Exec` for argument list
+      - `DesktopNames` for `XDG_CURRENT_DESKTOP` and `XDG_SESSION_DESKTOP`
+      - `Name` and `Comment` for unit `Description`
+    - Entries can be overridden, masked or added in `${XDG_DATA_HOME}/wayland-sessions/`
+    - Optional interactive selector (requires whiptail), choice is saved in `${XDG_CONFIG_HOME}/wayland-session-default-id`
+    - Desktop entry [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html) are supported
+  - Be launched via a Desktop entry by a login/display manager.
+- Can run with arbitrary WM command line (saved as a unit drop-in).
+- Provides better control of XDG autostart apps.
+  - XDG autostart services (`app-*@autostart.service` units) are placed into `app-graphical.slice`
+    that receives stop action before WM is stopped.
+  - Can be mass-controlled via stopping and starting `wayland-session-xdg-autostart@${wm}.target`
+- Tries best to shutdown session cleanly via a net of dependencies between units
+- Provides helpers for various operations:
   - finalizing service startup (WM service unit uses `Type=notify`) and exporting variables set by WM
   - launching applications as scopes or services in proper slices
   - checking conditions for launch at login (for integration into login shell profile)
@@ -65,7 +71,8 @@ Ensure your WM runs `wayland-session finalize` at startup:
 - it fills systemd and dbus environments with essential vars set by WM: `WAYLAND_DISPLAY`, `DISPLAY`
 - any other vars can be given as arguments by name
 - any exported variables are also added to cleanup list
-- if environment export is successful, it signals WM service readiness via `systemd-notify --ready`
+- if environment export is successful, it signals WM service readiness,
+  so `graphical-session.target` can properly be declared reached.
 
 Example snippet for sway config:
 
@@ -73,15 +80,14 @@ Example snippet for sway config:
 
 ### 3. Slices
 
-By default `wayland-session` launces WM service in `app.slice` and all processes spawned by WM will be
-a part of `wayland-wm@${wm_id}.service` unit. This works, but is not an optimal solution.
+By default `wayland-session` launhces WM service in `app.slice` and all processes spawned by WM will be
+a part of `wayland-wm@${wm}.service` unit. This works, but is not an optimal solution.
 
 Systemd [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
 recommends running compositors in `session.slice` and launch apps as scopes or services in `app.slice`.
 
-`wayland-session` provides convenient way of handling this.
-It generates special nested slices that will also receive stop action ordered before
-`wayland-wm@${wm_id}.service` shutdown:
+`wayland-session` provides convenient way of handling this, It generates special nested slices that will
+also receive stop action ordered before `wayland-wm@${wm}.service` shutdown:
 
 - `app-graphical.slice`
 - `background-graphical.slice`
@@ -89,7 +95,7 @@ It generates special nested slices that will also receive stop action ordered be
 
 `app-*@autostart.service` units are also modified to be started in `app-graphical.slice`.
 
-To launch an app scoped inside one of those slices, use:
+To launch an app inside one of those slices, use:
 
 `wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app [with args]`
 
@@ -116,43 +122,54 @@ Example snippet for sway config on how to launch apps:
 
 When app launching is properly configured, WM service itself can be placed in `session.slice` by setting
 environment variable `UWSM_USE_SESSION_SLICE=true` before generating units (best to export this
-in `profile` before `wayland-session` invocation).
-Or by adding `-S` argument to `start` subcommand.
+in `profile` before `wayland-session` invocation). Or by adding `-S` argument to `start` subcommand.
 
-Apps can also be launched as services by adding `-t service` argument or setting default
-for `-t` via `UWSM_APP_UNIT_TYPE` env var.
+Unit type of launched apps can be controlled by `-t service|scope` argument or setting its default
+via `UWSM_APP_UNIT_TYPE` env var.
 
 ## Operation
 
-### Short story:
+### Syntax
+
+`-h|--help` option is available for `wayland-session` and its subcommands.
 
 Start variants:
 
-- `wayland-session start ${wm_id}`: generates and starts templated units with `@${wm_id}` instance.
-- `wayland-session start ${wm_id} with "any complex" arguments`: also adds arguments for particular `@${wm_id}` instance.
-- `-N, -[e]D, -C` can be used to add name, desktop names, description respectively.
+- `wayland-session start ${wm}`: generates and starts templated units with `@${wm}` instance.
+- `wayland-session start ${wm} with "any complex" arguments`: also adds arguments for particular `@${wm}` instance.
+- Optional parameters to provide more metadata:
+  - `-[a|e]D DesktopName1[:DesktopMame2:...]`: append (`-a`) or exclusively set (`-e`) `${XDG_CURRENT_DESKTOP}`
+  - `-N Name`
+  - `-C "WM description"`
 
-If `${wm_id}` ends with `.desktop` or has a `.desktop:some-action` substring, `wayland-session` finds
-desktop entry in `wayland-sessions` data hierarchy, uses Exec and DesktopNames from it
-(along with name and comment for unit descriptons).
+`${wm}` can be an executable or a valid [desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s02.html#desktop-file-id)
+(optionally with an [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s11.html) appended via ':')
+In the latter case `wayland-session` will get desktop entry  from `wayland-sessions` data hierarchy, and use `Exec` and `DesktopNames` from it
+(along with `Name` and `Comment` for unit descriptons).
 
-Arguments provided on command line are appended to the command line of desktop entry (unlike apps),
+Arguments provided on command line are appended to the command line of desktop entry (unlike applications),
 no argument processing is done (Please [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose)
-if you encounter any wayland-sessions desktop entry with %-fields).
+if you encounter any wayland-sessions desktop entry with `%`-fields).
 
 If you want to customize WM execution provided with a desktop entry, copy it to
 `~/.local/share/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
 
-If `${wm_id}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries
-available in `wayland-sessions` data hierarchy (including their actions).
-Selection is saved, previous selection is highlighted (or launched right away in case of `default`).
-Selected entry is used as `${wm_id}`.
+If `${wm}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in
+`wayland-sessions` data hierarchy (including their actions). Selection is saved, previous selection is highlighted
+(or launched right away in case of `default`). Selected entry is used as instance ID.
 
-There is also a separate `select` action (`wayland-session select`) that only selects and saves default `${wm_id}`
-and does nothing else.
+There is also a separate `select` action (`wayland-session select`) that only selects and saves default `${wm}`
+and does nothing else, which is handy for seamless shell profile integration.
 
-When started, `wayland-session` will hold while wayland session is running, and terminate session if
+WM command line (positonal arguments starting with `${wm}`) can be separated from optional arguments by `--` to
+avoid ambiguous parsing.
+
+When started, `wayland-session` will wait while wayland session is running, and terminate session if
 is itself interrupted or terminated.
+
+### Where to launch from
+
+#### Shell profile integration
 
 To launch automatically after login on virtual console 1, if systemd is at `graphical.target`,
 add this to shell profile:
@@ -165,13 +182,33 @@ add this to shell profile:
 `check may-start` checker subcommand, among other things, **screens for being in interactive login shell,
 which is essential**, since profile sourcing can otherwise lead to nasty loops.
 
-Stop with `wayland-session stop`.
+Stop with `wayland-session stop` or `systemctl --user stop wayland-session@*.service`.
 
-### Longer story, tour under the hood:
+#### From display manager
 
-`-h|--help` option is available for `wayland-session` and its subcommands.
+To launch uwsm from a display/login manager, `wayland-session` can be used inside desktop entries.
+Example `/usr/local/share/wayland-sessions/my-wm.desktop`:
 
-#### Start and bind
+    [Desktop Entry]
+    Name=My WM (with UWSM)
+    Comment=My cool WM
+    Exec=wayland-session start -N "My WM" -D mywm -C "My cool WM" mywm
+    DesktopNames=mywm
+    Type=Application
+
+Things to keep in mind:
+
+- For consistency, command line arguments should mirror the keys of the entry
+- Command in `Exec=` should start with `wayland-session`
+- It should not launch a desktop entry, only an executable.
+
+Potentially such entries may be found and used by `wayland-session` itself, i.e. in shell profile integration
+situation, or when launched manually. Following the principles above ensures `wayland-session` will properly
+recognize itself and parse requested arguments inside the entry without any side effects.
+
+## Longer story, tour under the hood:
+
+### Start and bind
 
 (At least for now) units are generated by the script.
 
@@ -233,7 +270,7 @@ activation environment of systemd user manager and dbus.
 Those variable names, plus `varnames.always_cleanup` minus `varnames.never_cleanup` are written to
 a cleanup list file in runtime dir.
 
-#### Startup finalization
+### Startup finalization
 
 `wayland-wm@.service` uses `Type=notify` and waits for WM to signal started state.
 Activation environments will also need to receive essential variables like `WAYLAND_DISPLAY`
@@ -250,7 +287,7 @@ The first two together might be an overkill.
 Only defined variables are used. Variables that are not blacklisted by `varnames.never_cleanup` set
 are also added to cleanup list in runtime dir.
 
-#### Stop
+### Stop
 
 Just stop the main service: `systemctl --user stop "wayland-wm@${wm}.service"`, everything else will
 stopped by systemd.
@@ -269,7 +306,7 @@ When no WM is running, units can be removed (`-r`) by `wayland-session stop -r`.
 
 Add WM to `-r` to remove only customization drop-ins: `wayland-session stop -r ${wm}`.
 
-#### Profile integration
+### Profile integration
 
 This example does the same thing as `check may-start` + `start` subcommand combination described earlier:
 starts wayland session automatically upon login on tty1 if system is in `graphical.target`
@@ -298,31 +335,53 @@ Shell plugins provide WM-specific functions during environment preparation.
 
 Named `${__WM_BIN_ID__}.sh.in`, they should only contain specifically named functions.
 
-`${__WM_BIN_ID__}` is derived from the item 0 of WM argv by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
+`${__WM_BIN_ID__}` is derived from the item 0 of WM command line by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
 
 It is used as plugin id and suffix in function names.
 
 Variables available to plugins:
-  - `__WM_ID__` - WM ID, effective first argument of `start`.
-  - `__WM_BIN_ID__` - processed first item of WM argv.
-  - `__WM_DESKTOP_NAMES__` - `:`-separated desktop names from `DesktopNames=` of entry and `-D` cli argument.
-  - `__WM_FIRST_DESKTOP_NAME__` - first of the above.
-  - `__WM_DESKTOP_NAMES_EXCLUSIVE__` - (`true`|`false`) `__WM_DESKTOP_NAMES__` came from cli argument and are marked as exclusive.
 
-Functions available to plugins:
-  - `load_config_env` - sources `$1` files from config hierarchy.
-  - `load_wm_env` - standard function that loads `wayland-session-env-${__WM_ID__}` files from config hierarchy.
+- `__WM_ID__` - WM ID, effective first argument of `start`.
+- `__WM_BIN_ID__` - processed first item of WM argv.
+- `__WM_DESKTOP_NAMES__` - `:`-separated desktop names from `DesktopNames=` of entry and `-D` cli argument.
+- `__WM_FIRST_DESKTOP_NAME__` - first of the above.
+- `__WM_DESKTOP_NAMES_LOWERCASE__` - same as the above, but in lower case.
+- `__WM_FIRST_DESKTOP_NAME_LOWERCASE__` - first of the above.
+- `__WM_DESKTOP_NAMES_EXCLUSIVE__` - (`true`|`false`) indicates that `__WM_DESKTOP_NAMES__` came from cli argument
+  and are marked as exclusive.
+- `__OIFS__` - contains shell default field separator (space, tab, newline) for convenient restoring.
 
-Functions that can be added by plugins:
-  - `quirks_${__WM_BIN_ID__}` - called before env loading.
-  - `load_wm_env_${__WM_BIN_ID__}` - replaces env loading. `load_wm_env` can be called inside to combine standard and custom loading.
+Standard functions:
+
+- `load_wm_env` - standard function for loading env files
+- `process_config_dirs_reversed` - called by `load_wm_env`,
+  iterates over XDG_CONFIG hierarchy in reverse (increasing priority)
+- `in_each_config_dir_reversed` - called by `process_config_dirs_reversed` for each config dir,
+  loads `wayland-session-env`, `wayland-session-env-${desktop}` files
+- `process_config_dirs` - called by `load_wm_env`,
+  iterates over XDG_CONFIG hierarchy (decreasing priority)
+- `in_each_config_dir` - called by `process_config_dirs` for each config dir, does nothing ATM
+- `source_file` - sources `$1` file, providing messages for log.
+
+See code inside `wayland-session` for more auxillary funcions.
+
+Functions that can be added by plugins, replacing standard funcions:
+
+- `quirks__${__WM_BIN_ID__}` - called before env loading.
+- `load_wm_env__${__WM_BIN_ID__}`
+- `process_config_dirs_reversed__${__WM_BIN_ID__}`
+- `in_each_config_dir_reversed__${__WM_BIN_ID__}`
+- `process_config_dirs__${__WM_BIN_ID__}`
+- `in_each_config_dir__${__WM_BIN_ID__}`
+
+Original functions are still available for calling explicitly if combined effect is needed, see example in labwc plugin.
 
 Example:
 
     #!/bin/false
 
-    # function to make arbitrary actions before loading wayland-session-env-${__WM_ID__}
-    quirks_my_cool_wm() {
+    # function to make arbitrary actions before loading environment
+    quirks__my_cool_wm() {
       # here additional vars can be set or unset
       export I_WANT_THIS_IN_SESSION=yes
       unset I_DO_NOT_WANT_THAT
@@ -332,13 +391,13 @@ Example:
       ...
     }
 
-    load_wm_env_my_cool_wm() {
-      # custom mechanism for loading of env (or a stub)
-      # completely replaces loading from wayland-session-env-${__WM_ID__} in config dirs
-      # so repeat it explicitly
-      load_wm_env
-      # and add ours
-      load_config_env "${__WM_ID__}/env"
+    in_each_config_dir_reversed__my_cool_wm() {
+      # custom mechanism for loading of env files (or a stub)
+      # replaces standard function, but we want it also
+      # so call it explicitly
+      in_each_config_dir_reversed "$1"
+      # and additionally source our file
+      source_file "${1}/${__WM_ID__}/env"
     }
 
 ## Compliments
