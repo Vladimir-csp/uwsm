@@ -2,7 +2,7 @@
 
 """
 # Universal Wayland Desktop Session Manager
-Runs selected WM with plugin-extendable tweaks
+Runs selected compositor with plugin-extendable tweaks
 Manages systemd environment and targets along the way
 Inspired by and uses some techniques from:
  https://github.com/xdbob/sway-services
@@ -375,7 +375,7 @@ def get_de(subpath: str, search_entry_id: str = None, warnings: bool = True):
 
 
 def get_default_de():
-    "Gets WM desktop entry ID from wayland-session-default-id file in config hierarchy"
+    "Gets compositor desktop entry ID from wayland-session-default-id file in config hierarchy"
     for cmd_cache_file in BaseDirectory.load_config_paths("wayland-session-default-id"):
         if os.path.isfile(cmd_cache_file):
             try:
@@ -391,7 +391,7 @@ def get_default_de():
 
 
 def save_default_de(default):
-    "Gets saves WM desktop entry ID from wayland-session-default-id file in config hierarchy"
+    "Gets saves compositor desktop entry ID from wayland-session-default-id file in config hierarchy"
     if "dry_run" not in args or not args.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
             os.mkdir(BaseDirectory.xdg_config_home)
@@ -400,9 +400,9 @@ def save_default_de(default):
         )
         with open(config, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
-            print_ok(f"Saved default WM ID: {default}")
+            print_ok(f"Saved default compositor ID: {default}")
     else:
-        print_ok(f"Would save default WM ID: {default}")
+        print_ok(f"Would save default compositor ID: {default}")
 
 
 def select_de(default="", just_confirm=False):
@@ -834,7 +834,7 @@ def generate_units():
             # injected by {ws_self}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
-            Description=Preparation for session of %I Wayland WM
+            Description=Preparation for session of %I Wayland compositor
             Documentation=man:systemd.special(7)
             Requires=basic.target
             StopWhenUnneeded=yes
@@ -851,7 +851,7 @@ def generate_units():
             # injected by {ws_self}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
-            Description=Session of %I Wayland WM
+            Description=Session of %I Wayland compositor
             Documentation=man:systemd.special(7)
             Requires=wayland-session-pre@%i.target graphical-session-pre.target
             After=wayland-session-pre@%i.target graphical-session-pre.target
@@ -869,7 +869,7 @@ def generate_units():
             # injected by {ws_self}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
-            Description=XDG Autostart for session of %I Wayland WM
+            Description=XDG Autostart for session of %I Wayland compositor
             Documentation=man:systemd.special(7)
             Requires=wayland-session@%i.target graphical-session.target
             After=wayland-session@%i.target graphical-session.target
@@ -924,7 +924,7 @@ def generate_units():
             # dirty fix of xdg-desktop-portal-gtk.service shudown
             PropagatesStopTo=xdg-desktop-portal-gtk.service
             [Service]
-            # awaits for 'systemd-notify --ready' from WM child
+            # awaits for 'systemd-notify --ready' from compositor child
             Type=notify
             NotifyAccess=all
             ExecStart={ws_self_full} aux exec %I
@@ -981,7 +981,7 @@ def generate_units():
         ),
     )
 
-    # WM-specific additions from cli or desktop entry via drop-ins
+    # compositor-specific additions from cli or desktop entry via drop-ins
     wm_specific_preloader = (
         f"wayland-wm-env@{wm_id_unit_string}.service.d/50_custom.conf"
     )
@@ -1182,7 +1182,7 @@ def parse_args(custom_args=None):
             dedent(
                 """
                 Universal Wayland Session Manager.
-                Launches arbitrary wayland WM via a set of systemd user units
+                Launches arbitrary wayland compositor via a set of systemd user units
                 to provide graphical user session with environment management,
                 XDG autostart support, scoped application launch helpers,
                 clean shutdown.
@@ -1195,7 +1195,7 @@ def parse_args(custom_args=None):
                 f"""
                 Also see "{self_name()} {{subcommand}} -h" for further info.
 
-                WM should be configured to run this on startup:
+                Compositor should be configured to run this on startup:
 
                   {self_name()} finalize [[VAR] ANOTHER_VAR]
 
@@ -1210,7 +1210,7 @@ def parse_args(custom_args=None):
                 (in order of increasing importance). Delta will be exported to systemd and
                 dbus activation environments, and cleaned up when services are stopped.
 
-                It is highly recommended to configure your WM to launch apps explicitly scoped
+                It is highly recommended to configure your compositor to launch apps explicitly scoped
                 in special user session slices (app.slice, background.slice, session.slice).
                 {self_name()} provides custom nested slices for apps to live in and be
                 terminated on session end:
@@ -1222,13 +1222,13 @@ def parse_args(custom_args=None):
                 And helper command to handle all the systemd-run invocations for you:
                 (See  "{self_name()} app --help", "man systemd.special", "man systemd-run"
 
-                If app launching is configured as recommended, you can put WM itself in
+                If app launching is configured as recommended, you can put compositor itself in
                 session.slice (as recommended by man systemd.special) by setting:
 
                   UWSM_USE_SESSION_SLICE=true
 
                 This var affects unit generation phase during start, Slice= parameter
-                of WM services (best to export it in shell profile).
+                of compositor services (best to export it in shell profile).
                 """
             )
         ),
@@ -1247,7 +1247,7 @@ def parse_args(custom_args=None):
         "wm_cmdline",
         metavar="args",
         nargs="+",
-        help='executable or desktop entry (used as WM ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries. Can be followed by arbitrary arguments.',
+        help='executable or desktop entry (used as compositor ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries. Can be followed by arbitrary arguments.',
     )
     parsers["wm_args"].add_argument(
         "-D",
@@ -1276,20 +1276,20 @@ def parse_args(custom_args=None):
         metavar="Name",
         dest="wm_name",
         default="",
-        help="Fancy name for WM (filled from desktop entry by default)",
+        help="Fancy name for compositor (filled from desktop entry by default)",
     )
     parsers["wm_args"].add_argument(
         "-C",
         metavar="Comment",
         dest="wm_comment",
         default="",
-        help="Fancy description for WM (filled from desktop entry by default)",
+        help="Fancy description for compositor (filled from desktop entry by default)",
     )
 
     # select subcommand
     parsers["select"] = parsers["main_subparsers"].add_parser(
         "select",
-        help="Select default WM entry",
+        help="Select default compositor entry",
         description="Invokes whiptail menu for selecting wayland-sessions desktop entries.",
         epilog=dedent(
             """
@@ -1304,8 +1304,8 @@ def parse_args(custom_args=None):
     # start subcommand
     parsers["start"] = parsers["main_subparsers"].add_parser(
         "start",
-        help="Start WM",
-        description="Generates units for given WM command line or desktop entry and starts WM.",
+        help="Start compositor",
+        description="Generates units for given compositor command line or desktop entry and starts compositor.",
         parents=[parsers["wm_args"]],
         epilog=dedent(
             """
@@ -1330,14 +1330,14 @@ def parse_args(custom_args=None):
         action="store_true",
         dest="use_session_slice",
         default=use_session_slice == "true",
-        help=f"launch WM in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}",
+        help=f"launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}",
     )
     parsers["start_slice"].add_argument(
         "-A",
         action="store_false",
         dest="use_session_slice",
         default=use_session_slice == "true",
-        help=f"launch WM in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}",
+        help=f"launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}",
     )
     parsers["start"].add_argument(
         "-o",
@@ -1352,8 +1352,8 @@ def parse_args(custom_args=None):
     # stop subcommand
     parsers["stop"] = parsers["main_subparsers"].add_parser(
         "stop",
-        help="Stop WM",
-        description="Stops WM and optionally removes generated units.",
+        help="Stop compositor",
+        description="Stops compositor and optionally removes generated units.",
         epilog=dedent(
             """
             During shutdown at stage of stopping "graphical-session-pre.target"
@@ -1378,8 +1378,8 @@ def parse_args(custom_args=None):
     # finalize subcommand
     parsers["finalize"] = parsers["main_subparsers"].add_parser(
         "finalize",
-        help="Signal WM startup, export essential and optional variables",
-        description="For use inside WM. Sends startup notification to systemd user manager. Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables (mentioned by name as arguments) to systemd user manager. Variables are also added to cleanup list for stop phase.",
+        help="Signal successful compositor startup, export essential and optional variables",
+        description="For use inside compositor. Sends startup notification to systemd user manager. Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables (mentioned by name as arguments) to systemd user manager. Variables are also added to cleanup list for stop phase.",
     )
     parsers["finalize"].add_argument(
         "env_names",
@@ -1460,13 +1460,13 @@ def parse_args(custom_args=None):
     )
     parsers["is_active"] = parsers["check_subparsers"].add_parser(
         "is-active",
-        help="checks for active WM",
-        description="Checks for any or specific WM in active or activating state",
+        help="checks for active compositor",
+        description="Checks for any or specific compositor in active or activating state",
     )
     parsers["is_active"].add_argument(
         "wm",
         nargs="?",
-        help="specify WM by executable or desktop entry (without arguments)",
+        help="specify compositor by executable or desktop entry (without arguments)",
     )
     parsers["is_active"].add_argument(
         "-v", action="store_true", dest="verbose", help="show additional info"
@@ -1554,7 +1554,7 @@ def parse_args(custom_args=None):
         "wm_cmdline",
         nargs="+",
         metavar="wm",
-        help="executable or desktop entry (used as WM ID), may be followed by arbitrary arguments",
+        help="executable or desktop entry (used as compositor ID), may be followed by arbitrary arguments",
     )
 
     args = parsers["main"].parse_args(custom_args)
@@ -2597,11 +2597,11 @@ def fill_wm_globals():
     based on args or desktop entry
     """
 
-    # Full final WM cmdline (list)
+    # Full final compositor cmdline (list)
     global wm_cmdline
-    # WM arguments that were given on CLI
+    # Compositor arguments that were given on CLI
     global wm_cli_args
-    # Internal WM ID (first of cli args)
+    # Internal compositor ID (first of cli args)
     global wm_id
     # escaped string for unit specifier
     global wm_id_unit_string
@@ -2613,11 +2613,11 @@ def fill_wm_globals():
     global wm_cli_desktop_names
     # -e flag bool
     global wm_cli_desktop_names_exclusive
-    # Final WM Name
+    # Final compositor Name
     global wm_name
     # value of -N
     global wm_cli_name
-    # Fina WM Description
+    # Fina compositor Description
     global wm_description
     # value of -C
     global wm_cli_description
@@ -2625,7 +2625,7 @@ def fill_wm_globals():
     wm_id = args.wm_cmdline[0]
 
     if not wm_id:
-        print_error("WM is not provided")
+        print_error("Compositor is not provided")
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
@@ -2639,7 +2639,7 @@ def fill_wm_globals():
     # detect and parse desktop entry
     entry_id, entry_action = arg_entry_or_executable(wm_id) or (None, None)
     if entry_id:
-        print_debug(f"WM ID is a desktop entry: {wm_id}")
+        print_debug(f"Compositor ID is a desktop entry: {wm_id}")
 
         # parse entry
         try:
@@ -2777,7 +2777,7 @@ def fill_wm_globals():
                 wm_description = entry_dict["Comment"]
 
     else:
-        # WM id is an executable
+        # compositor id is an executable
         # check exec
         if not which(wm_id):
             print_error(f'"{wm_id}" is not in PATH.')
@@ -2823,10 +2823,10 @@ def fill_wm_globals():
 
 
 def stop_wm():
-    "Stops WM if active, returns int returncode"
+    "Stops compositor if active, returns int returncode"
     if is_active():
         if not args.dry_run:
-            print_normal("Stopping WM")
+            print_normal("Stopping compositor")
             sprc = subprocess.run(
                 ["systemctl", "--user", "stop", "wayland-wm@*.service"],
                 text=True,
@@ -2840,10 +2840,10 @@ def stop_wm():
                 print_error(sprc.stderr.strip())
             returncode = sprc.returncode
         else:
-            print_normal("Will stop WM")
+            print_normal("Will stop compositor")
             returncode = 0
     else:
-        print_normal("WM is not running")
+        print_normal("Compositor is not running")
         returncode = 0
 
     return returncode
@@ -2855,7 +2855,7 @@ def trap_stopper(signal=0, stack_frame=None):
         # reuse second arg for systemctl returncode
         print_normal(f"systemctl returned {stack_frame}")
     else:
-        print(f"Received signal {signal}, stopping WM...")
+        print(f"Received signal {signal}, stopping compositor...")
         print_debug(stack_frame)
 
     returncode = stop_wm()
@@ -2892,12 +2892,12 @@ if __name__ == "__main__":
             select_wm_id = select_de(default_id)
             if select_wm_id:
                 if select_wm_id == default_id:
-                    print_normal(f"Default WM ID unchanged: {select_wm_id}")
+                    print_normal(f"Default compositor ID unchanged: {select_wm_id}")
                 else:
                     save_default_de(select_wm_id)
                 sys.exit(0)
             else:
-                print_error("No WM was selected")
+                print_error("No compositor was selected")
                 sys.exit(1)
         except Exception as caught_exception:
             print_error_or_traceback(caught_exception)
@@ -2916,7 +2916,7 @@ if __name__ == "__main__":
                     # update args.wm_cmdline in place
                     args.wm_cmdline = [select_wm_id]
                 else:
-                    print_error("No WM was selected")
+                    print_error("No compositor was selected")
                     sys.exit(1)
             except Exception as caught_exception:
                 print_error_or_traceback(caught_exception)
@@ -2927,18 +2927,18 @@ if __name__ == "__main__":
         print_normal(
             dedent(
                 f"""
-                    Selected WM ID: {wm_id}
-                      Command Line: {shlex.join(wm_cmdline)}
-                  Plugin/binary ID: {wm_bin_id}
-                     Desktop Names: {':'.join(wm_desktop_names)}
-                              Name: {wm_name}
-                       Description: {wm_description}
+                 Selected compositor ID: {wm_id}
+                           Command Line: {shlex.join(wm_cmdline)}
+                       Plugin/binary ID: {wm_bin_id}
+                          Desktop Names: {':'.join(wm_desktop_names)}
+                                   Name: {wm_name}
+                            Description: {wm_description}
                 """
             )
         )
 
         if is_active(verbose=True):
-            print_error("Another WM is already running.")
+            print_error("Another compositor is already running.")
             if not args.dry_run:
                 sys.exit(1)
             else:
@@ -3049,7 +3049,7 @@ if __name__ == "__main__":
     elif args.mode == "check" and args.checker == "may-start":
         dealbreakers = []
         if is_active():
-            dealbreakers.append("Another WM is running")
+            dealbreakers.append("Another compositor is running")
 
         # check if parent process is a login shell
         try:
@@ -3096,11 +3096,11 @@ if __name__ == "__main__":
 
         if dealbreakers:
             if args.verbose:
-                print_warning("\n".join(["May not start WM:"] + dealbreakers))
+                print_warning("\n".join(["May not start compositor:"] + dealbreakers))
             sys.exit(1)
         else:
             if args.verbose:
-                print_ok("May start WM")
+                print_ok("May start compositor")
             sys.exit(0)
 
     #### AUX
@@ -3126,7 +3126,7 @@ if __name__ == "__main__":
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
             if is_active("", True):
-                print_error("A WM is running, will not cleanup environment")
+                print_error("A compositor is running, will not cleanup environment")
                 sys.exit(1)
             else:
                 try:

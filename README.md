@@ -1,6 +1,6 @@
 # Universal Wayland Session Manager
 
-Experimental tool that wraps any standalone Wayland WM into a set of systemd units to
+Experimental tool that wraps any standalone Wayland compositor into a set of systemd units to
 provide graphical user session with environment management, XDG autostart support, clean shutdown.
 
 WIP(ish). Use at your onw risk.
@@ -21,7 +21,7 @@ Nonetheless, keep an eye for commits with `[Breaking]` messages.
   - Templated units with specifiers.
   - Named from common to specific where possible.
   - Allowing for high-level `name-.d` drop-ins.
-- WM-specific behavior can be added by plugins. Currently supported: sway, wayfire, labwc
+- compositor-specific behavior can be added by plugins. Currently supported: sway, wayfire, labwc
 - Idempotently (well, best-effort-idempotently) handles environment:
   - On startup environment is prepared by:
     - sourcing shell profile
@@ -35,8 +35,8 @@ Nonetheless, keep an eye for commits with `[Breaking]` messages.
   - Lists of variables for export and cleanup are determined algorithmically by:
     - comparing environment before and after preparation procedures
     - boolean operations with predefined lists
-- Can work with WM desktop entries from `wayland-sessions` in XDG data hierarchy in two different scenarios:
-  - Actively select and launch WM from Desktop entry (which is used as WM instance ID):
+- Can work with Desktop entries from `wayland-sessions` in XDG data hierarchy in two different scenarios:
+  - Actively select and launch compositor from Desktop entry (which is used as compositor instance ID):
     - Data taken from entry (Can be amended or overridden via cli arguments):
       - `Exec` for argument list
       - `DesktopNames` for `XDG_CURRENT_DESKTOP` and `XDG_SESSION_DESKTOP`
@@ -45,14 +45,14 @@ Nonetheless, keep an eye for commits with `[Breaking]` messages.
     - Optional interactive selector (requires whiptail), choice is saved in `${XDG_CONFIG_HOME}/wayland-session-default-id`
     - Desktop entry [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html) are supported
   - Be launched via a Desktop entry by a login/display manager.
-- Can run with arbitrary WM command line (saved as a unit drop-in).
+- Can run with arbitrary compositor command line (saved as a unit drop-in).
 - Provides better control of XDG autostart apps.
   - XDG autostart services (`app-*@autostart.service` units) are placed into `app-graphical.slice`
-    that receives stop action before WM is stopped.
+    that receives stop action before compositor is stopped.
   - Can be mass-controlled via stopping and starting `wayland-session-xdg-autostart@${wm}.target`
 - Tries best to shutdown session cleanly via a net of dependencies between units
 - Provides helpers for various operations:
-  - finalizing service startup (WM service unit uses `Type=notify`) and exporting variables set by WM
+  - finalizing service startup (compositor service unit uses `Type=notify`) and exporting variables set by compositor
   - launching applications as scopes or services in proper slices
   - checking conditions for launch at login (for integration into login shell profile)
 
@@ -64,14 +64,14 @@ Put `wayland-session` executable somewhere in `$PATH`.
 
 Put `wayland-session-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
 
-### 2. Vars set by WM and Startup notification
+### 2. Vars set by compositor and Startup notification
 
-Ensure your WM runs `wayland-session finalize` at startup:
+Ensure your compositor runs `wayland-session finalize` at startup:
 
-- it fills systemd and dbus environments with essential vars set by WM: `WAYLAND_DISPLAY`, `DISPLAY`
+- it fills systemd and dbus environments with essential vars set by compositor: `WAYLAND_DISPLAY`, `DISPLAY`
 - any other vars can be given as arguments by name
 - any exported variables are also added to cleanup list
-- if environment export is successful, it signals WM service readiness,
+- if environment export is successful, it signals compositor service readiness,
   so `graphical-session.target` can properly be declared reached.
 
 Example snippet for sway config:
@@ -80,7 +80,7 @@ Example snippet for sway config:
 
 ### 3. Slices
 
-By default `wayland-session` launhces WM service in `app.slice` and all processes spawned by WM will be
+By default `wayland-session` launhces compositor service in `app.slice` and all processes spawned by compositor will be
 a part of `wayland-wm@${wm}.service` unit. This works, but is not an optimal solution.
 
 Systemd [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
@@ -120,7 +120,7 @@ Example snippet for sway config on how to launch apps:
     # featherpad desktop entry has "standalone-window" action
     bindsym --to-code $mod+n exec exec wayland-session app featherpad.desktop:standalone-window
 
-When app launching is properly configured, WM service itself can be placed in `session.slice` by setting
+When app launching is properly configured, compositor service itself can be placed in `session.slice` by setting
 environment variable `UWSM_USE_SESSION_SLICE=true` before generating units (best to export this
 in `profile` before `wayland-session` invocation). Or by adding `-S` argument to `start` subcommand.
 
@@ -140,7 +140,7 @@ Start variants:
 - Optional parameters to provide more metadata:
   - `-[a|e]D DesktopName1[:DesktopMame2:...]`: append (`-a`) or exclusively set (`-e`) `${XDG_CURRENT_DESKTOP}`
   - `-N Name`
-  - `-C "WM description"`
+  - `-C "Compositor description"`
 
 `${wm}` can be an executable or a valid [desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s02.html#desktop-file-id)
 (optionally with an [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s11.html) appended via ':')
@@ -151,7 +151,7 @@ Arguments provided on command line are appended to the command line of desktop e
 no argument processing is done (Please [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose)
 if you encounter any wayland-sessions desktop entry with `%`-fields).
 
-If you want to customize WM execution provided with a desktop entry, copy it to
+If you want to customize compositor execution provided with a desktop entry, copy it to
 `~/.local/share/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
 
 If `${wm}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in
@@ -161,7 +161,7 @@ If `${wm}` is `select` or `default`, `wayland-session` invokes a menu to select 
 There is also a separate `select` action (`wayland-session select`) that only selects and saves default `${wm}`
 and does nothing else, which is handy for seamless shell profile integration.
 
-WM command line (positonal arguments starting with `${wm}`) can be separated from optional arguments by `--` to
+Compositor command line (positonal arguments starting with `${wm}`) can be separated from optional arguments by `--` to
 avoid ambiguous parsing.
 
 When started, `wayland-session` will wait while wayland session is running, and terminate session if
@@ -190,9 +190,9 @@ To launch uwsm from a display/login manager, `wayland-session` can be used insid
 Example `/usr/local/share/wayland-sessions/my-wm.desktop`:
 
     [Desktop Entry]
-    Name=My WM (with UWSM)
-    Comment=My cool WM
-    Exec=wayland-session start -N "My WM" -D mywm -C "My cool WM" mywm
+    Name=My compositor (with UWSM)
+    Comment=My cool compositor
+    Exec=wayland-session start -N "My compositor" -D mywm -C "My cool compositor" mywm
     DesktopNames=mywm
     Type=Application
 
@@ -215,7 +215,7 @@ recognize itself and parse requested arguments inside the entry without any side
 Run `wayland-session start -o ${wm}` to populate `${XDG_RUNTIME_DIR}/systemd/user/` with them and do
 nothing else (`-o`).
 
-Any remainder arguments are appended to WM argument list (even when `${wm}` is a desktop entry).
+Any remainder arguments are appended to compositor argument list (even when `${wm}` is a desktop entry).
 Use `--` to disambigue:
 
 `wayland-session start -o ${wm} -- with "any complex" arguments`
@@ -230,7 +230,7 @@ Basic set of generated units:
   - `wayland-session-xdg-autostart@.target`
 - templated services
   - `wayland-wm-env@.service` - environment preloader service
-  - `wayland-wm@.service` - main WM service
+  - `wayland-wm@.service` - main compositor service
 - slices for apps nested in stock systemd user-level slices
   - `app-graphical.slice`
   - `background-graphical.slice`
@@ -239,7 +239,7 @@ Basic set of generated units:
   - `wayland-wm-env@${wm}.service.d/custom.conf`, `wayland-wm@${wm}.service.d/custom.conf` - if arguments and/or various names were given on command line, they go here.
   - `app-@autostart.service.d/slice-tweak.conf` - assigns XDG autostart apps to `app-graphical.slice`
 
-After units are generated, WM can be started by: `systemctl --user start wayland-wm@${wm}.service`
+After units are generated, compositor can be started by: `systemctl --user start wayland-wm@${wm}.service`
 
 Add `--wait` to hold terminal until session ends.
 
@@ -272,7 +272,7 @@ a cleanup list file in runtime dir.
 
 ### Startup finalization
 
-`wayland-wm@.service` uses `Type=notify` and waits for WM to signal started state.
+`wayland-wm@.service` uses `Type=notify` and waits for compositor to signal started state.
 Activation environments will also need to receive essential variables like `WAYLAND_DISPLAY`
 to launch graphical applications successfully.
 
@@ -302,9 +302,9 @@ It looks for **any** cleanup files (`env_names_for_cleanup_*`) in runtime dir. L
 plus `varnames.always_cleanup` minus `varnames.never_cleanup`
 are emptied in dbus activation environment and unset from systemd user manager environment.
 
-When no WM is running, units can be removed (`-r`) by `wayland-session stop -r`.
+When no compositor is running, units can be removed (`-r`) by `wayland-session stop -r`.
 
-Add WM to `-r` to remove only customization drop-ins: `wayland-session stop -r ${wm}`.
+Add compositor to `-r` to remove only customization drop-ins: `wayland-session stop -r ${wm}`.
 
 ### Profile integration
 
@@ -315,34 +315,34 @@ starts wayland session automatically upon login on tty1 if system is in `graphic
 `wayland-wm-env@${wm}.service` sources profile, which has a potential for nasty loops if run
 unconditionally. Other conditions are a recommendation:
 
-    MY_WM=sway
+    MY_COMPOSITOR=sway
     if [ "${0}" != "${0#-}" ] && \
        [ "$XDG_VTNR" = "1" ] && \
        systemctl is-active -q graphical.target && \
        ! systemctl --user is-active -q wayland-wm@*.service
     then
-        wayland-session start -o ${MY_WM}
-        trap "if systemctl --user is-active -q wayland-wm@${MY_WM}.service ; then systemctl --user --stop wayland-wm@${MY_WM}.service ; fi" INT EXIT HUP TERM
-        echo Starting ${MY_WM} WM
-        systemctl --user start --wait wayland-wm@${MY_WM}.service &
+        wayland-session start -o ${MY_COMPOSITOR}
+        trap "if systemctl --user is-active -q wayland-wm@${MY_COMPOSITOR}.service ; then systemctl --user --stop wayland-wm@${MY_COMPOSITOR}.service ; fi" INT EXIT HUP TERM
+        echo Starting ${MY_COMPOSITOR} compositor
+        systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service &
         wait
         exit
     fi
 
-## WM-specific actions
+## Compositor-specific actions
 
-Shell plugins provide WM-specific functions during environment preparation.
+Shell plugins provide compositor-specific functions during environment preparation.
 
 Named `${__WM_BIN_ID__}.sh.in`, they should only contain specifically named functions.
 
-`${__WM_BIN_ID__}` is derived from the item 0 of WM command line by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
+`${__WM_BIN_ID__}` is derived from the item 0 of compositor command line by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
 
 It is used as plugin id and suffix in function names.
 
 Variables available to plugins:
 
-- `__WM_ID__` - WM ID, effective first argument of `start`.
-- `__WM_BIN_ID__` - processed first item of WM argv.
+- `__WM_ID__` - compositor ID, effective first argument of `start`.
+- `__WM_BIN_ID__` - processed first item of compositor argv.
 - `__WM_DESKTOP_NAMES__` - `:`-separated desktop names from `DesktopNames=` of entry and `-D` cli argument.
 - `__WM_FIRST_DESKTOP_NAME__` - first of the above.
 - `__WM_DESKTOP_NAMES_LOWERCASE__` - same as the above, but in lower case.
@@ -385,7 +385,7 @@ Example:
       # here additional vars can be set or unset
       export I_WANT_THIS_IN_SESSION=yes
       unset I_DO_NOT_WANT_THAT
-      # or prepare a config for WM
+      # or prepare a config for compositor
       # or set a var to modify what sourcing wayland-session-env, wayland-session-env-${__WM_ID__}
       # in the next stage will do
       ...
