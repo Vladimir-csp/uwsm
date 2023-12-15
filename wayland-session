@@ -569,7 +569,7 @@ def systemd_escape(strings, se_args: list = []) -> str:
     if isinstance(strings, str):
         strings = [strings]
     sprc = subprocess.run(
-        ["systemd-escape", *se_args, *strings],
+        ["systemd-escape", "--", *se_args, *strings],
         text=True,
         capture_output=True,
         check=False,
@@ -1446,18 +1446,23 @@ def parse_args(custom_args=None):
         help=f"{{{Styles.under}a{Styles.reset}pp,{Styles.under}b{Styles.reset}ackground,{Styles.under}s{Styles.reset}ession}}-graphical.slice, or any other. (default: %(default)s)",
         default="a",
     )
-    app_unit_type_default = os.getenv("UWSM_APP_UNIT_TYPE", "scope")
-    if app_unit_type_default not in ("scope", "service"):
+    app_unit_type_preset = False
+    app_unit_type_default = os.getenv("UWSM_APP_UNIT_TYPE", None)
+    if app_unit_type_default in ("scope", "service"):
+        app_unit_type_preset = True
+    elif app_unit_type_default is not None:
         print_warning(
             f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope"'
         )
+        app_unit_type_default = "scope"
+    else:
         app_unit_type_default = "scope"
     parsers["app"].add_argument(
         "-t",
         dest="app_unit_type",
         choices=("scope", "service"),
         default=app_unit_type_default,
-        help="type of unit to launch (default: %(default)s, can be preset by UWSM_APP_UNIT_TYPE env var)",
+        help=f"type of unit to launch (default: %(default)s, {'was' if app_unit_type_preset else 'can be'} preset by UWSM_APP_UNIT_TYPE env var)",
     )
     parsers["app"].add_argument(
         "-a",
@@ -1477,8 +1482,7 @@ def parse_args(custom_args=None):
         "-T",
         dest="terminal",
         action="store_true",
-        help="launch app in a terminal",
-        default="",
+        help="launch app in a terminal, or just a terminal if command is empty and double-terminated '-- --'",
     )
 
     # check subcommand
@@ -2499,7 +2503,7 @@ def check_terminal_entry(entry, entry_action, explicit):
 
 
 def find_terminal_entry():
-    "Finds default terminal entry, returns list of args"
+    "Finds default terminal entry, returns tuple with two lists: (cmdline, [exec_arg])"
     terminal_entries = []
     explicit = False
     ## read configs, compose preferred terminal entry list
@@ -2547,8 +2551,9 @@ def find_terminal_entry():
                     exec_arg = entry.get("X-ExecArg")
                 else:
                     exec_arg = "-e"
-                return shlex.split(entry_action_keys(entry)["Exec"]) + (
-                    [exec_arg] if exec_arg else []
+                return (
+                    shlex.split(entry_action_keys(entry)["Exec"]),
+                    [exec_arg] if exec_arg else [],
                 )
             else:
                 continue
@@ -2568,8 +2573,9 @@ def find_terminal_entry():
                 exec_arg = entry.get("X-ExecArg")
             else:
                 exec_arg = "-e"
-            return shlex.split(entry_action_keys(entry)["Exec"]) + (
-                [exec_arg] if exec_arg else []
+            return (
+                shlex.split(entry_action_keys(entry)["Exec"]),
+                [exec_arg] if exec_arg else [],
             )
         else:
             continue
@@ -2577,16 +2583,17 @@ def find_terminal_entry():
     raise RuntimeError("Could not find a Terminal Emulator application")
 
 
-def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=False):
+def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
     """
     Exec given command or desktop entry via systemd-run in specific slice.
     Or fork and return subprocess object.
     """
 
     global terminal_cmdline
+    global terminal_exec_arg
 
-    # detect desktop entry, update cmd, cmd_args, app_name
-    entry_id, entry_action = arg_entry_or_executable(cmd)
+    # detect desktop entry, update cmdline, app_name
+    entry_id, entry_action = arg_entry_or_executable(cmdline[0])
     if entry_id:
         print_debug("entry_id, entry_action:", entry_id, entry_action)
 
@@ -2594,7 +2601,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
 
         print_debug("got entrires", entries)
         if not entries:
-            raise FileNotFoundError(f'Could not find deskop entry "{cmd}"')
+            raise FileNotFoundError(f'Could not find deskop entry "{cmdline[0]}"')
         else:
             entry = DesktopEntry(entries[0][1])
             if not check_entry_basic(entry, entry_action):
@@ -2609,12 +2616,12 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         if not app_name:
             app_name = entry.get("Name", locale=False)
 
-        # regenerate command and args according to entry
+        # generate command and args according to entry
         cmd, cmd_args = gen_entry_args(
-            entry, cmd_args, entry_action=entry_action or None
+            entry, cmdline[1:], entry_action=entry_action or None
         )
 
-        # iterative execution is required
+        # if cmd_args is a list of lists, iterative execution is required
         if cmd_args and isinstance(cmd_args[0], (list, tuple)):
             # drop unit_name if multiple instances required
             if unit_name:
@@ -2629,11 +2636,11 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
             sub_apps_rc = []
             # call forking self for each instance
             for args_instance in cmd_args:
+                cmdline_instance = [cmd] + args_instance
                 # launch app in background
                 sub_apps.append(
                     app(
-                        cmd,
-                        args_instance,
+                        cmdline_instance,
                         slice_name,
                         app_unit_type,
                         app_name,
@@ -2667,7 +2674,28 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
                 sys.exit(1)
             sys.exit(0)
 
-    print_debug("cmd", cmd, "cmd_args", cmd_args)
+        # for single exec just reassemble cmdline
+        else:
+            cmdline = [cmd] + cmd_args
+
+    print_debug("cmdline", cmdline)
+
+    # terminal_cmdline, terminal_exec_arg are global, so generate only once
+    # no matter how many times app() is called for forks
+    if args.terminal and not terminal_cmdline:
+        terminal_cmdline, terminal_exec_arg = find_terminal_entry()
+
+    # if just a terminal is requested via double termination
+    if args.terminal and cmdline == ["--"]:
+        app_name = terminal_cmdline[0]
+        # cmdline should not be referenced until the end of this function,
+        # where it will be starred into nothingness
+        cmdline = []
+        # removee exec arg
+        terminal_exec_arg = []
+
+    if cmdline and not which(cmdline[0]):
+        raise RuntimeError(f"Ccommand not found: {cmdline[0]}")
 
     if slice_name == "a":
         slice_name = "app-graphical.slice"
@@ -2684,11 +2712,11 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
 
     if not unit_name:
         # use first XDG_CURRENT_DESKTOP as part of scope name
-        # use app cmd as part of scope name
+        # use app command as part of scope name
         desktop_unit_substring, cmd_unit_substring = systemd_escape(
             [
                 sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0],
-                app_name or os.path.basename(cmd),
+                app_name or os.path.basename(cmdline[0]),
             ]
         )
 
@@ -2753,9 +2781,6 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
                 f"Unit name is too long ({len(unit_name)} > 255): {unit_name}"
             )
 
-    if args.terminal and not terminal_cmdline:
-        terminal_cmdline = find_terminal_entry()
-
     final_args = (
         "systemd-run",
         "--user",
@@ -2766,9 +2791,8 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         unit_name,
         "-qGd",
         "--",
-        *(terminal_cmdline),
-        cmd,
-        *(cmd_args),
+        *(terminal_cmdline + terminal_exec_arg),
+        *cmdline,
     )
 
     print_debug("final_args", *(final_args))
@@ -3082,6 +3106,7 @@ if __name__ == "__main__":
     wm_description: str = ""
     wm_cli_description: str = ""
     terminal_cmdline: List[str] = []
+    terminal_exec_arg: List[str] = []
 
     # get args and parsers (for help)
     args, parsers = parse_args()
@@ -3233,8 +3258,7 @@ if __name__ == "__main__":
     elif args.mode == "app":
         try:
             app(
-                cmd=args.cmdline[0],
-                cmd_args=args.cmdline[1:],
+                cmdline=args.cmdline,
                 slice_name=args.slice_name,
                 app_unit_type=args.app_unit_type,
                 app_name=args.app_name,
