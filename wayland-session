@@ -160,11 +160,14 @@ def print_error(*what, **how):
 
 
 if int(os.getenv("DEBUG", "0")) > 0:
+
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
         print("DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True)
         print(Styles.reset, end="", file=sys.stderr, flush=True)
+
 else:
+
     def print_debug(*what, **how):
         pass
 
@@ -179,10 +182,15 @@ def print_style(stls, *what, **how):
     print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_error_or_traceback(exception, warning = False) -> None:
+def print_error_or_traceback(exception, warning=False) -> None:
     "Depending on DEBUG, print nice error/warning or entire exception traceback"
     if int(os.getenv("DEBUG", "0")) > 0:
-        print(Styles.yellow if warning else Styles.red, end="", file=sys.stderr, flush=True)
+        print(
+            Styles.yellow if warning else Styles.red,
+            end="",
+            file=sys.stderr,
+            flush=True,
+        )
         traceback.print_exception(exception, file=sys.stderr)
         print(Styles.reset, end="", file=sys.stderr, flush=True)
     else:
@@ -242,20 +250,20 @@ def arg_entry_or_executable(arg):
 
 def entry_action_keys(entry, entry_action=None):
     "Extracts Name, Exec, Icon from entry with or without entry_action"
-    out = {
-        "Name": entry.getName(),
-        "Exec": entry.getExec(),
-        "Icon": entry.getIcon()
-    }
+    out = {"Name": entry.getName(), "Exec": entry.getExec(), "Icon": entry.getIcon()}
     if not entry_action:
         return out
     if entry_action not in entry.getActions():
-        raise ValueError(f'entry "{entry.getFileName()}" does not have action "{entry_action}"')
+        raise ValueError(
+            f'entry "{entry.getFileName()}" does not have action "{entry_action}"'
+        )
     entry.defaultGroup = f"Desktop Action {entry_action}"
-    out.update({
-        "Name": entry.getName(),
-        "Exec": entry.getExec(),
-    })
+    out.update(
+        {
+            "Name": entry.getName(),
+            "Exec": entry.getExec(),
+        }
+    )
     if entry.getIcon():
         out.update({"Icon": entry.getIcon()})
     return out
@@ -268,44 +276,63 @@ def check_entry_basic(entry, entry_action=None):
     except ValidationError:
         pass
     errors = set()
-    print_debug(f'entry "{entry.getFileName()}"\n  errors:\n    ' + "\n    ".join(entry.errors) + '\n  warnings:\n    ' + "\n    ".join(entry.warnings))
+    print_debug(
+        f'entry "{entry.getFileName()}"\n  errors:\n    '
+        + "\n    ".join(entry.errors)
+        + "\n  warnings:\n    "
+        + "\n    ".join(entry.warnings)
+    )
     # Be chill with some [stupid] errors
     for error in entry.errors:
-        if ' is not a registered ' in error:
+        if " is not a registered " in error:
             continue
-        if error in ['Invalid key: ExecArg', 'Invalid key: DesktopNames', 'Missing main category']:
+        if error in [
+            "Invalid key: ExecArg",
+            "Invalid key: DesktopNames",
+            "Missing main category",
+        ]:
             continue
         errors.add(error)
     if errors:
-        print_debug(f'entry {entry.getFileName()} failed validation: {", ".join(errors)}')
+        print_debug(
+            f'entry {entry.getFileName()} failed validation: {", ".join(errors)}'
+        )
         return False
     if entry.getHidden():
-        print_debug(f'entry {entry.getFileName()} is hidden')
+        print_debug(f"entry {entry.getFileName()} is hidden")
         return False
-    if entry.hasKey('TryExec') and not entry.findTryExec():
-        print_debug(f'entry {entry.getFileName()} discarded by TryExec')
+    if entry.hasKey("TryExec") and not entry.findTryExec():
+        print_debug(f"entry {entry.getFileName()} discarded by TryExec")
         return False
     if entry_action:
         if entry_action not in entry.getActions():
-            print_debug(f'entry {entry.getFileName()} has no action {entry_action}')
+            print_debug(f"entry {entry.getFileName()} has no action {entry_action}")
             return False
         entry_action_group = f"Desktop Action {entry_action}"
         if entry_action_group not in entry.groups():
-            print_debug(f'entry {entry.getFileName()} has no action group {entry_action_group}')
+            print_debug(
+                f"entry {entry.getFileName()} has no action group {entry_action_group}"
+            )
             return False
         entry_dict = entry_action_keys(entry, entry_action)
-        if 'Name' not in entry_dict or not entry_dict['Name']:
-            print_debug(f'entry {entry.getFileName()} action {entry_action} does not have Name')
-        if 'Exec' not in entry_dict or not entry_dict['Exec']:
-            print_debug(f'entry {entry.getFileName()} action {entry_action} does not have Exec')
-        entry_exec = entry_dict['Exec']
+        if "Name" not in entry_dict or not entry_dict["Name"]:
+            print_debug(
+                f"entry {entry.getFileName()} action {entry_action} does not have Name"
+            )
+        if "Exec" not in entry_dict or not entry_dict["Exec"]:
+            print_debug(
+                f"entry {entry.getFileName()} action {entry_action} does not have Exec"
+            )
+        entry_exec = entry_dict["Exec"]
     else:
-        if not entry.hasKey('Exec') or not entry.getExec():
-            print_debug(f'entry {entry.getFileName()} does not have Exec')
+        if not entry.hasKey("Exec") or not entry.getExec():
+            print_debug(f"entry {entry.getFileName()} does not have Exec")
             return False
         entry_exec = entry.getExec()
     if not which(shlex.split(entry_exec)[0]):
-        print_debug(f'entry {entry.getFileName()} Exec {entry_exec} executable not found')
+        print_debug(
+            f"entry {entry.getFileName()} Exec {entry_exec} executable not found"
+        )
         return False
 
     return True
@@ -317,15 +344,21 @@ def check_entry_showin(entry):
     osi = set(entry.getOnlyShowIn())
     nsi = set(entry.getNotShowIn())
     if osi and osi.isdisjoint(xcd):
-        print_debug(f'entry {entry.getFileName()} discarded by OnlyShowIn')
+        print_debug(f"entry {entry.getFileName()} discarded by OnlyShowIn")
         return False
     if nsi and not nsi.isdisjoint(xcd):
-        print_debug(f'entry {entry.getFileName()} discarded by NotShowIn')
+        print_debug(f"entry {entry.getFileName()} discarded by NotShowIn")
         return False
     return True
 
 
-def find_entries(subpath: str, match_entry_id: str = None, reject_ids: List[str] = None, reject_mtp: List = None, warnings: bool = False):
+def find_entries(
+    subpath: str,
+    match_entry_id: str = None,
+    reject_ids: List[str] = None,
+    reject_mtp: List = None,
+    warnings: bool = False,
+):
     """
     Takes data hierarchy subpath and optional args:
     match_entry_id id,
@@ -427,7 +460,7 @@ def select_comp_entry(default="", just_confirm=False):
     # fill choces list with [entry_id, description, comment]
     for entry_id, entry_path in session_entries:
         try:
-           entry = DesktopEntry(entry_path)
+            entry = DesktopEntry(entry_path)
         except:
             # just skip it
             continue
@@ -2454,7 +2487,7 @@ def check_terminal_entry(entry, entry_action, explicit):
     "Takes entry, entry_action, expclicit flag, checks if is applicable terminal, returns bool"
     # quick fail
     try:
-        if 'TerminalEmulator' not in entry.getCategories():
+        if "TerminalEmulator" not in entry.getCategories():
             return False
     except:
         return False
@@ -2508,13 +2541,15 @@ def find_terminal_entry():
             except:
                 continue
             if check_terminal_entry(entry, entry_action, True):
-                if entry.hasKey('ExecArg'):
-                    exec_arg = entry.get('ExecArg')
-                elif entry.hasKey('X-ExecArg'):
-                    exec_arg = entry.get('X-ExecArg')
+                if entry.hasKey("ExecArg"):
+                    exec_arg = entry.get("ExecArg")
+                elif entry.hasKey("X-ExecArg"):
+                    exec_arg = entry.get("X-ExecArg")
                 else:
-                    exec_arg = '-e'
-                return shlex.split(entry_action_keys(entry)['Exec']) + ([exec_arg] if exec_arg else [])
+                    exec_arg = "-e"
+                return shlex.split(entry_action_keys(entry)["Exec"]) + (
+                    [exec_arg] if exec_arg else []
+                )
             else:
                 continue
 
@@ -2524,14 +2559,18 @@ def find_terminal_entry():
             entry = DesktopEntry(entry_path)
         except:
             continue
-        if (entry_id, None) not in terminal_entries and check_terminal_entry(entry, None, False):
-            if entry.hasKey('ExecArg'):
-                exec_arg = entry.get('ExecArg')
-            elif entry.hasKey('X-ExecArg'):
-                exec_arg = entry.get('X-ExecArg')
+        if (entry_id, None) not in terminal_entries and check_terminal_entry(
+            entry, None, False
+        ):
+            if entry.hasKey("ExecArg"):
+                exec_arg = entry.get("ExecArg")
+            elif entry.hasKey("X-ExecArg"):
+                exec_arg = entry.get("X-ExecArg")
             else:
-                exec_arg = '-e'
-            return shlex.split(entry_action_keys(entry)['Exec']) + ([exec_arg] if exec_arg else [])
+                exec_arg = "-e"
+            return shlex.split(entry_action_keys(entry)["Exec"]) + (
+                [exec_arg] if exec_arg else []
+            )
         else:
             continue
 
@@ -2655,23 +2694,25 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
 
         ## cut unit name to fit unit name in 255 chars
         # length of parts except cmd_unit_substring
-        l_static = len('app---DEADBEEF.') + len(app_unit_type)
+        l_static = len("app---DEADBEEF.") + len(app_unit_type)
         l_all = l_static + len(desktop_unit_substring)
         # if other parts already halfway too long, this means desktop_unit_substring needs some trimming
         if l_all > 127:
             # reduce to 127
             l_check = l_static
-            fragments = re.split(r'(\\x..)', desktop_unit_substring)
-            desktop_unit_substring = ''
+            fragments = re.split(r"(\\x..)", desktop_unit_substring)
+            desktop_unit_substring = ""
             for fragment in fragments:
                 if len(fragment) + l_check < 127:
                     desktop_unit_substring = desktop_unit_substring + fragment
                     l_check += len(fragment)
                 else:
-                    if fragment.startswith(r'\x'):
+                    if fragment.startswith(r"\x"):
                         break
                     else:
-                        desktop_unit_substring = desktop_unit_substring + fragment[0:127 - l_check]
+                        desktop_unit_substring = (
+                            desktop_unit_substring + fragment[0 : 127 - l_check]
+                        )
                         break
 
         l_all = l_static + len(desktop_unit_substring) + len(cmd_unit_substring)
@@ -2680,17 +2721,19 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         if l_all > 255:
             # reduce to 255
             l_check = l_static + len(desktop_unit_substring)
-            fragments = re.split(r'(\\x..)', cmd_unit_substring)
-            cmd_unit_substring = ''
+            fragments = re.split(r"(\\x..)", cmd_unit_substring)
+            cmd_unit_substring = ""
             for fragment in fragments:
                 if len(fragment) + l_check < 255:
                     cmd_unit_substring = cmd_unit_substring + fragment
                     l_check += len(fragment)
                 else:
-                    if fragment.startswith(r'\x'):
+                    if fragment.startswith(r"\x"):
                         break
                     else:
-                        cmd_unit_substring = cmd_unit_substring + fragment[0:255 - l_check]
+                        cmd_unit_substring = (
+                            cmd_unit_substring + fragment[0 : 255 - l_check]
+                        )
                         break
 
         if app_unit_type == "scope":
@@ -2707,7 +2750,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
             )
         if len(unit_name) > 255:
             raise ValueError(
-                f'Unit name is too long ({len(unit_name)} > 255): {unit_name}'
+                f"Unit name is too long ({len(unit_name)} > 255): {unit_name}"
             )
 
     if args.terminal and not terminal_cmdline:
@@ -3069,7 +3112,9 @@ if __name__ == "__main__":
         if args.wm_cmdline[0] in ["select", "default"]:
             try:
                 default_id = get_default_comp_entry()
-                select_wm_id = select_comp_entry(default_id, args.wm_cmdline[0] == "default")
+                select_wm_id = select_comp_entry(
+                    default_id, args.wm_cmdline[0] == "default"
+                )
                 if select_wm_id:
                     if select_wm_id != default_id:
                         save_default_comp_entry(select_wm_id)
