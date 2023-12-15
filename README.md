@@ -97,14 +97,16 @@ also receive stop action ordered before `wayland-wm@${wm}.service` shutdown:
 
 To launch an app inside one of those slices, use:
 
-`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app [with args]`
+`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] -- your_app [with args]`
 
 Launching desktop entries is also supported:
 
-`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] your_app.desktop[:action] [with args]`
+`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] -- your_app.desktop[:action] [with args]`
 
 In this case args must be supported by the entry or its selected action according to
 [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
+
+Always use `--` to disambiguate command line if any dashed arguments are intended for launched app.
 
 Example snippet for sway config on how to launch apps:
 
@@ -112,7 +114,7 @@ Example snippet for sway config on how to launch apps:
     bindsym --to-code $mod+t exec exec wayland-session app foot
     
     # fuzzel has a very useful launch-prefix option
-    bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='wayland-session app' --log-no-syslog
+    bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='wayland-session app --' --log-no-syslog
     
     # launch SpaceFM via desktop entry
     bindsym --to-code $mod+e exec exec wayland-session app spacefm.desktop
@@ -136,11 +138,13 @@ via `UWSM_APP_UNIT_TYPE` env var.
 Start variants:
 
 - `wayland-session start ${wm}`: generates and starts templated units with `@${wm}` instance.
-- `wayland-session start ${wm} with "any complex" arguments`: also adds arguments for particular `@${wm}` instance.
+- `wayland-session start -- ${wm} with "any complex" --arguments`: also adds arguments for particular `@${wm}` instance.
 - Optional parameters to provide more metadata:
   - `-[a|e]D DesktopName1[:DesktopMame2:...]`: append (`-a`) or exclusively set (`-e`) `${XDG_CURRENT_DESKTOP}`
   - `-N Name`
   - `-C "Compositor description"`
+
+Always use `--` to disambiguate command line if any dashed arguments are intended for launched compositor.
 
 `${wm}` can be an executable or a valid [desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s02.html#desktop-file-id)
 (optionally with an [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s11.html) appended via ':')
@@ -218,7 +222,7 @@ nothing else (`-o`).
 Any remainder arguments are appended to compositor argument list (even when `${wm}` is a desktop entry).
 Use `--` to disambigue:
 
-`wayland-session start -o ${wm} -- with "any complex" arguments`
+`wayland-session start -o -- ${wm} with "any complex" --arguments`
 
 Desktop entries can be overridden or added in `${XDG_DATA_HOME}/wayland-sessions/`.
 
