@@ -21,7 +21,7 @@ Nonetheless, keep an eye for commits with `[Breaking]` messages.
   - Templated units with specifiers.
   - Named from common to specific where possible.
   - Allowing for high-level `name-.d` drop-ins.
-- compositor-specific behavior can be added by plugins. Currently supported: sway, wayfire, labwc
+- Compositor-specific behavior can be added by plugins. Currently supported: sway, wayfire, labwc
 - Idempotently (well, best-effort-idempotently) handles environment:
   - On startup environment is prepared by:
     - sourcing shell profile
@@ -80,8 +80,8 @@ Example snippet for sway config:
 
 ### 3. Slices
 
-By default `wayland-session` launhces compositor service in `app.slice` and all processes spawned by compositor will be
-a part of `wayland-wm@${wm}.service` unit. This works, but is not an optimal solution.
+By default `wayland-session` launhces compositor service in `app.slice` and all processes spawned by compositor
+will be a part of `wayland-wm@${wm}.service` unit. This works, but is not an optimal solution.
 
 Systemd [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
 recommends running compositors in `session.slice` and launch apps as scopes or services in `app.slice`.
@@ -191,13 +191,13 @@ Stop with `wayland-session stop` or `systemctl --user stop wayland-session@*.ser
 #### From display manager
 
 To launch uwsm from a display/login manager, `wayland-session` can be used inside desktop entries.
-Example `/usr/local/share/wayland-sessions/my-wm.desktop`:
+Example `/usr/local/share/wayland-sessions/my-compositor.desktop`:
 
     [Desktop Entry]
     Name=My compositor (with UWSM)
     Comment=My cool compositor
-    Exec=wayland-session start -N "My compositor" -D mywm -C "My cool compositor" mywm
-    DesktopNames=mywm
+    Exec=wayland-session start -N "My compositor" -D mycompositor -C "My cool compositor" mywm
+    DesktopNames=mycompositor
     Type=Application
 
 Things to keep in mind:
