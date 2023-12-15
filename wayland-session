@@ -2694,6 +2694,12 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
         # removee exec arg
         terminal_exec_arg = []
 
+    # discard explicit -e or exec_arg for terminal
+    # only if follwed by something, otherwise it will error out below
+    if args.terminal and [cmdline[0]] in (terminal_exec_arg, ['-e']) and len(cmdline) > 1:
+        print_debug(f"discarded explicit terminal exec arg {cmdline[0]}")
+        cmdline = cmdline[1:]
+
     if cmdline and not which(cmdline[0]):
         raise RuntimeError(f"Ccommand not found: {cmdline[0]}")
 
