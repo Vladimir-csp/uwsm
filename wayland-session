@@ -268,10 +268,12 @@ def check_entry_basic(entry, entry_action=None):
     except ValidationError:
         pass
     errors = set()
+    print_debug(f'entry "{entry.getFileName()}"\n  errors:\n    ' + "\n    ".join(entry.errors) + '\n  warnings:\n    ' + "\n    ".join(entry.warnings))
+    # Be chill with some [stupid] errors
     for error in entry.errors:
         if ' is not a registered ' in error:
             continue
-        if error in ['Invalid key: ExecArg', 'Invalid key: DesktopNames']:
+        if error in ['Invalid key: ExecArg', 'Invalid key: DesktopNames', 'Missing main category']:
             continue
         errors.add(error)
     if errors:
@@ -328,7 +330,7 @@ def find_entries(subpath: str, match_entry_id: str = None, reject_ids: List[str]
     Takes data hierarchy subpath and optional args:
     match_entry_id id,
     reject_ids [id],
-    reject_mtp {path, mtime},
+    reject_mtp {path: mtime},
     returns list of tuples of [(entry_id, file_path)]: single entry if ID is given
     or all of them if not
     """
@@ -342,29 +344,34 @@ def find_entries(subpath: str, match_entry_id: str = None, reject_ids: List[str]
                 # get only valid files
                 if Val.entry_id.search(filename):
                     filepath = os.path.join(dirpath, filename)
+                    # get proper entry id relative to data_dir with path delimiters replaced by '-'
+                    check_entry_id = os.path.relpath(filepath, data_dir).replace(
+                        "/", "-"
+                    )
+
+                    # id-based deduplication
+                    if check_entry_id in seen_ids:
+                        continue
+                    seen_ids.add(check_entry_id)
+
+                    # if searching for a particualr entry and it matches, return it
+                    if match_entry_id and check_entry_id == match_entry_id:
+                        return [(check_entry_id, filepath)]
+
+                    # rejections
                     if reject_mtp and filepath in reject_mtp:
                         # reject entry of specified path and mtime
                         if os.path.getmtime(filepath) == reject_mtp[filepath]:
                             print_debug(f"reject_mtp {filepath}")
                             continue
-                    # get proper entry id relative to data_dir with path delimiters replaced by '-'
-                    check_entry_id = os.path.relpath(filepath, data_dir).replace(
-                        "/", "-"
-                    )
-                    # if searching for particualr entry
-                    if match_entry_id:
-                        # and it matches, return it
-                        if check_entry_id == match_entry_id:
-                            return [(check_entry_id, filepath)]
-                    # reject specified id
-                    elif reject_ids and check_entry_id in reject_ids:
+                    if reject_ids and check_entry_id in reject_ids:
                         print_debug(f"reject_ids {check_entry_id} {filepath}")
                         continue
-                    # else add first encountered entry
+
+                    # entry survived deduplication and rejections
                     elif check_entry_id not in seen_ids:
                         print_debug(f"selected {check_entry_id} {filepath}")
                         results.append((check_entry_id, filepath))
-                        seen_ids.add(check_entry_id)
     return results
 
 
@@ -2552,7 +2559,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         else:
             entry = DesktopEntry(entries[0][1])
             if not check_entry_basic(entry, entry_action):
-                raise RuntimeError(f"entry {entry.getFilename} is invalid")
+                raise RuntimeError(f"entry {entry.getFileName()} is invalid")
 
         # request terminal
         if entry.getTerminal():
@@ -2646,6 +2653,46 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
             ]
         )
 
+        ## cut unit name to fit unit name in 255 chars
+        # length of parts except cmd_unit_substring
+        l_static = len('app---DEADBEEF.') + len(app_unit_type)
+        l_all = l_static + len(desktop_unit_substring)
+        # if other parts already halfway too long, this means desktop_unit_substring needs some trimming
+        if l_all > 127:
+            # reduce to 127
+            l_check = l_static
+            fragments = re.split(r'(\\x..)', desktop_unit_substring)
+            desktop_unit_substring = ''
+            for fragment in fragments:
+                if len(fragment) + l_check < 127:
+                    desktop_unit_substring = desktop_unit_substring + fragment
+                    l_check += len(fragment)
+                else:
+                    if fragment.startswith(r'\x'):
+                        break
+                    else:
+                        desktop_unit_substring = desktop_unit_substring + fragment[0:127 - l_check]
+                        break
+
+        l_all = l_static + len(desktop_unit_substring) + len(cmd_unit_substring)
+
+        # now cut cmd_unit_substring if too long
+        if l_all > 255:
+            # reduce to 255
+            l_check = l_static + len(desktop_unit_substring)
+            fragments = re.split(r'(\\x..)', cmd_unit_substring)
+            cmd_unit_substring = ''
+            for fragment in fragments:
+                if len(fragment) + l_check < 255:
+                    cmd_unit_substring = cmd_unit_substring + fragment
+                    l_check += len(fragment)
+                else:
+                    if fragment.startswith(r'\x'):
+                        break
+                    else:
+                        cmd_unit_substring = cmd_unit_substring + fragment[0:255 - l_check]
+                        break
+
         if app_unit_type == "scope":
             unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
         elif app_unit_type == "service":
@@ -2657,6 +2704,10 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         if not unit_name.endswith(f".{app_unit_type}"):
             raise ValueError(
                 f'Only ".{app_unit_type}" is supported as unit suffix for {app_unit_type} unit type'
+            )
+        if len(unit_name) > 255:
+            raise ValueError(
+                f'Unit name is too long ({len(unit_name)} > 255): {unit_name}'
             )
 
     if args.terminal and not terminal_cmdline:
