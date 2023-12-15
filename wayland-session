@@ -16,6 +16,7 @@ from io import StringIO
 from urllib import parse as urlparse
 from typing import List, Type, IO, Any
 from xdg.DesktopEntry import DesktopEntry, which
+from xdg.Exceptions import ValidationError
 from xdg import BaseDirectory
 
 stdStream = None | int | IO[Any]
@@ -71,8 +72,8 @@ class Val:
     "Compiled re patterns for validation"
     wm_id = re.compile(r"\A[a-zA-Z0-9_:.-]+\Z", re.MULTILINE)
     dn_colon = re.compile(r"\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z", re.MULTILINE)
-    de_id = re.compile(r"\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop\Z", re.MULTILINE)
-    da_id = re.compile(r"\A[a-zA-Z0-9-]+\Z", re.MULTILINE)
+    entry_id = re.compile(r"\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop\Z", re.MULTILINE)
+    action_id = re.compile(r"\A[a-zA-Z0-9-]+\Z", re.MULTILINE)
     unit_ext = re.compile(
         r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)\Z",
         re.MULTILINE,
@@ -158,11 +159,14 @@ def print_error(*what, **how):
     print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_debug(*what, **how):
-    "Prints to stderr if DEBUG=N where N > 0"
-    if int(os.getenv("DEBUG", "0")) > 0:
+if int(os.getenv("DEBUG", "0")) > 0:
+    def print_debug(*what, **how):
+        "Prints to stderr with DEBUG and END_DEBUG marks"
         print("DEBUG\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True)
         print(Styles.reset, end="", file=sys.stderr, flush=True)
+else:
+    def print_debug(*what, **how):
+        pass
 
 
 def print_style(stls, *what, **how):
@@ -175,23 +179,14 @@ def print_style(stls, *what, **how):
     print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 
-def print_error_or_traceback(exception) -> None:
-    "Depending on DEBUG, print nice error or entire exception traceback"
+def print_error_or_traceback(exception, warning = False) -> None:
+    "Depending on DEBUG, print nice error/warning or entire exception traceback"
     if int(os.getenv("DEBUG", "0")) > 0:
-        print(Styles.red, end="", file=sys.stderr, flush=True)
+        print(Styles.yellow if warning else Styles.red, end="", file=sys.stderr, flush=True)
         traceback.print_exception(exception, file=sys.stderr)
         print(Styles.reset, end="", file=sys.stderr, flush=True)
     else:
         print_error(exception)
-
-
-def relax_validation(exception):
-    "takes pyxdg ValidationError and ignores some [stupid] failures"
-    ignore_lines = re.compile(
-        r"ValidationError in file| is not a registered |Invalid key: "
-    )
-    msgs = str(exception).splitlines()
-    return all(ignore_lines.search(line) for line in msgs)
 
 
 def self_name():
@@ -232,68 +227,109 @@ def arg_entry_or_executable(arg):
         # separate action
         if ":" in arg:
             entry_id, entry_action = arg.split(":", maxsplit=1)
-            if entry_action and not Val.da_id.search(entry_action):
+            if not entry_action:
+                entry_action = None
+            if entry_action and not Val.action_id.search(entry_action):
                 raise ValueError(f'Invalid desktop entry action "{entry_action}"')
         else:
-            entry_id, entry_action = arg, ""
-        if not Val.de_id.search(entry_id):
+            entry_id, entry_action = arg, None
+        if not Val.entry_id.search(entry_id):
             raise ValueError(f'Invalid desktop entry ID "{entry_id}"')
         return (entry_id, entry_action)
     else:
-        return False
+        return (None, None)
 
 
-def entry2dict(entry, entry_action=None) -> dict:
-    """
-    Extracts keys of interest from desktop entry object, returns dict.
-    Takes into account "action" for Name, Exec, Icon
-    """
-    entry_id = os.path.basename(entry.filename)
+def entry_action_keys(entry, entry_action=None):
+    "Extracts Name, Exec, Icon from entry with or without entry_action"
     out = {
-        "Comment": entry.getComment(),
-        "Exec": entry.getExec(),
-        "GenericName": entry.getGenericName(),
-        "Icon": entry.getIcon(),
         "Name": entry.getName(),
-        "DesktopNames": entry.get("DesktopNames", list=True),
-        "Actions": entry.getActions(),
-        "filename": entry.filename,
+        "Exec": entry.getExec(),
+        "Icon": entry.getIcon()
     }
-    print_debug("entry2dict initial", out)
-    action_msg = ""
-    if entry_action is not None:
-        action_msg = f' action "{entry_action}"'
-        action_group = f"Desktop Action {entry_action}"
-        if entry_action not in entry.getActions() or action_group not in entry.groups():
-            raise RuntimeError(
-                f'Deskop entry "{entry_id}" does not contain action "{entry_action}"'
-            )
-        entry.defaultGroup = action_group
-        out["Exec"] = entry.getExec()
-        out["Name"] = entry.getName()
-        # icon can fall back
-        if entry.getIcon():
-            out["Icon"] = entry.getIcon()
-        print_debug("entry2dict action", out)
-    if not out["Name"]:
-        raise RuntimeError(
-            f'Deskop entry "{entry_id}"{action_msg} does not have "Name"'
-        )
-    if not out["Exec"]:
-        raise RuntimeError(
-            f'Deskop entry "{entry_id}"{action_msg} does not have "Exec"'
-        )
-    if not which(shlex.split(out["Exec"])[0]):
-        raise RuntimeError(
-            f'Deskop entry "{entry_id}"{action_msg} Exec does not contain a reachable executable'
-        )
+    if not entry_action:
+        return out
+    if entry_action not in entry.getActions():
+        raise ValueError(f'entry "{entry.getFileName()}" does not have action "{entry_action}"')
+    entry.defaultGroup = f"Desktop Action {entry_action}"
+    out.update({
+        "Name": entry.getName(),
+        "Exec": entry.getExec(),
+    })
+    if entry.getIcon():
+        out.update({"Icon": entry.getIcon()})
     return out
 
 
-def find_de(subpath: str, search_entry_id: str = None):
+def check_entry_basic(entry, entry_action=None):
+    "Takes entry, performs basic checks, returns bool"
+    try:
+        entry.validate()
+    except ValidationError:
+        pass
+    errors = set()
+    for error in entry.errors:
+        if ' is not a registered ' in error:
+            continue
+        if error in ['Invalid key: ExecArg', 'Invalid key: DesktopNames']:
+            continue
+        errors.add(error)
+    if errors:
+        print_debug(f'entry {entry.getFileName()} failed validation: {", ".join(errors)}')
+        return False
+    if entry.getHidden():
+        print_debug(f'entry {entry.getFileName()} is hidden')
+        return False
+    if entry.hasKey('TryExec') and not entry.findTryExec():
+        print_debug(f'entry {entry.getFileName()} discarded by TryExec')
+        return False
+    if entry_action:
+        if entry_action not in entry.getActions():
+            print_debug(f'entry {entry.getFileName()} has no action {entry_action}')
+            return False
+        entry_action_group = f"Desktop Action {entry_action}"
+        if entry_action_group not in entry.groups():
+            print_debug(f'entry {entry.getFileName()} has no action group {entry_action_group}')
+            return False
+        entry_dict = entry_action_keys(entry, entry_action)
+        if 'Name' not in entry_dict or not entry_dict['Name']:
+            print_debug(f'entry {entry.getFileName()} action {entry_action} does not have Name')
+        if 'Exec' not in entry_dict or not entry_dict['Exec']:
+            print_debug(f'entry {entry.getFileName()} action {entry_action} does not have Exec')
+        entry_exec = entry_dict['Exec']
+    else:
+        if not entry.hasKey('Exec') or not entry.getExec():
+            print_debug(f'entry {entry.getFileName()} does not have Exec')
+            return False
+        entry_exec = entry.getExec()
+    if not which(shlex.split(entry_exec)[0]):
+        print_debug(f'entry {entry.getFileName()} Exec {entry_exec} executable not found')
+        return False
+
+    return True
+
+
+def check_entry_showin(entry):
+    "Takes entry, checks OnlyShowIn/NotShowIn against XDG_CURRENT_DESKTOP, returns bool"
+    xcd = set(sane_split(os.getenv("XDG_CURRENT_DESKTOP", ""), ":"))
+    osi = set(entry.getOnlyShowIn())
+    nsi = set(entry.getNotShowIn())
+    if osi and osi.isdisjoint(xcd):
+        print_debug(f'entry {entry.getFileName()} discarded by OnlyShowIn')
+        return False
+    if nsi and not nsi.isdisjoint(xcd):
+        print_debug(f'entry {entry.getFileName()} discarded by NotShowIn')
+        return False
+    return True
+
+
+def find_entries(subpath: str, match_entry_id: str = None, reject_ids: List[str] = None, reject_mtp: List = None, warnings: bool = False):
     """
-    Takes data hierarchy subpath and optional entry ID
-    returns list of tuples of [(entry_id, file path)]: single entry if ID is given
+    Takes data hierarchy subpath and optional args:
+    match_entry_id id,
+    reject_ids [id],
+    reject_mtp {path, mtime},
+    returns list of tuples of [(entry_id, file_path)]: single entry if ID is given
     or all of them if not
     """
     seen_ids = set()
@@ -304,77 +340,35 @@ def find_de(subpath: str, search_entry_id: str = None):
         for dirpath, dirnames, filenames in os.walk(data_dir, followlinks=True):
             for filename in filenames:
                 # get only valid files
-                if Val.de_id.search(filename):
+                if Val.entry_id.search(filename):
                     filepath = os.path.join(dirpath, filename)
+                    if reject_mtp and filepath in reject_mtp:
+                        # reject entry of specified path and mtime
+                        if os.path.getmtime(filepath) == reject_mtp[filepath]:
+                            print_debug(f"reject_mtp {filepath}")
+                            continue
                     # get proper entry id relative to data_dir with path delimiters replaced by '-'
                     check_entry_id = os.path.relpath(filepath, data_dir).replace(
                         "/", "-"
                     )
                     # if searching for particualr entry
-                    if search_entry_id:
+                    if match_entry_id:
                         # and it matches, return it
-                        if check_entry_id == search_entry_id:
+                        if check_entry_id == match_entry_id:
                             return [(check_entry_id, filepath)]
+                    # reject specified id
+                    elif reject_ids and check_entry_id in reject_ids:
+                        print_debug(f"reject_ids {check_entry_id} {filepath}")
+                        continue
                     # else add first encountered entry
                     elif check_entry_id not in seen_ids:
+                        print_debug(f"selected {check_entry_id} {filepath}")
                         results.append((check_entry_id, filepath))
                         seen_ids.add(check_entry_id)
     return results
 
 
-def get_de(subpath: str, search_entry_id: str = None, warnings: bool = True):
-    """
-    Takes data hierarchy subpath and optional entry ID
-    returns list of tuples of [(entry_id, DesktopEntry object or empty dict)]
-    single entry if ID is given or all of them if not
-    """
-
-    if search_entry_id and not Val.de_id.search(search_entry_id):
-        print_error(f'Invalid entry ID "{entry_id}"')
-        return []
-
-    print_debug(
-        f'searching for entry ID "{search_entry_id}" in {subpath} data hierarchy'
-    )
-    entry_paths = find_de(subpath, search_entry_id)
-
-    if not entry_paths:
-        return []
-
-    results = []
-    # parse entries
-    for entry_id, entry_path in entry_paths:
-        try:
-            entry = DesktopEntry(entry_path)
-        except Exception as caught_exception:
-            print_error_or_traceback(caught_exception)
-            continue
-
-        print_debug(entry)
-
-        # check for inaccessible executables or hidden entries
-        msgs: list = []
-        if entry.getHidden():
-            msgs.append("entry is hidden")
-        if not entry.getName:
-            msgs.append("entry is missing Name")
-        if (
-            (entry.getTryExec() and not entry.findTryExec())
-            or not entry.getExec()
-            or not which(shlex.split(entry.getExec())[0])  # type: ignore
-        ):
-            msgs.append("entry Exec has no reachable executable")
-        if msgs:
-            if warnings:
-                print_warning(f"Discarded {entry_id}: " + ", ".join(msgs))
-            continue
-
-        results.append((entry_id, entry))
-
-    return results
-
-
-def get_default_de():
+def get_default_comp_entry():
     "Gets compositor desktop entry ID from wayland-session-default-id file in config hierarchy"
     for cmd_cache_file in BaseDirectory.load_config_paths("wayland-session-default-id"):
         if os.path.isfile(cmd_cache_file):
@@ -390,7 +384,7 @@ def get_default_de():
     return ""
 
 
-def save_default_de(default):
+def save_default_comp_entry(default):
     "Gets saves compositor desktop entry ID from wayland-session-default-id file in config hierarchy"
     if "dry_run" not in args or not args.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
@@ -405,7 +399,7 @@ def save_default_de(default):
         print_ok(f"Would save default compositor ID: {default}")
 
 
-def select_de(default="", just_confirm=False):
+def select_comp_entry(default="", just_confirm=False):
     """
     Uses whiptail to select among "wayland-sessions" desktop entries.
     Takes a "default" to preselect, "just_confirm" flag to return a found default right away
@@ -420,12 +414,17 @@ def select_de(default="", just_confirm=False):
     choices_raw: List[tuple[str]] = []
     choices: List[str] = []
 
-    session_entries = get_de("wayland-sessions", warnings=False)
+    session_entries = find_entries("wayland-sessions", warnings=False)
     session_entries.sort()
 
-    # fill choces list with [Exec, Name], filtered
-    for entry_id, entry in session_entries:
-        if not entry:
+    # fill choces list with [entry_id, description, comment]
+    for entry_id, entry_path in session_entries:
+        try:
+           entry = DesktopEntry(entry_path)
+        except:
+            # just skip it
+            continue
+        if not check_entry_basic(entry):
             # just skip it
             continue
 
@@ -440,7 +439,7 @@ def select_de(default="", just_confirm=False):
         for action in entry.getActions():
             print_debug("parsing aciton", action)
             action_group: str = f"Desktop Action {action}"
-            if action_group not in entry.groups():
+            if not entry.hasGroup(action_group):
                 continue
 
             # switch to action group
@@ -1434,6 +1433,13 @@ def parse_args(custom_args=None):
         help="override the whole autogenerated unit name",
         default="",
     )
+    parsers["app"].add_argument(
+        "-T",
+        dest="terminal",
+        action="store_true",
+        help="launch app in a terminal",
+        default="",
+    )
 
     # check subcommand
     parsers["check"] = parsers["main_subparsers"].add_parser(
@@ -2290,8 +2296,7 @@ def gen_entry_args(entry, args, entry_action=None):
     # %k entry path
     # %i --icon getIcon() if getIcon()
 
-    entry_dict = entry2dict(entry, entry_action=entry_action)
-
+    entry_dict = entry_action_keys(entry, entry_action=entry_action)
     entry_argv = shlex.split(entry_dict["Exec"])
 
     entry_cmd, entry_args = entry_argv[0], entry_argv[1:]
@@ -2392,10 +2397,10 @@ def gen_entry_args(entry, args, entry_action=None):
                 print_debug(f"added {arg}, expand: {expand}, {entry_args}")
 
         elif entry_arg == "%c":
-            entry_args[idx + expand] = entry_dict["Name"]
+            entry_args[idx + expand] = entry.getName()
             print_debug(f"replaced, expand: {expand}. {entry_args}")
         elif entry_arg == "%k":
-            entry_args[idx + expand] = entry_dict["filename"]
+            entry_args[idx + expand] = entry.getFileName()
             print_debug(f"replaced, expand: {expand}. {entry_args}")
         elif entry_arg == "%i":
             if entry_dict["Icon"]:
@@ -2438,24 +2443,121 @@ def gen_entry_args(entry, args, entry_action=None):
     return (entry_cmd, entry_args)
 
 
+def check_terminal_entry(entry, entry_action, explicit):
+    "Takes entry, entry_action, expclicit flag, checks if is applicable terminal, returns bool"
+    # quick fail
+    try:
+        if 'TerminalEmulator' not in entry.getCategories():
+            return False
+    except:
+        return False
+    if not check_entry_basic(entry, entry_action):
+        return False
+    if not explicit and not check_entry_showin(entry):
+        return False
+    return True
+
+
+def find_terminal_entry():
+    "Finds default terminal entry, returns list of args"
+    terminal_entries = []
+    explicit = False
+    ## read configs, compose preferred terminal entry list
+    # iterate config dirs
+    for config_dir in BaseDirectory.xdg_config_dirs:
+        # iterate configs
+        for config_file in [
+            f"{desktop}-xdg-terminals.list"
+            for desktop in sane_split(os.getenv("XDG_CURRENT_DESKTOP", ""), ":")
+            if desktop
+        ] + ["xdg-terminals.list"]:
+            config_file = os.path.join(config_dir, config_file)
+            try:
+                with open(config_file, "r") as terminal_list:
+                    print_debug(f"reading {config_file}")
+                    for line in [line.strip() for line in terminal_list.readlines()]:
+                        if not line or line.startswith("#"):
+                            continue
+                        entry_id, entry_action = arg_entry_or_executable(line)
+                        if (
+                            entry_id
+                            and (entry_id, entry_action) not in terminal_entries
+                        ):
+                            print_debug(f"got terminal entry {line}")
+                            terminal_entries.append((entry_id, entry_action))
+                            explicit = True
+            except FileNotFoundError:
+                pass
+            except Exception as E:
+                print_error_or_traceback(E)
+
+    # process explicitly listed terminals
+    for entry_id, entry_action in terminal_entries:
+        # get specific entry
+        entries = find_entries("applications", entry_id, warnings=False)
+        if entries:
+            try:
+                entry = DesktopEntry(entries[0][1])
+            except:
+                continue
+            if check_terminal_entry(entry, entry_action, True):
+                if entry.hasKey('ExecArg'):
+                    exec_arg = entry.get('ExecArg')
+                elif entry.hasKey('X-ExecArg'):
+                    exec_arg = entry.get('X-ExecArg')
+                else:
+                    exec_arg = '-e'
+                return shlex.split(entry_action_keys(entry)['Exec']) + ([exec_arg] if exec_arg else [])
+            else:
+                continue
+
+    # process all apps, find applicable terminal
+    for entry_id, entry_path in find_entries("applications", None, warnings=False):
+        try:
+            entry = DesktopEntry(entry_path)
+        except:
+            continue
+        if (entry_id, None) not in terminal_entries and check_terminal_entry(entry, None, False):
+            if entry.hasKey('ExecArg'):
+                exec_arg = entry.get('ExecArg')
+            elif entry.hasKey('X-ExecArg'):
+                exec_arg = entry.get('X-ExecArg')
+            else:
+                exec_arg = '-e'
+            return shlex.split(entry_action_keys(entry)['Exec']) + ([exec_arg] if exec_arg else [])
+        else:
+            continue
+
+    raise RuntimeError("Could not find a Terminal Emulator application")
+
+
 def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=False):
     """
-    Exec given command or desktop entry via systemd-run in specific scope.
+    Exec given command or desktop entry via systemd-run in specific slice.
     Or fork and return subprocess object.
     """
 
+    global terminal_cmdline
+
     # detect desktop entry, update cmd, cmd_args, app_name
-    entry_id, entry_action = arg_entry_or_executable(cmd) or (None, None)
+    entry_id, entry_action = arg_entry_or_executable(cmd)
     if entry_id:
         print_debug("entry_id, entry_action:", entry_id, entry_action)
 
-        entries = get_de("applications", entry_id)
+        entries = find_entries("applications", entry_id)
 
         print_debug("got entrires", entries)
         if not entries:
-            raise FileNotFoundError(f'Could not find or parse deskop entry "{cmd}"')
+            raise FileNotFoundError(f'Could not find deskop entry "{cmd}"')
         else:
-            entry = entries[0][1]
+            entry = DesktopEntry(entries[0][1])
+            if not check_entry_basic(entry, entry_action):
+                raise RuntimeError(f"entry {entry.getFilename} is invalid")
+
+        # request terminal
+        if entry.getTerminal():
+            print_debug("entry requested a terminal")
+            args.terminal = True
 
         # get unlocalized entry name if no override
         if not app_name:
@@ -2557,6 +2659,9 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
                 f'Only ".{app_unit_type}" is supported as unit suffix for {app_unit_type} unit type'
             )
 
+    if args.terminal and not terminal_cmdline:
+        terminal_cmdline = find_terminal_entry()
+
     final_args = (
         "systemd-run",
         "--user",
@@ -2567,6 +2672,7 @@ def app(cmd, cmd_args, slice_name, app_unit_type, app_name, unit_name, fork=Fals
         unit_name,
         "-qGd",
         "--",
+        *(terminal_cmdline),
         cmd,
         *(cmd_args),
     )
@@ -2637,25 +2743,27 @@ def fill_wm_globals():
     wm_id_unit_string = systemd_escape(wm_id)
 
     # detect and parse desktop entry
-    entry_id, entry_action = arg_entry_or_executable(wm_id) or (None, None)
+    entry_id, entry_action = arg_entry_or_executable(wm_id)
     if entry_id:
         print_debug(f"Compositor ID is a desktop entry: {wm_id}")
 
         # parse entry
         try:
             # find and parse entry
-            entries = get_de("wayland-sessions", entry_id)
+            entries = find_entries("wayland-sessions", entry_id)
             if not entries:
-                raise FileNotFoundError(f'Could not find and parse entry "{wm_id}"')
+                raise FileNotFoundError(f'Could not find entry "{wm_id}"')
             else:
-                entry = entries[0][1]
+                entry = DesktopEntry(entries[0][1])
+                if not check_entry_basic(entry, entry_action):
+                    raise FileNotFoundError(f'Entry "{wm_id}" is invalid')
         except Exception as caught_exception:
             print_error_or_traceback(caught_exception)
             sys.exit(1)
 
         print_debug("entry", entry)
 
-        entry_dict = entry2dict(entry, entry_action=entry_action or None)
+        entry_dict = entry_action_keys(entry, entry_action=entry_action or None)
 
         # get Exec from entry as wm_cmdline
         wm_cmdline = shlex.split(entry_dict["Exec"])
@@ -2749,7 +2857,7 @@ def fill_wm_globals():
             else:
                 wm_desktop_names = (
                     sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
-                    + entry_dict.get("DesktopNames", [])
+                    + entry.get("DesktopNames", list=True)
                     + [wm_cmdline[0]]
                     + (
                         sane_split(entry_uwsm_args.desktop_names, ":")
@@ -2764,17 +2872,17 @@ def fill_wm_globals():
                 wm_name = args.wm_name
             elif entry_uwsm_args and entry_uwsm_args.wm_name:
                 wm_name = entry_uwsm_args.wm_name
-            elif entry_dict["Name"] and not entry_dict["GenericName"]:
+            elif entry_dict["Name"] and not entry.getGenericName():
                 wm_name = entry_dict["Name"]
-            elif entry_dict["Name"] and entry_dict["GenericName"]:
-                wm_name = f"{entry_dict['Name']} {entry_dict['GenericName']}"
+            elif entry_dict["Name"] and entry.getGenericName():
+                wm_name = f"{entry_dict['Name']} {entry.getGenericName()}"
 
             if args.wm_comment:
                 wm_description = args.wm_comment
             elif entry_uwsm_args and entry_uwsm_args.wm_comment:
                 wm_description = entry_uwsm_args.wm_comment
-            elif entry_dict["Comment"]:
-                wm_description = entry_dict["Comment"]
+            elif entry.getComment():
+                wm_description = entry.getComment()
 
     else:
         # compositor id is an executable
@@ -2879,6 +2987,7 @@ if __name__ == "__main__":
     wm_cli_name: str = ""
     wm_description: str = ""
     wm_cli_description: str = ""
+    terminal_cmdline: List[str] = []
 
     # get args and parsers (for help)
     args, parsers = parse_args()
@@ -2888,13 +2997,13 @@ if __name__ == "__main__":
     #### SELECT
     if args.mode == "select":
         try:
-            default_id = get_default_de()
-            select_wm_id = select_de(default_id)
+            default_id = get_default_comp_entry()
+            select_wm_id = select_comp_entry(default_id)
             if select_wm_id:
                 if select_wm_id == default_id:
                     print_normal(f"Default compositor ID unchanged: {select_wm_id}")
                 else:
-                    save_default_de(select_wm_id)
+                    save_default_comp_entry(select_wm_id)
                 sys.exit(0)
             else:
                 print_error("No compositor was selected")
@@ -2908,11 +3017,11 @@ if __name__ == "__main__":
         # Get ID from whiptail menu
         if args.wm_cmdline[0] in ["select", "default"]:
             try:
-                default_id = get_default_de()
-                select_wm_id = select_de(default_id, args.wm_cmdline[0] == "default")
+                default_id = get_default_comp_entry()
+                select_wm_id = select_comp_entry(default_id, args.wm_cmdline[0] == "default")
                 if select_wm_id:
                     if select_wm_id != default_id:
-                        save_default_de(select_wm_id)
+                        save_default_comp_entry(select_wm_id)
                     # update args.wm_cmdline in place
                     args.wm_cmdline = [select_wm_id]
                 else:
