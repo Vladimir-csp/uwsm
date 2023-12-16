@@ -12,7 +12,6 @@ Inspired by and uses some techniques from:
 """
 
 import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal, traceback
-from io import StringIO
 from urllib import parse as urlparse
 from typing import List, Type, IO, Any
 from xdg.DesktopEntry import DesktopEntry, which
@@ -244,8 +243,8 @@ def arg_entry_or_executable(arg):
         if not Val.entry_id.search(entry_id):
             raise ValueError(f'Invalid desktop entry ID "{entry_id}"')
         return (entry_id, entry_action)
-    else:
-        return (None, None)
+
+    return (None, None)
 
 
 def entry_action_keys(entry, entry_action=None):
@@ -402,7 +401,7 @@ def find_entries(
                         continue
 
                     # entry survived deduplication and rejections
-                    elif check_entry_id not in seen_ids:
+                    if check_entry_id not in seen_ids:
                         print_debug(f"selected {check_entry_id} {filepath}")
                         results.append((check_entry_id, filepath))
     return results
@@ -564,8 +563,35 @@ def select_comp_entry(default="", just_confirm=False):
     return sprc.stderr.strip() if sprc.returncode == 0 and sprc.stderr else ""
 
 
+def char2cesc(string: str) -> str:
+    "takes a string, returns c-style '\\xXX' sequence"
+    return "".join("\\x%02x" % b for b in bytes(string, "utf-8"))
+
+
+def simple_systemd_escape(string: str) -> str:
+    "Escapes simple strings by systemd rules"
+    out = ""
+    # escape '.' if first
+    if string.startswith("."):
+        out = out + char2cesc(".")
+        string = string[1:]
+    for idx, ch, ucp in ((i, c, ord(c)) for i, c in enumerate(string)):
+        # replace '/' with '-'
+        if ch == "/":
+            out = out + "-"
+        # append as is if ._0-9:A-Z
+        elif ucp in [46, 95] or 48 <= ucp <= 58 or 65 <= ucp <= 90 or 97 <= ucp <= 122:
+            out = out + ch
+        else:
+            out = out + char2cesc(ch)
+    return out
+
+
 def systemd_escape(strings, se_args: list = []) -> str:
-    "passes string(s) (string or list) through systemd-escape, optional se_args list of systemd-escape args"
+    """
+    passes string(s) (string or list) through systemd-escape,
+    optional se_args list of systemd-escape args
+    """
     if isinstance(strings, str):
         strings = [strings]
     sprc = subprocess.run(
@@ -644,7 +670,7 @@ def is_active(check_wm_id="", verbose=False):
     "Checks if generic or specific wm_id is in active or activating state, returns bool"
     if check_wm_id:
         # escape wm_id for systemd
-        check_wm_id_unit_string = systemd_escape(check_wm_id)
+        check_wm_id_unit_string = simple_systemd_escape(check_wm_id)
         check_unit = f"wayland-wm@{check_wm_id_unit_string}.service"
     else:
         check_unit = "wayland-wm@*.service"
@@ -2696,7 +2722,11 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
 
     # discard explicit -e or exec_arg for terminal
     # only if follwed by something, otherwise it will error out below
-    if args.terminal and [cmdline[0]] in (terminal_exec_arg, ['-e']) and len(cmdline) > 1:
+    if (
+        args.terminal
+        and [cmdline[0]] in (terminal_exec_arg, ["-e"])
+        and len(cmdline) > 1
+    ):
         print_debug(f"discarded explicit terminal exec arg {cmdline[0]}")
         cmdline = cmdline[1:]
 
@@ -2719,11 +2749,11 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
     if not unit_name:
         # use first XDG_CURRENT_DESKTOP as part of scope name
         # use app command as part of scope name
-        desktop_unit_substring, cmd_unit_substring = systemd_escape(
-            [
-                sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0],
-                app_name or os.path.basename(cmdline[0]),
-            ]
+        desktop_unit_substring = simple_systemd_escape(
+            sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0]
+        )
+        cmd_unit_substring = simple_systemd_escape(
+            app_name or os.path.basename(cmdline[0]),
         )
 
         ## cut unit name to fit unit name in 255 chars
@@ -2864,7 +2894,7 @@ def fill_wm_globals():
         sys.exit(1)
 
     # escape wm_id for systemd
-    wm_id_unit_string = systemd_escape(wm_id)
+    wm_id_unit_string = simple_systemd_escape(wm_id)
 
     # detect and parse desktop entry
     entry_id, entry_action = arg_entry_or_executable(wm_id)
