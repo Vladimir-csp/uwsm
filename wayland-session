@@ -256,7 +256,6 @@ def entry_action_keys(entry, entry_action=None):
         raise ValueError(
             f'entry "{entry.getFileName()}" does not have action "{entry_action}"'
         )
-    entry.defaultGroup = f"Desktop Action {entry_action}"
     out.update(
         {
             "Name": entry.getName(),
@@ -265,6 +264,8 @@ def entry_action_keys(entry, entry_action=None):
     )
     if entry.getIcon():
         out.update({"Icon": entry.getIcon()})
+    # restore default group
+    entry.defaultGroup = f"Desktop Entry"
     return out
 
 
@@ -1470,7 +1471,8 @@ def parse_args(custom_args=None):
     parsers["app"].add_argument(
         "cmdline",
         metavar="args",
-        nargs="+",
+        # allow empty cmdline if '-T' is given and comes before '--'
+        nargs="*" if [arg for arg in sys.argv if arg in ('-T', '--')][0:1] == ['-T'] else "+",
         help="executable or desktop entry, can be followed by arguments",
     )
     parsers["app"].add_argument(
@@ -1516,7 +1518,7 @@ def parse_args(custom_args=None):
         "-T",
         dest="terminal",
         action="store_true",
-        help="launch app in a terminal, or just a terminal if command is empty and double-terminated '-- --'",
+        help="launch app in a terminal, or just a terminal if command is empty",
     )
 
     # check subcommand
@@ -2525,8 +2527,8 @@ def check_terminal_entry(entry_path, entry_action, explicit):
     """
     Takes entry_path, entry_action, expclicit flag,
     checks if is applicable terminal, returns tuple of two lists:
-    (cmdline, [execarg]) or (None, None)
-    execarg is nested in a list for ease of use
+    (t_cmdline, [t_execarg], t_en_name) or (None, None, None)
+    t_execarg is nested in a list for ease of use
     """
     try:
         entry = DesktopEntry(entry_path)
@@ -2549,20 +2551,24 @@ def check_terminal_entry(entry_path, entry_action, explicit):
         print_debug("failed ShowIn checks")
         return (None, None)
 
-    cmdline = shlex.split(entry_action_keys(entry)["Exec"])
+    t_cmdline = shlex.split(entry_action_keys(entry, entry_action)["Exec"])
 
+    # can be explicitly empty or something, default is -e
     if entry.hasKey("ExecArg"):
-        execarg = entry.get("ExecArg")
+        t_execarg = entry.get("ExecArg")
     elif entry.hasKey("X-ExecArg"):
-        execarg = entry.get("X-ExecArg")
+        t_execarg = entry.get("X-ExecArg")
     else:
-        execarg = "-e"
+        t_execarg = "-e"
 
-    return (cmdline, [execarg] if execarg else [])
+    # unlocalized name from main section
+    t_en_name = entry.get("Name", locale=False)
+
+    return (t_cmdline, [t_execarg] if t_execarg else [], t_en_name)
 
 
 def find_terminal_entry():
-    "Finds default terminal entry, returns tuple with two lists: (cmdline, [execarg])"
+    "Finds default terminal entry, returns tuple with two lists and a string: (t_cmdline, t_execarg_list, t_en_name)"
     terminal_entries = []
     explicit = False
     ## read configs, compose preferred terminal entry list
@@ -2601,12 +2607,12 @@ def find_terminal_entry():
         # get specific entry
         entries = find_entries("applications", entry_id, warnings=False)
         if entries:
-            cmdline, execarg_list = check_terminal_entry(
+            t_cmdline, t_execarg_list, t_en_name = check_terminal_entry(
                 entries[0][1], entry_action, True
             )
-            if cmdline:
-                print_debug(f"{entry_id} gave {cmdline, execarg_list}")
-                return (cmdline, execarg_list)
+            if t_cmdline:
+                print_debug(f"{entry_id} gave {t_cmdline, t_execarg_list, t_en_name}")
+                return (t_cmdline, t_execarg_list, t_en_name)
             else:
                 continue
 
@@ -2618,10 +2624,10 @@ def find_terminal_entry():
             print_debug(f"already tried {entry_id} for terminal")
             continue
         print_debug(f"trying {entry_path} for a terminal")
-        cmdline, execarg_list = check_terminal_entry(entry_path, entry_action, True)
-        if cmdline:
-            print_debug(f"{entry_id} gave {cmdline, execarg_list}")
-            return (cmdline, execarg_list)
+        t_cmdline, t_execarg_list, t_en_name = check_terminal_entry(entry_path, entry_action, True)
+        if t_cmdline:
+            print_debug(f"{entry_id} gave {t_cmdline, t_execarg_list, t_en_name}")
+            return (t_cmdline, t_execarg_list, t_en_name)
         else:
             continue
 
@@ -2636,9 +2642,11 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
 
     global terminal_cmdline
     global terminal_execarg
+    global terminal_en_name
 
     # detect desktop entry, update cmdline, app_name
-    entry_id, entry_action = arg_entry_or_executable(cmdline[0])
+    # cmdline can be empty if terminal is requested with -T
+    entry_id, entry_action = arg_entry_or_executable(cmdline[0]) if cmdline else (None, None)
     if entry_id:
         print_debug("entry_id, entry_action:", entry_id, entry_action)
 
@@ -2728,21 +2736,21 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
     # terminal_cmdline, terminal_execarg are global, so generate only once
     # no matter how many times app() is called for forks
     if args.terminal and not terminal_cmdline:
-        terminal_cmdline, terminal_execarg = find_terminal_entry()
+        terminal_cmdline, terminal_execarg, terminal_en_name = find_terminal_entry()
 
     # discard explicit -e or execarg for terminal
-    # only if follwed by something, otherwise it will error out below
+    # only if follwed by something, otherwise it will error out on Command not found below
     if (
         args.terminal
-        and [cmdline[0]] in (terminal_execarg, ["-e"])
         and len(cmdline) > 1
+        and [cmdline[0]] in (terminal_execarg, ["-e"])
     ):
         print_debug(f"discarded explicit terminal exec arg {cmdline[0]}")
         cmdline = cmdline[1:]
 
-    # if just a terminal is requested via double termination
-    if args.terminal and cmdline == ["--"]:
-        app_name = terminal_cmdline[0]
+    # if -T is given and cmdline is empty or double terminated
+    if args.terminal and cmdline in ([], ["--"]):
+        app_name = terminal_en_name
         # cmdline should not be referenced until the end of this function,
         # where it will be starred into nothingness
         cmdline = []
@@ -2750,7 +2758,7 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
         terminal_execarg = []
 
     if cmdline and not which(cmdline[0]):
-        raise RuntimeError(f"Ccommand not found: {cmdline[0]}")
+        raise RuntimeError(f"Command not found: {cmdline[0]}")
 
     if slice_name == "a":
         slice_name = "app-graphical.slice"
@@ -3162,6 +3170,7 @@ if __name__ == "__main__":
     wm_cli_description: str = ""
     terminal_cmdline: List[str] = []
     terminal_execarg: List[str] = []
+    terminal_en_name: str = ""
 
     # get args and parsers (for help)
     args, parsers = parse_args()

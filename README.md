@@ -112,7 +112,7 @@ Example snippets for sway config for launching apps:
 
 Launch [proposed](https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/3) default terminal:
 
-`bindsym --to-code $mod+t exec exec wayland-session app -T -- --`
+`bindsym --to-code $mod+t exec exec wayland-session app -T`
 
 Fuzzel has a very handy launch-prefix option:
 
