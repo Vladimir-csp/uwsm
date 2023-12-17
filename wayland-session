@@ -2750,8 +2750,9 @@ def app(cmdline, slice_name, app_unit_type, app_name, unit_name, fork=False):
 
     # if -T is given and cmdline is empty or double terminated
     if args.terminal and cmdline in ([], ["--"]):
-        app_name = terminal_en_name
-        # cmdline should not be referenced until the end of this function,
+        if not app_name:
+            app_name = terminal_en_name
+        # cmdline contents should not be referenced until the end of this function,
         # where it will be starred into nothingness
         cmdline = []
         # removee exec arg
