@@ -1,0 +1,106 @@
+#!/bin/sh
+
+# Part of UWSM, but does not depend on it.
+# https://github.com/Vladimir-csp/uwsm
+# https://gitlab.freedesktop.org/Vladimir-csp/uwsm
+#
+# Control user services with dmenu-like menu.
+# Menu tool and options are selected from predefined profiles for:
+#   fuzzel wofi rofi tofi bemenu dmenu
+# If a single argument is given, it is interpreted as a preferred selection.
+# If more arguments are given, they are used as full menu commandline,
+#   the last argument is expected to be a prompt option (-p or analogous)
+
+if [ "$#" -le "1" ]; then
+	read -r dmenu_candidate <<- EOF
+		$(which "$@" fuzzel wofi rofi tofi bemenu dmenu)
+	EOF
+
+	case "${dmenu_candidate##*/}" in
+	fuzzel)
+		set -- fuzzel --dmenu -R --log-no-syslog --log-level=warning -p
+		;;
+	wofi)
+		set -- wofi --dmenu -p
+		;;
+	rofi)
+		set -- rofi -dmenu -p
+		;;
+	tofi)
+		set -- tofi --prompt-text
+		;;
+	bemenu)
+		set -- bemenu -p
+		;;
+	dmenu)
+		set -- dmenu -p
+		;;
+	* | '')
+		echo "Could not find a menu tool among:" "$@" fuzzel wofi rofi tofi bemenu dmenu >&2
+		exit 1
+		;;
+	esac
+else
+	if ! command -v "$1" > /dev/null; then
+		echo "Menu tool '$1' not found" >&2
+		exit 1
+	fi
+fi
+
+cancel_exit() {
+	echo Cancelled
+	exit 0
+}
+
+report() {
+	echo "Selected $1"
+}
+
+ACTIVE_SERVICES=''
+INACTIVE_SERVICES=''
+CURRENT_SERVICE=''
+CURRENT_STATE=''
+CURRENT_NAME=''
+N='
+'
+
+# get services, active or otherwise
+while IFS="=" read -r prop value; do
+	case "$prop" in
+	Id) CURRENT_SERVICE="${value}" ;;
+	ActiveState) CURRENT_STATE="${value}" ;;
+	Description) CURRENT_NAME="${value}" ;;
+	'' | END)
+		case "$CURRENT_STATE" in
+		activ*) ACTIVE_SERVICES="${ACTIVE_SERVICES}${ACTIVE_SERVICES:+$N}${CURRENT_NAME} (${CURRENT_STATE}) ${CURRENT_SERVICE}" ;;
+		*) INACTIVE_SERVICES="${INACTIVE_SERVICES}${INACTIVE_SERVICES:+$N}${CURRENT_NAME} (${CURRENT_STATE}) ${CURRENT_SERVICE}" ;;
+		esac
+		;;
+	esac
+done <<- EOF
+	$(systemctl --user show --type=service --all --no-pager --quiet --property=Id,ActiveState,Description)
+	END
+EOF
+
+# select service
+SERVICE=$(
+	echo "${ACTIVE_SERVICES}${ACTIVE_SERVICES:+$N}${INACTIVE_SERVICES}" | "$@" "Select Service: "
+) || cancel_exit
+SERVICE=${SERVICE##* }
+STATE=${SERVICE##* (}
+STATE=${STATE%%) *}
+
+report "$SERVICE"
+
+# get servie description
+DESCRIPTION=$(systemctl --user show --no-pager --quiet --property=Description $SERVICE)
+
+# select action
+ACTION=$(
+	printf '%s\n' start stop restart reload-or-restart reload reset-failed enable disable | "$@" "${DESCRIPTION#*=} (${STATE}): "
+) || cancel_exit
+
+report "$ACTION"
+
+# apply selected action
+exec systemctl --user "$ACTION" "$SERVICE"
