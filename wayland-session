@@ -612,7 +612,7 @@ def systemd_escape(strings, se_args: list = []) -> str:
     if isinstance(strings, str):
         strings = [strings]
     sprc = subprocess.run(
-        ["systemd-escape", "--", *se_args, *strings],
+        ["systemd-escape", *se_args, "--", *strings],
         text=True,
         capture_output=True,
         check=False,
@@ -680,7 +680,7 @@ def get_active_wm_id():
 
     active_id = sprc.stdout.strip()
 
-    return systemd_escape(active_id, ["--unescape", "--instance"])
+    return systemd_escape([active_id], se_args=["--unescape", "--instance"])
 
 
 def is_active(check_wm_id="", verbose=False):
@@ -1681,6 +1681,9 @@ def finalize(additional_vars=None):
             export_vars.append(var)
 
     wm_id = get_active_wm_id()
+    if not isinstance(wm_id, str) or not wm_id:
+        print_error("Finalization: Could not get ID of active Wayland session. If it is running, it will timeout in 10 seconds")
+        sys.exit(1)
 
     # append vars to cleanup file
     cleanup_file = os.path.join(
