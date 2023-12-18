@@ -292,9 +292,15 @@ def check_entry_basic(entry, entry_action=None):
         if " is not a registered " in error:
             continue
         if error in [
+            # for proposed xdg-terminal-exec
             "Invalid key: ExecArg",
-            "Invalid key: DesktopNames",
+            # accompanies unregistered categories
             "Missing main category",
+            # Used in wayland-sessions
+            "Invalid key: DesktopNames",
+            # New keys in spec not yet known by pyxdg
+            "Invalid key: DBusActivatable",
+            "Invalid key: SingleMainWindow",
         ]:
             continue
         errors.add(error)
@@ -398,9 +404,13 @@ def find_entries(
                     seen_ids.add(check_entry_id)
 
                     # if searching for a particualr entry and it matches, return it
-                    if match_entry_id and check_entry_id == match_entry_id:
-                        print_debug(f"matched {check_entry_id}")
-                        return [(check_entry_id, filepath)]
+                    if match_entry_id:
+                        if check_entry_id == match_entry_id:
+                            print_debug(f"matched {check_entry_id}")
+                            return [(check_entry_id, filepath)]
+                        else:
+                            print_debug("not matched")
+                            continue
 
                     # rejections
                     if (
