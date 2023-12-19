@@ -168,7 +168,8 @@ if int(os.getenv("DEBUG", "0")) > 0:
     from inspect import stack
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
-        print(f"DEBUG {stack()[1].function}\n", *what, "\nEND_DEBUG", **how, file=sys.stderr, flush=True)
+        dsep = "\n" if 'sep' not in how or "\n" not in how['sep'] else ''
+        print(f"DEBUG {stack()[1].function}{dsep}", *what, f"{dsep}END_DEBUG", **how, file=sys.stderr, flush=True)
         print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 else:
@@ -283,10 +284,11 @@ def check_entry_basic(entry, entry_action=None):
         pass
     errors = set()
     print_debug(
-        f'entry "{entry.getFileName()}"\n  errors:\n    '
-        + "\n    ".join(entry.errors)
-        + "\n  warnings:\n    "
-        + "\n    ".join(entry.warnings)
+        f'entry "{entry.getFileName()}"',
+        *(f"  err: {error}" for error in entry.errors),
+        *(f"  wrn: {warning}" for error in entry.warnings),
+        *(["  all clear"] if not entry.errors and not entry.warnings else []),
+        sep="\n"
     )
     # Be chill with some [stupid] errors
     for error in entry.errors:
@@ -307,7 +309,9 @@ def check_entry_basic(entry, entry_action=None):
         errors.add(error)
     if errors:
         print_debug(
-            f'entry {entry.getFileName()} failed validation: {", ".join(errors)}'
+            f'entry {entry.getFileName()} failed validation:',
+            *(f"  err: {error}" for error in errors),
+            sep="\n",
         )
         return False
     if entry.getHidden():
@@ -381,7 +385,8 @@ def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action
     """
     Takes entry_id, entry_path, match_entry_id, match_entry_action
     matches, performs basic checks if mached
-    returns ('return', entry) or ('drop', None)
+    returns ('return', entry) on success, ('drop', None) if not matched,
+    or raises RuntimeError on validation failure
     """
     # drop if not matched ID
     if entry_id != match_entry_id:
@@ -390,12 +395,10 @@ def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action
     try:
         entry = DesktopEntry(entry_path)
     except:
-        print_debug("failed to parse entry")
-        return ("drop", None)
+        raise RuntimeError(f'Failed to parse entry "{match_entry_id}" from "{entry_path}"')
 
     if not check_entry_basic(entry, match_entry_action):
-        print_debug("failed basic checks")
-        return ("drop", None)
+        raise RuntimeError(f'Entry "{match_entry_id}" from "{entry_path}" failed basic checks')
 
     print_debug("matched and checked")
     return ("return", entry)
