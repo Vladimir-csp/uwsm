@@ -18,7 +18,7 @@ Inspired by and uses some techniques from:
 
 import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal, traceback
 from urllib import parse as urlparse
-from typing import List, Type, IO, Any
+from typing import List, Type, IO, Any, Callable
 from xdg.DesktopEntry import DesktopEntry, which
 from xdg.Exceptions import ValidationError
 from xdg import BaseDirectory
@@ -363,72 +363,150 @@ def check_entry_showin(entry):
     return True
 
 
-def find_entries(
-    subpath: str,
-    match_entry_id: str = None,
-    reject_ids: List[str] = None,
-    reject_mtp: dict = None,
-    warnings: bool = False,
-):
+def entry_parser_session(entry_id, entry_path):
+    "parser for wayland-session entries, returns ('append', (entry_id, entry))"
+    try:
+        entry = DesktopEntry(entry_path)
+    except:
+        print_debug(f"failed parsing {entry_path}, skipping")
+        return ("drop", None)
+    if check_entry_basic(entry):
+        return ("append", (entry_id, entry))
+    else:
+        return ("drop", None)
+
+
+def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action):
     """
-    Takes data hierarchy subpath and optional args:
-    match_entry_id id,
-    reject_ids [id],
-    reject_mtp {path: mtime},
-    returns list of tuples of [(entry_id, file_path)]: single entry if ID is given
-    or all of them if not
+    Takes entry_id, entry_path, match_entry_id, match_entry_action
+    matches, performs basic checks if mached
+    returns ('return', entry) or ('drop', None)
+    """
+    # drop if not matched ID
+    if entry_id != match_entry_id:
+        print_debug("not an entry we are looking for")
+        return ("drop", None)
+    try:
+        entry = DesktopEntry(entry_path)
+    except:
+        print_debug("failed to parse entry")
+        return ("drop", None)
+
+    if not check_entry_basic(entry, match_entry_action):
+        print_debug("failed basic checks")
+        return ("drop", None)
+
+    print_debug("matched and checked")
+    return ("return", entry)
+
+
+def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
+    """
+    Takes entry_id, entry_path,
+    optionally takes entry_action and explicit_terminals list of tuples [(entry_id, entry_action)]
+    checks if is applicable terminal.
+    if explicit_terminals are given checks without DE checks, returns with action 'extend'
+    (for multiple actions, further sorting)
+      ('extend', [(entry, entry_id, entry_action)]) or ('drop', (None, None, None))
+    if no explicit_terminals, returns with action 'return'
+    (for first applicable entry)
+      ('return', (entry, entry_id, None)) or ('drop', (None, None, None))
+    """
+    # drop if not among explicitly listed IDs
+    if explicit_terminals and entry_id not in (i[0] for i in explicit_terminals):
+        print_debug("not an entry we are looking for")
+        return ("drop", (None, None, None))
+    try:
+        entry = DesktopEntry(entry_path)
+    except:
+        print_debug("failed to parse entry")
+        return ("drop", (None, None, None))
+
+    # quick fail
+    try:
+        if "TerminalEmulator" not in entry.getCategories():
+            print_debug("not a TerminalEmulator")
+            return ("drop", (None, None, None))
+    except:
+        print_debug("failed to get Categories")
+        return ("drop", (None, None, None))
+
+    # get requested actions for this entry ID
+    if explicit_terminals:
+        results = []
+        for entry_action in {i[1] for i in explicit_terminals if i[0] == entry_id}:
+            if check_entry_basic(entry, entry_action):
+                # if this is the top choice, return right away
+                if (entry_id, entry_action) == explicit_terminals[0]:
+                    print_debug(f"bingo")
+                    return ("return", (entry, entry_id, entry_action))
+                # otherwise, add to cart
+                results.append((entry, entry_id, entry_action))
+            else:
+                print_debug(f"action {entry_action} failed basic checks")
+        if results:
+            return ("extend", results)
+        return ("drop", (None, None, None))
+
+    # not explicit_terminals
+    if not check_entry_basic(entry, None):
+        print_debug("failed basic checks")
+        return ("drop", (None, None, None))
+    if not check_entry_showin(entry):
+        print_debug("failed ShowIn checks")
+        return ("drop", (None, None, None))
+
+    return ("return", (entry, entry_id, None))
+
+
+def find_entries(subpath: str, parser: Callable = None, parser_args: dict = {}):
+    """
+    Takes data hierarchy subpath and optional arg parser
+    If parser is callable, it is called for each found entry with (entry_id, entry_path)
+    Return is expected to be (action, data)
+    action: what to do with the data: append|extend|return|drop(or anything else)
+    By default returns list of tuples [(entry_id, entry_path)],
+    otherwise returns whatever parser tells in a list
     """
     # TODO: rewrite this to have pluggable validation functions to leverage os.walk being an iterator
     seen_ids = set()
     results = []
 
-    print_debug(f"searching {match_entry_id or 'any'} entries in {subpath}")
+    print_debug(f"searching entries in {subpath}")
     # iterate over data paths
     for data_dir in BaseDirectory.load_data_paths(subpath):
         # walk tree relative to data_dir
         for dirpath, dirnames, filenames in os.walk(data_dir, followlinks=True):
             for filename in filenames:
-                # get only valid files
-                if Val.entry_id.search(filename):
-                    filepath = os.path.join(dirpath, filename)
-                    # get proper entry id relative to data_dir with path delimiters replaced by '-'
-                    check_entry_id = os.path.relpath(filepath, data_dir).replace(
-                        "/", "-"
-                    )
-                    print_debug(f"considering {check_entry_id} {filepath}")
+                # fast crude rejection
+                if not filename.endswith(".desktop"):
+                    continue
 
-                    # id-based deduplication
-                    if check_entry_id in seen_ids:
-                        print_debug(f"already seen {check_entry_id}")
-                        continue
-                    seen_ids.add(check_entry_id)
+                entry_path = os.path.join(dirpath, filename)
+                # get proper entry id relative to data_dir with path delimiters replaced by '-'
+                entry_id = os.path.relpath(entry_path, data_dir).replace("/", "-")
+                # get only valid IDs
+                if not Val.entry_id.search(entry_id):
+                    continue
 
-                    # if searching for a particualr entry and it matches, return it
-                    if match_entry_id:
-                        if check_entry_id == match_entry_id:
-                            print_debug(f"matched {check_entry_id}")
-                            return [(check_entry_id, filepath)]
-                        else:
-                            print_debug("not matched")
-                            continue
+                # id-based deduplication
+                if entry_id in seen_ids:
+                    print_debug(f"already seen {entry_id}")
+                    continue
+                seen_ids.add(entry_id)
 
-                    # rejections
-                    if (
-                        reject_mtp
-                        and filepath in reject_mtp
-                        and os.path.getmtime(filepath) == reject_mtp[filepath]
-                    ):
-                        # reject entry of specified path and mtime
-                        print_debug(f"reject_mtp {filepath}")
-                        continue
+                print_debug(f"considering {entry_id} {entry_path}")
+                if callable(parser):
+                    action, data = parser(entry_id, entry_path, **parser_args)
+                else:
+                    action, data = "append", (entry_id, entry_path)
 
-                    if reject_ids and check_entry_id in reject_ids:
-                        print_debug(f"reject_ids {check_entry_id} {filepath}")
-                        continue
-
-                    # entry survived deduplication and rejections
-                    print_debug(f"appended {check_entry_id}")
-                    results.append((check_entry_id, filepath))
+                if action == "return":
+                    return [data]
+                if action == "append":
+                    results.append(data)
+                if action == "extend":
+                    results.extend(data)
 
     print_debug(results)
     return results
@@ -480,20 +558,10 @@ def select_comp_entry(default="", just_confirm=False):
     choices_raw: List[tuple[str]] = []
     choices: List[str] = []
 
-    session_entries = find_entries("wayland-sessions", warnings=False)
-    session_entries.sort()
-
     # fill choces list with [entry_id, description, comment]
-    for entry_id, entry_path in session_entries:
-        try:
-            entry = DesktopEntry(entry_path)
-        except:
-            # just skip it
-            continue
-        if not check_entry_basic(entry):
-            # just skip it
-            continue
-
+    for entry_id, entry in sorted(
+        find_entries("wayland-sessions", parser=entry_parser_session)
+    ):
         name: str = entry.getName()
         generic_name: str = entry.getGenericName()
         description: str = " ".join((n for n in (name, generic_name) if n))
@@ -1692,7 +1760,9 @@ def finalize(additional_vars=None):
 
     wm_id = get_active_wm_id()
     if not isinstance(wm_id, str) or not wm_id:
-        print_error("Finalization: Could not get ID of active Wayland session. If it is running, it will timeout in 10 seconds")
+        print_error(
+            "Finalization: Could not get ID of active Wayland session. If it is running, it will timeout in 10 seconds"
+        )
         sys.exit(1)
 
     # append vars to cleanup file
@@ -2553,37 +2623,8 @@ def gen_entry_args(entry, args, entry_action=None):
     return (entry_cmd, entry_args)
 
 
-def check_terminal_entry(entry_path, entry_action, explicit):
-    """
-    Takes entry_path, entry_action, expclicit flag,
-    checks if is applicable terminal, returns tuple of (entry object, entry_action) or (None, None):
-    """
-    try:
-        entry = DesktopEntry(entry_path)
-    except:
-        print_debug("failed to parse entry")
-        return (None, None)
-
-    # quick fail
-    try:
-        if "TerminalEmulator" not in entry.getCategories():
-            print_debug("not a TerminalEmulator")
-            return (None, None)
-    except:
-        print_debug("failed to get Categories")
-        return (None, None)
-    if not check_entry_basic(entry, entry_action):
-        print_debug("failed basic checks")
-        return (None, None)
-    if not explicit and not check_entry_showin(entry):
-        print_debug("failed ShowIn checks")
-        return (None, None)
-
-    return (entry, entry_action)
-
-
 def find_terminal_entry():
-    "Finds default terminal entry, returns tuple of (entry object, entry_action, entry_id) or (None, None, None)"
+    "Finds default terminal entry, returns tuple of (entry object, entry_id, entry_action) or (None, None, None)"
 
     terminal_entries = []
     explicit = False
@@ -2619,51 +2660,35 @@ def find_terminal_entry():
 
     print_debug("explicit terminal_entries", terminal_entries)
 
-    # process explicitly listed terminals
+    ## process explicitly listed terminals
+    found_terminal_entries = find_entries(
+        "applications",
+        parser=entry_parser_terminal,
+        parser_args={"explicit_terminals": terminal_entries},
+    )
+    print_debug(f"found {len(found_terminal_entries)} entries")
+    # find first match in found terminals
     for entry_id, entry_action in terminal_entries:
-        # get specific entry
-        entries = find_entries("applications", entry_id, warnings=False)
-        if entries:
-            terminal_entry, terminal_entry_action = check_terminal_entry(
-                entries[0][1], entry_action, True
-            )
-            if terminal_entry:
-                print_debug(f"found terminal {entry_id}:{terminal_entry_action}")
-                return (terminal_entry, terminal_entry_action, entry_id)
-            else:
-                continue
+        for (
+            terminal_entry,
+            terminal_entry_id,
+            terminal_entry_action,
+        ) in found_terminal_entries:
+            if (entry_id, entry_action) == (terminal_entry_id, terminal_entry_action):
+                print_debug(f"found terminal {entry_id}:{entry_action}")
+                return (terminal_entry, terminal_entry_id, terminal_entry_action)
 
     print_debug("no explicit terminals matched, starting terminal entry search")
 
-    # get a cache of rejected entries
-    global terminal_neg_cache
-
-    # if not terminal_neg_cache:
-    #    terminal_neg_cache = read_neg_cache(f"not-terminals")
-
     # process all apps, find applicable terminal
-    for entry_id, entry_path in find_entries(
-        "applications", reject_mtp=terminal_neg_cache, warnings=False
-    ):
-        if (entry_id, None) in terminal_entries:
-            print_debug(f"already tried {entry_id} for terminal")
-            continue
-        print_debug(f"trying {entry_path} for a terminal")
-        terminal_entry, terminal_entry_action = check_terminal_entry(
-            entry_path, None, True
-        )
-        if terminal_entry:
-            print_debug(f"found terminal {entry_id}")
-            # if terminal_neg_cache:
-            #    write_neg_cahce(f"not-terminals", terminal_neg_cache)
-            return (terminal_entry, terminal_entry_action, entry_id)
-        else:
-            # print_debug(f"updated neg cache for {entry_path}")
-            # terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
-            continue
+    found_terminal_entries = find_entries(
+        "applications", parser=entry_parser_terminal
+    )
+    if found_terminal_entries:
+        terminal_entry, terminal_entry_id, _ = found_terminal_entries[0]
+        print_debug(f"found terminal {terminal_entry_id}")
+        return (terminal_entry, terminal_entry_id, None)
 
-    # if terminal_neg_cache:
-    # write_neg_cahce(f"not-terminals", terminal_neg_cache)
     raise RuntimeError("Could not find a Terminal Emulator application")
 
 
@@ -2729,15 +2754,13 @@ def app(
     if entry_id:
         print_debug("entry_id, entry_action:", entry_id, entry_action)
 
-        entries = find_entries("applications", entry_id)
+        entries = find_entries("applications", parser=entry_parser_by_ids, parser_args={'match_entry_id': entry_id, 'match_entry_action': entry_action})
 
         print_debug("got entrires", entries)
         if not entries:
             raise FileNotFoundError(f'Could not find deskop entry "{cmdline[0]}"')
         else:
-            entry = DesktopEntry(entries[0][1])
-            if not check_entry_basic(entry, entry_action):
-                raise RuntimeError(f"entry {entry.getFileName()} is invalid")
+            entry = entries[0]
 
         # request terminal
         if entry.getTerminal():
@@ -2824,8 +2847,8 @@ def app(
         if not terminal_entry:
             (
                 terminal_entry,
-                terminal_entry_action,
                 terminal_entry_id,
+                terminal_entry_action,
             ) = find_terminal_entry()
 
         terminal_cmdline = shlex.split(
@@ -3042,19 +3065,12 @@ def fill_wm_globals():
     if entry_id:
         print_debug(f"Compositor ID is a desktop entry: {wm_id}")
 
-        # parse entry
-        try:
-            # find and parse entry
-            entries = find_entries("wayland-sessions", entry_id)
-            if not entries:
-                raise FileNotFoundError(f'Could not find entry "{wm_id}"')
-            else:
-                entry = DesktopEntry(entries[0][1])
-                if not check_entry_basic(entry, entry_action):
-                    raise FileNotFoundError(f'Entry "{wm_id}" is invalid')
-        except Exception as caught_exception:
-            print_error_or_traceback(caught_exception)
-            sys.exit(1)
+        # find and parse entry
+        entries = find_entries("wayland-sessions", parser=entry_parser_by_ids, parser_args={'match_entry_id': entry_id, 'match_entry_action': entry_action})
+        if not entries:
+            raise FileNotFoundError(f'Could not find entry "{wm_id}"')
+        else:
+            entry = entries[0]
 
         print_debug("entry", entry)
 
@@ -3083,7 +3099,7 @@ def fill_wm_globals():
                 print_debug("entry_uwsm_args", entry_uwsm_args)
 
                 # check for various incompatibilities
-                if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]):
+                if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]) != (None, None):
                     raise ValueError(
                         f'Entry "{wm_id}" uses {self_name()} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
                     )
