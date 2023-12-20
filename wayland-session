@@ -14,6 +14,8 @@ Inspired by and uses some techniques from:
  https://github.com/alebastr/sway-systemd
  https://github.com/swaywm/sway
  https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
+
+Special thanks to @skewballfox for help with python and pointing me to useful tools.
 """
 
 import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal, traceback
@@ -1418,7 +1420,7 @@ def parse_args(custom_args=None):
         metavar="name[:name...]",
         dest="desktop_names",
         default="",
-        help="names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point.",
+        help="names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point if no active session is running.",
     )
     parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
     parsers["wm_args_dn_exclusive"].add_argument(
@@ -3166,12 +3168,17 @@ def fill_wm_globals():
                 else:
                     # set exclusive desktop names
                     wm_desktop_names = sane_split(entry_uwsm_args.desktop_names, ":")
-            # prepend desktop names from entry and existing environment
-            # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP set by it from DesktopNames
+            # prepend desktop names from entry (and existing environment if there is no active session)
+            # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP
+            # set by it from DesktopNames
             # basically just throw stuff into wm_desktop_names, deduplication comes later
             else:
                 wm_desktop_names = (
-                    sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
+                    (
+                        sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
+                        if not is_active else
+                        []
+                    )
                     + entry.get("DesktopNames", list=True)
                     + [wm_cmdline[0]]
                     + (
