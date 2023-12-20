@@ -1348,6 +1348,7 @@ def parse_args(custom_args=None):
             dedent(
                 """
                 Universal Wayland Session Manager.
+                
                 Launches arbitrary wayland compositor via a set of systemd user units
                 to provide graphical user session with environment management,
                 XDG autostart support, scoped application launch helpers,
@@ -1368,11 +1369,11 @@ def parse_args(custom_args=None):
                 (See "{self_name()} finalize --help")
 
                 Startup can be integrated conditionally into shell profile
-                (See "{self_name()} check --help")
+                (See "{self_name()} check --help").
 
                 During startup at stage of "graphical-session-pre.target" environment is
                 sourced from shell profile and from files "wayland-session-env" and
-                "wayland-session-env-${{wm}}" in XDG config hierarchy
+                "wayland-session-env-${{compositor}}" in XDG config hierarchy
                 (in order of increasing importance). Delta will be exported to systemd and
                 dbus activation environments, and cleaned up when services are stopped.
 
@@ -1385,16 +1386,18 @@ def parse_args(custom_args=None):
                   background-graphical.slice
                   session-graphical.slice
 
-                And helper command to handle all the systemd-run invocations for you:
-                (See  "{self_name()} app --help", "man systemd.special", "man systemd-run"
+                And a helper command to handle all the systemd-run invocations for you:
+                (See "{self_name()} app --help", "man systemd.special", "man systemd-run"
 
                 If app launching is configured as recommended, you can put compositor itself in
-                session.slice (as recommended by man systemd.special) by setting:
+                session.slice (as recommended by man systemd.special) by adding "-S" to "start"
+                subcommand, or setting:
 
                   UWSM_USE_SESSION_SLICE=true
 
                 This var affects unit generation phase during start, Slice= parameter
-                of compositor services (best to export it in shell profile).
+                of compositor services (best to export it in shell profile before "{self_name()}",
+                or add to environment.d (see "man environment.d")).
                 """
             )
         ),
@@ -1407,7 +1410,7 @@ def parse_args(custom_args=None):
         required=True,
     )
 
-    # wm arguments for potential reuse via parents
+    # compositor arguments for potential reuse via parents
     parsers["wm_args"] = argparse.ArgumentParser(add_help=False)
     parsers["wm_args"].add_argument(
         "wm_cmdline",
@@ -1462,7 +1465,6 @@ def parse_args(custom_args=None):
             Invokes a whiptail menu to select a default session among desktop entries in
             wayland-sessions XDG data hierarchy. Writes to ${XDG_CONFIG_HOME}/wayland-session-default-id
             Nothing else is done.
-
             """
         ),
     )
@@ -1477,10 +1479,9 @@ def parse_args(custom_args=None):
             """
             During startup at stage of "graphical-session-pre.target" environment is
             sourced from shell profile and from files "wayland-session-env" and
-            "wayland-session-env-${wm}" in XDG config hierarchy
+            "wayland-session-env-${compositor}" in XDG config hierarchy
             (in order of increasing importance). Delta will be exported to systemd and
             dbus activation environments, and cleaned up when services are stopped.
-
             """
         ),
     )
@@ -1525,7 +1526,6 @@ def parse_args(custom_args=None):
             During shutdown at stage of stopping "graphical-session-pre.target"
             environment is cleaned up from systemd activation environment according
             to a list saved in ${XDG_RUNTIME_DIR}/env_names_for_cleanup_* files.
-
             """
         ),
     )
@@ -1535,7 +1535,7 @@ def parse_args(custom_args=None):
         metavar="wm,wm.desktop[:action]",
         default=False,
         dest="remove_units",
-        help="also remove units (all or only wm-specific)",
+        help="also remove units (all or only compositor-specific)",
     )
     parsers["stop"].add_argument(
         "-n", action="store_true", dest="dry_run", help="do not write or start anything"
@@ -1545,7 +1545,16 @@ def parse_args(custom_args=None):
     parsers["finalize"] = parsers["main_subparsers"].add_parser(
         "finalize",
         help="Signal successful compositor startup, export essential and optional variables",
-        description="For use inside compositor. Sends startup notification to systemd user manager. Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables (mentioned by name as arguments) to systemd user manager. Variables are also added to cleanup list for stop phase.",
+        description="For use inside compositor to export variables and signal successful startup.",
+        epilog=dedent(
+            """
+            Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables (mentioned by name as arguments) to systemd user manager.
+
+            Variables are also added to cleanup list for stop phase.
+
+            If all is well, sends startup notification to systemd user manager, so compositor unit is considered started and graphical-session.target can be declared reached.
+            """
+        ),
     )
     parsers["finalize"].add_argument(
         "env_names",
