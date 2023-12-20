@@ -286,7 +286,7 @@ def check_entry_basic(entry, entry_action=None):
     print_debug(
         f'entry "{entry.getFileName()}"',
         *(f"  err: {error}" for error in entry.errors),
-        *(f"  wrn: {warning}" for error in entry.warnings),
+        *(f"  wrn: {warning}" for warning in entry.warnings),
         *(["  all clear"] if not entry.errors and not entry.warnings else []),
         sep="\n"
     )
