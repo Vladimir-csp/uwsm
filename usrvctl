@@ -3,13 +3,44 @@
 # Part of UWSM, but does not depend on it.
 # https://github.com/Vladimir-csp/uwsm
 # https://gitlab.freedesktop.org/Vladimir-csp/uwsm
-#
-# Control user services with dmenu-like menu.
-# Menu tool and options are selected from predefined profiles for:
-#   fuzzel wofi rofi tofi bemenu dmenu
-# If a single argument is given, it is interpreted as a preferred selection.
-# If more arguments are given, they are used as full menu commandline,
-#   the last argument is expected to be a prompt option (-p or analogous)
+
+showhelp() {
+	while IFS='' read -r line; do
+		printf '%s\n' "$line"
+	done <<- EOH
+		Usage: ${0##*/} [-ah] [menu] [menu args ...]
+		
+		  menu		select menu tool (if without arguments)
+		  		or provide full menu command line
+		  		(must end with a prompt option: -p or analogous)
+		  -h|--help	show this help
+		  -a|--all	do not filter units
+		
+		Control user services and scopes with dmenu-like menu.
+		Menu tool and options are selected from predefined profiles for:
+		
+		  fuzzel
+		  wofi
+		  rofi
+		  tofi
+		  bemenu
+		  dmenu
+		
+		If just a single tool name is given, it is interpreted as a preferred selection.
+		If more arguments are given, they are used as full menu command line, so
+		are not limited to the predefined list.
+		Tthe last argument is expected to be a prompt option (-p or analogous)
+	EOH
+}
+
+ALL=''
+for arg in "$@"; do
+	case "$arg" in
+	-a | --all) ALL=1 ; shift ;;
+	-h | --help) showhelp ; exit 0 ;;
+	*) break ;;
+	esac
+done
 
 if [ "$#" -le "1" ]; then
 	read -r dmenu_candidate <<- EOF
@@ -56,51 +87,128 @@ report() {
 	echo "Selected $1"
 }
 
-ACTIVE_SERVICES=''
-INACTIVE_SERVICES=''
-CURRENT_SERVICE=''
-CURRENT_STATE=''
-CURRENT_NAME=''
+ACTIVE_UNITS=''
+INACTIVE_UNITS=''
+reset_current() {
+	C_UNIT=''
+	C_ACTIVE_STATE=''
+	C_FREEZER_STATE=''
+	C_STATE_MSG=''
+	C_CAN_FREEZE=''
+	C_NAME=''
+	C_SKIP=''
+}
+
 N='
 '
-
-# get services, active or otherwise
+reset_current
+# get services and scopes, active or otherwise
 while IFS="=" read -r prop value; do
 	case "$prop" in
-	Id) CURRENT_SERVICE="${value}" ;;
-	ActiveState) CURRENT_STATE="${value}" ;;
-	Description) CURRENT_NAME="${value}" ;;
-	'' | END)
-		case "$CURRENT_STATE" in
-		activ*) ACTIVE_SERVICES="${ACTIVE_SERVICES}${ACTIVE_SERVICES:+$N}${CURRENT_NAME} (${CURRENT_STATE}) ${CURRENT_SERVICE}" ;;
-		*) INACTIVE_SERVICES="${INACTIVE_SERVICES}${INACTIVE_SERVICES:+$N}${CURRENT_NAME} (${CURRENT_STATE}) ${CURRENT_SERVICE}" ;;
+	Id)
+		case "$value" in
+		wayland-wm@*.service | init.scope) C_SKIP=1 ;;
+		*) C_UNIT="${value}" ;;
 		esac
+		;;
+	Names)
+		case " $value " in
+		*' dbus.service '*)  C_SKIP=1 ;;
+		esac
+		;;
+	Description) C_NAME="${value}" ;;
+	ActiveState) C_ACTIVE_STATE="${value}" ;;
+	FreezerState) C_FREEZER_STATE="${value}" ;;
+	'' | END)
+		# skip if not grabbing
+		if [ -n "$ALL" ] || [ -z "$C_SKIP" ]; then
+			case "$C_FREEZER_STATE" in
+			frozen) C_STATE_MSG=frozen ;;
+			*) C_STATE_MSG="$C_ACTIVE_STATE" ;;
+			esac
+			case "$C_ACTIVE_STATE" in
+			activ*) ACTIVE_UNITS="${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${C_NAME} (${C_STATE_MSG}) ${C_UNIT}" ;;
+			*) INACTIVE_UNITS="${INACTIVE_UNITS}${INACTIVE_UNITS:+$N}${C_NAME} (${C_STATE_MSG}) ${C_UNIT}" ;;
+			esac
+		fi
+		reset_current
 		;;
 	esac
 done <<- EOF
-	$(systemctl --user show --type=service --all --no-pager --quiet --property=Id,ActiveState,Description)
+	$(systemctl --user show --type=service,scope --all --no-pager --quiet --property=Id,ActiveState,Description,Names)
 	END
 EOF
 
-# select service
-SERVICE=$(
-	echo "${ACTIVE_SERVICES}${ACTIVE_SERVICES:+$N}${INACTIVE_SERVICES}" | "$@" "Select Service: "
+# select unit
+UNIT=$(
+	echo "${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${INACTIVE_UNITS}" | "$@" "Select Service: "
 ) || cancel_exit
-SERVICE=${SERVICE##* }
-STATE=${SERVICE##* (}
+UNIT=${UNIT##* }
+STATE=${UNIT##* (}
 STATE=${STATE%%) *}
 
-report "$SERVICE"
+report "$UNIT"
 
-# get servie description
-DESCRIPTION=$(systemctl --user show --no-pager --quiet --property=Description $SERVICE)
+# get unit data
+while IFS="=" read -r prop value; do
+	case "$prop" in
+	Description) DESCRIPTION="$value" ;;
+	CanStart) CAN_START="$value" ;;
+	CanStop) CAN_STOP="$value" ;;
+	CanReload) CAN_RELOAD="$value" ;;
+	CanFreeze) CAN_FREEZE="$value" ;;
+	FreezerState) FREEZER_STATE="$value" ;;
+	ActiveState) ACTIVE_STATE="$value" ;;
+	esac
+done <<- EOF
+	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState $UNIT)
+EOF
+
+case "$UNIT" in
+*.service) UNIT_TYPE=service ;;
+*.scope) UNIT_TYPE=scope ;;
+esac
+
+# compose actions
+ACTIONS=''
+for ACTION in start stop restart reload reset-failed enable disable freeze thaw; do
+	case "${ACTION}++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}++" in
+	# skip various combinations
+	start+*type:scope+* | restart+*type:scope+* | reload+*type:scope+* | enable+*type:scope+* | disable+*type:scope+*) continue ;;
+	start+*as:activ* | start+*as:reloading+* | start+*cstart:no+*) continue ;;
+	stop+*as:failed+* | stop+*as:inactive+* | stop+*as:deactivating+* | stop+*cstop:no+*) continue ;;
+	# strictly restarting a stopped unit is valid, but exclude it anyway
+	restart+*as:failed+* | restart+*as:inactive+* | restart+*as:deactivating+*) continue ;;
+	reload+*as:failed+* | reload+*as:inactive+* | reload+*as:deactivating+* | reload+*creload:no+*) continue ;;
+	reset-failed+*as:[!f][!a][!i]*) continue ;;
+	freeze+*cfreeze:no+* | freeze+*fs:frozen+* | freeze+*as:failed+* | freeze+*as:inactive+* | freeze+*as:deactivating+*) continue ;;
+	thaw+*fs:[!f][!r][!o]*) continue ;;
+	# add action
+	*) ACTIONS="${ACTIONS}${ACTIONS:+ }${ACTION}"
+	esac
+done
 
 # select action
 ACTION=$(
-	printf '%s\n' start stop restart reload-or-restart reload reset-failed enable disable | "$@" "${DESCRIPTION#*=} (${STATE}): "
+	printf '%s\n' $ACTIONS | "$@" "${DESCRIPTION#*=} (${STATE}): "
 ) || cancel_exit
 
 report "$ACTION"
 
 # apply selected action
-exec systemctl --user "$ACTION" "$SERVICE"
+if command -v notify-send >/dev/null; then
+	RESULT=$(
+		systemctl --user "$ACTION" "$UNIT" 2>&1
+	)
+	RC="$?"
+	if [ "$RC" = "0" ]; then
+		AST=Success
+		URG=normal
+	else
+		AST="Failure ($RC)"
+		URG=critical
+	fi
+	exec notify-send -a "${1##*/}" -u "$URG" "$AST" "${ACTION} ${UNIT}${RESULT:+:$N}${RESULT}"
+else
+	exec systemctl --user "$ACTION" "$UNIT"
+fi
