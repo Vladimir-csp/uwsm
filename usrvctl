@@ -4,11 +4,13 @@
 # https://github.com/Vladimir-csp/uwsm
 # https://gitlab.freedesktop.org/Vladimir-csp/uwsm
 
+SELF="${0##*/}"
+
 showhelp() {
 	while IFS='' read -r line; do
 		printf '%s\n' "$line"
 	done <<- EOH
-		Usage: ${0##*/} [-ah] [menu] [menu args ...]
+		Usage: ${SELF} [-ah] [menu] [menu args ...]
 		
 		  menu		select menu tool (if without arguments)
 		  		or provide full menu command line
@@ -197,18 +199,22 @@ report "$ACTION"
 
 # apply selected action
 if command -v notify-send >/dev/null; then
-	RESULT=$(
-		systemctl --user "$ACTION" "$UNIT" 2>&1
+	# capture only stderr
+	ERR=$(
+		systemctl --user "$ACTION" "$UNIT" 2>&1 >/dev/null
 	)
 	RC="$?"
-	if [ "$RC" = "0" ]; then
-		AST=Success
+	if [ "$RC" = "0" ] && [ -z "$ERR" ]; then
+		AST="Success"
+		URG=normal
+	elif [ "$RC" = "0" ]; then
+		AST="Success (maybe)"
 		URG=normal
 	else
-		AST="Failure ($RC)"
+		AST="Failure (RC $RC)"
 		URG=critical
 	fi
-	exec notify-send -a "${1##*/}" -u "$URG" "$AST" "${ACTION} ${UNIT}${RESULT:+:$N}${RESULT}"
+	exec notify-send -a "$SELF" -u "$URG" "$AST" "${ACTION} ${UNIT}${ERR:+:$N}${ERR}"
 else
 	exec systemctl --user "$ACTION" "$UNIT"
 fi
