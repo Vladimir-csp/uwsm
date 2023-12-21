@@ -32,7 +32,7 @@ Systemd units are treated with hierarchy and universality in mind.
 </details>
 
 <details><summary>
-Compositor-specific behavior is adjustable by plugins. Currently included: sway, wayfire, labwc.
+Compositor-specific behavior is adjustable by plugins. Currently included: `sway`, `wayfire`, `labwc`, `Hyprland`.
 </summary>
 
 </details>
