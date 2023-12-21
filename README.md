@@ -256,8 +256,7 @@ is itself interrupted or terminated.
 To launch automatically after login on virtual console 1, if systemd is at `graphical.target`,
 add this to shell profile:
 
-    if wayland-session check may-start && wayland-session select
-    then
+    if wayland-session check may-start && wayland-session select; then
     	exec wayland-session start default
     fi
 
@@ -420,9 +419,9 @@ starts wayland session automatically upon login on tty1 if system is in `graphic
 unconditionally. Other conditions are a recommendation:
 
     MY_COMPOSITOR=sway
-    if [ "${0}" != "${0#-}" ] && \
-       [ "$XDG_VTNR" = "1" ] && \
-       systemctl is-active -q graphical.target && \
+    if [ "${0}" != "${0#-}" ] &&
+       [ "$XDG_VTNR" = "1" ] &&
+       systemctl is-active -q graphical.target &&
        ! systemctl --user is-active -q wayland-wm@*.service
     then
         wayland-session start -o ${MY_COMPOSITOR}

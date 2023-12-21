@@ -1799,7 +1799,7 @@ def finalize(additional_vars=None):
 
     # export vars
     print_normal(
-        "Exporting variables to systemd_user_manager:\n  " + "\n  ".join(export_vars)
+        "Exporting variables to systemd user manager:\n  " + "\n  ".join(export_vars)
     )
     sprc = subprocess.run(
         ["dbus-update-activation-environment", "--systemd", *(export_vars)],
@@ -2065,7 +2065,7 @@ def prepare_env_gen_sh(random_mark):
         	IFS=":"
         	for __CONFIG_DIR__ in $(get_all_config_dirs); do
         		IFS="${__OIFS__}"
-        		if type "in_each_config_dir_${__WM_BIN_ID__}" >/dev/null; then
+        		if type "in_each_config_dir_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         			"in_each_config_dir_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
         		else
         			in_each_config_dir "${__CONFIG_DIR__}" || return $?
@@ -2081,7 +2081,7 @@ def prepare_env_gen_sh(random_mark):
         	IFS=":"
         	for __CONFIG_DIR__ in $(reverse "$(get_all_config_dirs)"); do
         		IFS="${__OIFS__}"
-        		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" >/dev/null; then
+        		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
         		else
         			in_each_config_dir_reversed "${__CONFIG_DIR__}" || return $?
@@ -2094,7 +2094,7 @@ def prepare_env_gen_sh(random_mark):
 
         load_wm_env() {
         	# calls reverse config dir processing
-        	if type "process_config_dirs_reversed_${__WM_BIN_ID__}" >/dev/null; then
+        	if type "process_config_dirs_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         		"process_config_dirs_reversed_${__WM_BIN_ID__}" || return $?
         	else
         		process_config_dirs_reversed
@@ -2119,12 +2119,12 @@ def prepare_env_gen_sh(random_mark):
         export XDG_SESSION_TYPE="wayland"
 
         #### apply quirks
-        if type "quirks_${__WM_BIN_ID__}" >/dev/null; then
+        if type "quirks_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         	echo "Applying quirks for \"${__WM_BIN_ID__}\""
         	"quirks_${__WM_BIN_ID__}" || exit $?
         fi
 
-        if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null; then
+        if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         	"load_wm_env_${__WM_BIN_ID__}" || exit $?
         else
         	load_wm_env || exit $?

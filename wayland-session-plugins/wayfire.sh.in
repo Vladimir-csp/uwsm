@@ -1,5 +1,5 @@
 #!/bin/false
-# sourced uwsm environment preloader
+# sourced by uwsm environment preloader
 
 quirks_wayfire() {
 	WAYFIRE_LOCAL_CONFIG="${XDG_CONFIG_HOME}/wayfire.ini"
