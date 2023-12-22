@@ -11,23 +11,23 @@ showhelp() {
 		printf '%s\n' "$line"
 	done <<- EOH
 		Usage: ${SELF} [-ah] [menu] [menu args ...]
-		
-		  menu		select menu tool (if without arguments)
-		  		or provide full menu command line
-		  		(must end with a prompt option: -p or analogous)
-		  -h|--help	show this help
-		  -a|--all	do not filter units
-		
+
+		  menu       select menu tool (if without arguments)
+		             or provide full menu command line
+		             (must end with a prompt option: -p or analogous)
+		  -h|--help show this help
+		  -a|--all  do not filter units
+
 		Control user services and scopes with dmenu-like menu.
 		Menu tool and options are selected from predefined profiles for:
-		
+
 		  fuzzel
 		  wofi
 		  rofi
 		  tofi
 		  bemenu
 		  dmenu
-		
+
 		If just a single tool name is given, it is interpreted as a preferred selection.
 		If more arguments are given, they are used as full menu command line, so
 		are not limited to the predefined list.
@@ -38,8 +38,14 @@ showhelp() {
 ALL=''
 for arg in "$@"; do
 	case "$arg" in
-	-a | --all) ALL=1 ; shift ;;
-	-h | --help) showhelp ; exit 0 ;;
+	-a | --all)
+		ALL=1
+		shift
+		;;
+	-h | --help)
+		showhelp
+		exit 0
+		;;
 	*) break ;;
 	esac
 done
@@ -68,7 +74,7 @@ if [ "$#" -le "1" ]; then
 	dmenu)
 		set -- dmenu -p
 		;;
-	* | '')
+	'' | *)
 		echo "Could not find a menu tool among:" "$@" fuzzel wofi rofi tofi bemenu dmenu >&2
 		exit 1
 		;;
@@ -96,7 +102,6 @@ reset_current() {
 	C_ACTIVE_STATE=''
 	C_FREEZER_STATE=''
 	C_STATE_MSG=''
-	C_CAN_FREEZE=''
 	C_NAME=''
 	C_SKIP=''
 }
@@ -115,7 +120,7 @@ while IFS="=" read -r prop value; do
 		;;
 	Names)
 		case " $value " in
-		*' dbus.service '*)  C_SKIP=1 ;;
+		*' dbus.service '*) C_SKIP=1 ;;
 		esac
 		;;
 	Description) C_NAME="${value}" ;;
@@ -163,7 +168,7 @@ while IFS="=" read -r prop value; do
 	ActiveState) ACTIVE_STATE="$value" ;;
 	esac
 done <<- EOF
-	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState $UNIT)
+	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState "$UNIT")
 EOF
 
 case "$UNIT" in
@@ -186,35 +191,37 @@ for ACTION in start stop restart reload reset-failed enable disable freeze thaw;
 	freeze+*cfreeze:no+* | freeze+*fs:frozen+* | freeze+*as:failed+* | freeze+*as:inactive+* | freeze+*as:deactivating+*) continue ;;
 	thaw+*fs:[!f][!r][!o]*) continue ;;
 	# add action
-	*) ACTIONS="${ACTIONS}${ACTIONS:+ }${ACTION}"
+	*) ACTIONS="${ACTIONS}${ACTIONS:+ }${ACTION}" ;;
 	esac
 done
 
 # select action
 ACTION=$(
+	# shellcheck disable=SC2086
 	printf '%s\n' $ACTIONS | "$@" "${DESCRIPTION#*=} (${STATE}): "
 ) || cancel_exit
 
 report "$ACTION"
 
 # apply selected action
-if command -v notify-send >/dev/null; then
+if command -v notify-send > /dev/null; then
 	# capture only stderr
 	ERR=$(
-		systemctl --user "$ACTION" "$UNIT" 2>&1 >/dev/null
+		systemctl --user "$ACTION" "$UNIT" 2>&1 > /dev/null
 	)
 	RC="$?"
 	if [ "$RC" = "0" ] && [ -z "$ERR" ]; then
-		AST="Success"
+		AST="${ACTION} successful"
 		URG=normal
 	elif [ "$RC" = "0" ]; then
-		AST="Success (maybe)"
+		AST="${ACTION} probably successful"
 		URG=normal
 	else
-		AST="Failure (RC $RC)"
+		AST="${ACTION} failed (RC $RC)"
 		URG=critical
 	fi
-	exec notify-send -a "$SELF" -u "$URG" "$AST" "${ACTION} ${UNIT}${ERR:+:$N}${ERR}"
+	notify-send -a "$SELF" -u "$URG" "$AST" "${UNIT}${ERR:+:$N}${ERR}"
+	exit "$RC"
 else
 	exec systemctl --user "$ACTION" "$UNIT"
 fi
