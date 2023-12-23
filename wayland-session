@@ -166,12 +166,19 @@ def print_error(*what, **how):
 
 
 if int(os.getenv("DEBUG", "0")) > 0:
-
     from inspect import stack
+
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
-        dsep = "\n" if 'sep' not in how or "\n" not in how['sep'] else ''
-        print(f"DEBUG {stack()[1].function}{dsep}", *what, f"{dsep}END_DEBUG", **how, file=sys.stderr, flush=True)
+        dsep = "\n" if "sep" not in how or "\n" not in how["sep"] else ""
+        print(
+            f"DEBUG {stack()[1].function}{dsep}",
+            *what,
+            f"{dsep}END_DEBUG",
+            **how,
+            file=sys.stderr,
+            flush=True,
+        )
         print(Styles.reset, end="", file=sys.stderr, flush=True)
 
 else:
@@ -290,7 +297,7 @@ def check_entry_basic(entry, entry_action=None):
         *(f"  err: {error}" for error in entry.errors),
         *(f"  wrn: {warning}" for warning in entry.warnings),
         *(["  all clear"] if not entry.errors and not entry.warnings else []),
-        sep="\n"
+        sep="\n",
     )
     # Be chill with some [stupid] errors
     for error in entry.errors:
@@ -311,7 +318,7 @@ def check_entry_basic(entry, entry_action=None):
         errors.add(error)
     if errors:
         print_debug(
-            f'entry {entry.getFileName()} failed validation:',
+            f"entry {entry.getFileName()} failed validation:",
             *(f"  err: {error}" for error in errors),
             sep="\n",
         )
@@ -397,10 +404,14 @@ def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action
     try:
         entry = DesktopEntry(entry_path)
     except:
-        raise RuntimeError(f'Failed to parse entry "{match_entry_id}" from "{entry_path}"')
+        raise RuntimeError(
+            f'Failed to parse entry "{match_entry_id}" from "{entry_path}"'
+        )
 
     if not check_entry_basic(entry, match_entry_action):
-        raise RuntimeError(f'Entry "{match_entry_id}" from "{entry_path}" failed basic checks')
+        raise RuntimeError(
+            f'Entry "{match_entry_id}" from "{entry_path}" failed basic checks'
+        )
 
     print_debug("matched and checked")
     return ("return", entry)
@@ -2696,9 +2707,7 @@ def find_terminal_entry():
     print_debug("no explicit terminals matched, starting terminal entry search")
 
     # process all apps, find applicable terminal
-    found_terminal_entries = find_entries(
-        "applications", parser=entry_parser_terminal
-    )
+    found_terminal_entries = find_entries("applications", parser=entry_parser_terminal)
     if found_terminal_entries:
         terminal_entry, terminal_entry_id, _ = found_terminal_entries[0]
         print_debug(f"found terminal {terminal_entry_id}")
@@ -2769,7 +2778,14 @@ def app(
     if entry_id:
         print_debug("entry_id, entry_action:", entry_id, entry_action)
 
-        entries = find_entries("applications", parser=entry_parser_by_ids, parser_args={'match_entry_id': entry_id, 'match_entry_action': entry_action})
+        entries = find_entries(
+            "applications",
+            parser=entry_parser_by_ids,
+            parser_args={
+                "match_entry_id": entry_id,
+                "match_entry_action": entry_action,
+            },
+        )
 
         print_debug("got entrires", entries)
         if not entries:
@@ -3081,7 +3097,14 @@ def fill_wm_globals():
         print_debug(f"Compositor ID is a desktop entry: {wm_id}")
 
         # find and parse entry
-        entries = find_entries("wayland-sessions", parser=entry_parser_by_ids, parser_args={'match_entry_id': entry_id, 'match_entry_action': entry_action})
+        entries = find_entries(
+            "wayland-sessions",
+            parser=entry_parser_by_ids,
+            parser_args={
+                "match_entry_id": entry_id,
+                "match_entry_action": entry_action,
+            },
+        )
         if not entries:
             raise FileNotFoundError(f'Could not find entry "{wm_id}"')
         else:
@@ -3114,7 +3137,10 @@ def fill_wm_globals():
                 print_debug("entry_uwsm_args", entry_uwsm_args)
 
                 # check for various incompatibilities
-                if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]) != (None, None):
+                if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]) != (
+                    None,
+                    None,
+                ):
                     raise ValueError(
                         f'Entry "{wm_id}" uses {self_name()} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
                     )
@@ -3185,8 +3211,8 @@ def fill_wm_globals():
                 wm_desktop_names = (
                     (
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
-                        if not is_active else
-                        []
+                        if not is_active()
+                        else []
                     )
                     + entry.get("DesktopNames", list=True)
                     + [wm_cmdline[0]]
@@ -3197,6 +3223,7 @@ def fill_wm_globals():
                     )
                     + sane_split(args.desktop_names, ":")
                 )
+            print_debug("wm_desktop_names", wm_desktop_names)
 
             # fill name and description with fallbacks from: CLI, nested CLI, Entry
             if args.wm_name:
@@ -3216,7 +3243,8 @@ def fill_wm_globals():
                 wm_description = entry.getComment()
 
     else:
-        # compositor id is an executable
+        print_debug(f"Compositor ID is an executable: {wm_id}")
+
         # check exec
         if not which(wm_id):
             print_error(f'"{wm_id}" is not in PATH.')
@@ -3230,10 +3258,18 @@ def fill_wm_globals():
             if args.desktop_names_exclusive:
                 wm_desktop_names = sane_split(args.desktop_names, ":")
             else:
-                wm_desktop_names = [wm_cmdline[0]] + sane_split(args.desktop_names, ":")
+                wm_desktop_names = (
+                    (
+                        sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
+                        if not is_active()
+                        else []
+                    )
+                    + [wm_cmdline[0]]
+                    + sane_split(args.desktop_names, ":")
+                )
             wm_name = args.wm_name
             wm_description = args.wm_comment
-
+            print_debug("wm_desktop_names", wm_desktop_names)
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
     wm_cli_args = args.wm_cmdline[1:]
@@ -3376,7 +3412,7 @@ if __name__ == "__main__":
                  Selected compositor ID: {wm_id}
                            Command Line: {shlex.join(wm_cmdline)}
                        Plugin/binary ID: {wm_bin_id}
-                          Desktop Names: {':'.join(wm_desktop_names)}
+                  Initial Desktop Names: {':'.join(wm_desktop_names)}
                                    Name: {wm_name}
                             Description: {wm_description}
                 """
