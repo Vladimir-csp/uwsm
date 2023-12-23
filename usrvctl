@@ -178,7 +178,7 @@ esac
 
 # compose actions
 ACTIONS=''
-for ACTION in start stop restart reload reset-failed enable disable freeze thaw; do
+for ACTION in start stop reload restart reset-failed enable disable freeze thaw; do
 	case "${ACTION}++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}++" in
 	# skip various combinations
 	start+*type:scope+* | restart+*type:scope+* | reload+*type:scope+* | enable+*type:scope+* | disable+*type:scope+*) continue ;;
