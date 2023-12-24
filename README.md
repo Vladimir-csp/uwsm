@@ -1,13 +1,16 @@
 # Universal Wayland Session Manager
 
-Experimental tool that wraps any standalone Wayland compositor into a set of systemd units to
-provide graphical user session with environment management, XDG autostart support, clean shutdown.
+Provides graphical session with environment management, XDG autostart support, and clean shutdown by
+wrapping standalone Wayland compositors into a set of systemd units.
 
-WIP(ish). Use at your onw risk.
-
-The main structure of subcommands and features is more or less settled and will likely
+WIP(ish). The main structure of subcommands and features is more or less settled and will likely
 not receive any drastic changes unless some illuminative idea comes by.
 Nonetheless, keep an eye for commits with `[Breaking]` messages.
+
+One pending major change is changing `wayland-session` name to `uwsm` that will be done in 0.12.
+Should have done it much earlier, but the name stuck from times when it was not clear how many
+major executables UWSM would consist of. It can be properly installed by the new name already,
+see related installation [section](#1-executables-and-plugins).
 
 ## Concepts and features
 
@@ -105,11 +108,21 @@ Provides helpers for various operations.
 
 ### 1. Executables and plugins
 
-Put `wayland-session` executable somewhere in `$PATH`.
+Try `install.sh` (see `--help`).
+
+Or to do it manually:
+
+Put `wayland-session` executable somewhere in `$PATH` (should also be searchable by systemd user manager).
+
+- The executable can be renamed, and **it affects plugin dir and config file names (!)**, also log identifiers.
+- Executable name does **not** affect unit names, since `wayland-`, `wayland-session-` are valid systemd drop-in globs.
 
 Put `wayland-session-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
+as `${executable}-plugins` (corresponding to the executable above).
 
-Optional `usrvctl` tool for managing user services with dmenu-style menus can also be put in `$PATH`.
+The rest of the manual will refer to default `wayland-session` name.
+
+Optional `uuctl` tool for managing user units (services and scopes) with dmenu-style menus can also be put in `$PATH`.
 
 ### 2. Vars set by compositor and startup notification
 

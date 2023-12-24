@@ -20,7 +20,7 @@ Special thanks to @skewballfox for help with python and pointing me to useful to
 
 import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal, traceback
 from urllib import parse as urlparse
-from typing import List, Type, IO, Any, Callable
+from typing import List, IO, Any, Callable
 from xdg.DesktopEntry import DesktopEntry, which
 from xdg.Exceptions import ValidationError
 from xdg import BaseDirectory
@@ -95,7 +95,7 @@ def dedent(data: str) -> str:
     return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
 
 
-def wrap_pgs(data: str, maxwidth: int = 0) -> str:
+def wrap_pgs(data: str, maxwidth: int = None) -> str:
     """
     Splits paragrpaphs by "\n\n", applies wrap of no more than maxwidth to each non-indented one
     If maxwidth == 0, just rejoins each non-indented paragraph into single line
@@ -105,7 +105,7 @@ def wrap_pgs(data: str, maxwidth: int = 0) -> str:
     except:
         # default for not being in interactive terminal
         width = 80
-    if maxwidth < width:
+    if maxwidth is not None and maxwidth < width:
         width = maxwidth
     paragraphs = data.split("\n\n")
     for idx, paragraph in enumerate(paragraphs):
@@ -184,6 +184,7 @@ if int(os.getenv("DEBUG", "0")) > 0:
 else:
 
     def print_debug(*what, **how):
+        "Does nothing"
         pass
 
 
@@ -281,7 +282,7 @@ def entry_action_keys(entry, entry_action=None):
     if entry.getIcon():
         out.update({"Icon": entry.getIcon()})
     # restore default group
-    entry.defaultGroup = f"Desktop Entry"
+    entry.defaultGroup = "Desktop Entry"
     return out
 
 
@@ -378,7 +379,7 @@ def check_entry_showin(entry):
 
 
 def entry_parser_session(entry_id, entry_path):
-    "parser for wayland-session entries, returns ('append', (entry_id, entry))"
+    "parser for wayland-sessions entries, returns ('append', (entry_id, entry))"
     try:
         entry = DesktopEntry(entry_path)
     except:
@@ -386,8 +387,7 @@ def entry_parser_session(entry_id, entry_path):
         return ("drop", None)
     if check_entry_basic(entry):
         return ("append", (entry_id, entry))
-    else:
-        return ("drop", None)
+    return ("drop", None)
 
 
 def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action):
@@ -455,7 +455,7 @@ def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
             if check_entry_basic(entry, entry_action):
                 # if this is the top choice, return right away
                 if (entry_id, entry_action) == explicit_terminals[0]:
-                    print_debug(f"bingo")
+                    print_debug("bingo")
                     return ("return", (entry, entry_id, entry_action))
                 # otherwise, add to cart
                 results.append((entry, entry_id, entry_action))
@@ -485,7 +485,6 @@ def find_entries(subpath: str, parser: Callable = None, parser_args: dict = {}):
     By default returns list of tuples [(entry_id, entry_path)],
     otherwise returns whatever parser tells in a list
     """
-    # TODO: rewrite this to have pluggable validation functions to leverage os.walk being an iterator
     seen_ids = set()
     results = []
 
@@ -493,7 +492,7 @@ def find_entries(subpath: str, parser: Callable = None, parser_args: dict = {}):
     # iterate over data paths
     for data_dir in BaseDirectory.load_data_paths(subpath):
         # walk tree relative to data_dir
-        for dirpath, dirnames, filenames in os.walk(data_dir, followlinks=True):
+        for dirpath, _, filenames in os.walk(data_dir, followlinks=True):
             for filename in filenames:
                 # fast crude rejection
                 if not filename.endswith(".desktop"):
@@ -530,8 +529,8 @@ def find_entries(subpath: str, parser: Callable = None, parser_args: dict = {}):
 
 
 def get_default_comp_entry():
-    "Gets compositor desktop entry ID from wayland-session-default-id file in config hierarchy"
-    for cmd_cache_file in BaseDirectory.load_config_paths("wayland-session-default-id"):
+    "Gets compositor desktop entry ID from {self_name()}-default-id file in config hierarchy"
+    for cmd_cache_file in BaseDirectory.load_config_paths(f"{self_name()}-default-id"):
         if os.path.isfile(cmd_cache_file):
             try:
                 with open(cmd_cache_file, "r", encoding="UTF-8") as cmd_cache_file:
@@ -546,12 +545,12 @@ def get_default_comp_entry():
 
 
 def save_default_comp_entry(default):
-    "Gets saves compositor desktop entry ID from wayland-session-default-id file in config hierarchy"
+    "Gets saves compositor desktop entry ID from {self_name()}-default-id file in config hierarchy"
     if "dry_run" not in args or not args.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
             os.mkdir(BaseDirectory.xdg_config_home)
         config = os.path.join(
-            BaseDirectory.xdg_config_home, "wayland-session-default-id"
+            BaseDirectory.xdg_config_home, f"{self_name()}-default-id"
         )
         with open(config, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
@@ -571,7 +570,6 @@ def select_comp_entry(default="", just_confirm=False):
             '"whiptail" is not in PATH, "select" and "default" are not supported'
         )
 
-    session_entries = []
     choices_raw: List[tuple[str]] = []
     choices: List[str] = []
 
@@ -687,13 +685,14 @@ def simple_systemd_escape(string: str) -> str:
     if string.startswith("."):
         out = out + char2cesc(".")
         string = string[1:]
-    for idx, ch, ucp in ((i, c, ord(c)) for i, c in enumerate(string)):
+    for ch, ucp in ((c, ord(c)) for c in string):
         # replace '/' with '-'
         if ch == "/":
             out = out + "-"
         # append as is if ._0-9:A-Z
         elif ucp in [46, 95] or 48 <= ucp <= 58 or 65 <= ucp <= 90 or 97 <= ucp <= 122:
             out = out + ch
+        # append c-style escape
         else:
             out = out + char2cesc(ch)
     return out
@@ -779,14 +778,14 @@ def get_active_wm_id():
 
 
 def is_active(check_wm_id="", verbose=False):
-    "Checks if generic or specific wm_id is in active or activating state, returns bool"
+    "Checks if graphical.target or specific wm_id is in active or activating state, returns bool"
+    check_units_generic = ["graphical-session-pre.target", "graphical-session.target", "wayland-wm@*.service"]
     if check_wm_id:
         # escape wm_id for systemd
         check_wm_id_unit_string = simple_systemd_escape(check_wm_id)
-        check_unit = f"wayland-wm@{check_wm_id_unit_string}.service"
+        check_units = [f"wayland-wm@{check_wm_id_unit_string}.service"]
     else:
-        check_unit = "wayland-wm@*.service"
-    check_unit_generic = "wayland-wm@*.service"
+        check_units = check_units_generic
 
     sprc = subprocess.run(
         [
@@ -797,7 +796,7 @@ def is_active(check_wm_id="", verbose=False):
             "-q",
             "--full",
             "--plain",
-            check_unit,
+            *check_units,
         ],
         text=True,
         capture_output=True,
@@ -817,6 +816,7 @@ def is_active(check_wm_id="", verbose=False):
                 print_error(sprc.stderr.strip())
         return True
 
+    # just show generic check if above came empty and in verbose mode
     if verbose:
         sprc = subprocess.run(
             [
@@ -827,7 +827,7 @@ def is_active(check_wm_id="", verbose=False):
                 "-q",
                 "--full",
                 "--plain",
-                check_unit_generic,
+                *check_units_generic,
             ],
             text=True,
             capture_output=True,
@@ -839,8 +839,8 @@ def is_active(check_wm_id="", verbose=False):
             print_normal(sprc.stdout.strip())
         if sprc.stderr.strip():
             print_error(sprc.stderr.strip())
-        if check_unit != check_unit_generic:
-            print_normal(f'"{check_unit}" is not active')
+        if check_units != check_units_generic:
+            print_normal(f'unit{"s" if len(check_units) > 1 else ""} {check_units} {"are" if len(check_units) > 1 else "is"} not active')
 
     return False
 
@@ -1316,9 +1316,9 @@ def remove_units(only=None) -> None:
     check_dir, _ = get_unit_path("")
     unit_files = []
 
-    for dir, _, files in sorted(os.walk(check_dir)):
-        for file in sorted(files):
-            file_path = os.path.join(dir, file)
+    for directory, _, files in sorted(os.walk(check_dir)):
+        for file_name in sorted(files):
+            file_path = os.path.join(directory, file_name)
             if not os.path.isfile(file_path):
                 print_debug("skipping, not a file:", file_path)
                 continue
@@ -1337,9 +1337,8 @@ def remove_units(only=None) -> None:
             except:
                 pass
 
-    for file in unit_files:
-        remove_unit(file)
-    return
+    for file_path in unit_files:
+        remove_unit(file_path)
 
 
 def parse_args(custom_args=None):
@@ -1383,8 +1382,8 @@ def parse_args(custom_args=None):
                 (See "{self_name()} check --help").
 
                 During startup at stage of "graphical-session-pre.target" environment is
-                sourced from shell profile and from files "wayland-session-env" and
-                "wayland-session-env-${{compositor}}" in XDG config hierarchy
+                sourced from shell profile and from files "{self_name()}-env" and
+                "{self_name()}-env-${{compositor}}" in XDG config hierarchy
                 (in order of increasing importance). Delta will be exported to systemd and
                 dbus activation environments, and cleaned up when services are stopped.
 
@@ -1472,9 +1471,9 @@ def parse_args(custom_args=None):
         help="Select default compositor entry",
         description="Invokes whiptail menu for selecting wayland-sessions desktop entries.",
         epilog=dedent(
-            """
+            f"""
             Invokes a whiptail menu to select a default session among desktop entries in
-            wayland-sessions XDG data hierarchy. Writes to ${XDG_CONFIG_HOME}/wayland-session-default-id
+            wayland-sessions XDG data hierarchy. Writes to ${{XDG_CONFIG_HOME}}/{self_name()}-default-id
             Nothing else is done.
             """
         ),
@@ -1487,10 +1486,10 @@ def parse_args(custom_args=None):
         description="Generates units for given compositor command line or desktop entry and starts compositor.",
         parents=[parsers["wm_args"]],
         epilog=dedent(
-            """
+            f"""
             During startup at stage of "graphical-session-pre.target" environment is
-            sourced from shell profile and from files "wayland-session-env" and
-            "wayland-session-env-${compositor}" in XDG config hierarchy
+            sourced from shell profile and from files "{self_name()}-env" and
+            "{self_name()}-env-${{compositor}}" in XDG config hierarchy
             (in order of increasing importance). Delta will be exported to systemd and
             dbus activation environments, and cleaned up when services are stopped.
             """
@@ -1668,7 +1667,7 @@ def parse_args(custom_args=None):
     parsers["is_active"] = parsers["check_subparsers"].add_parser(
         "is-active",
         help="checks for active compositor",
-        description="Checks for any or specific compositor in active or activating state",
+        description="Checks for specific compositor or graphical-session*.target in general in active or activating state",
     )
     parsers["is_active"].add_argument(
         "wm",
@@ -1689,8 +1688,8 @@ def parse_args(custom_args=None):
                 f"""
                 Conditions:
                   Running from login shell
-                  No wayland session is running
                   System is at graphical.target
+                  User graphical-session*.target are not yet active
                   Foreground VT is among allowed (default: 1)
 
                 To integrate startup into shell profile, add:
@@ -1867,7 +1866,7 @@ def get_systemd_varnames():
     return {v.split("=")[0] for v in sprc.stdout.splitlines()}
 
 
-def get_fg_vt(verbose: bool = False):
+def get_fg_vt():
     "Returns number of foreground VT or None"
     try:
         with open(
@@ -1980,6 +1979,7 @@ def prepare_env_gen_sh(random_mark):
     # vars for use in plugins
     shell_definitions = dedent(
         f"""
+        __SELF_NAME__={shlex.quote(self_name())}
         __WM_ID__={shlex.quote(wm_id)}
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
@@ -1990,7 +1990,7 @@ def prepare_env_gen_sh(random_mark):
     )
 
     # bake plugin loading into shell code
-    shell_plugins = load_lib_paths(f"wayland-session-plugins/{wm_bin_id}.sh.in")
+    shell_plugins = load_lib_paths(f"{self_name()}-plugins/{wm_bin_id}.sh.in")
     shell_plugins_load = []
     for plugin in shell_plugins:
         shell_plugins_load.append(
@@ -2055,10 +2055,10 @@ def prepare_env_gen_sh(random_mark):
         	__ENV_FILES__=''
         	for __DNLC__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
         		IFS="${__OIFS__}"
-        		__ENV_FILES__="wayland-session-env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
+        		__ENV_FILES__="${__SELF_NAME__}-env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
         	done
         	# add common env file at the beginning
-        	__ENV_FILES__="wayland-session-env${__ENV_FILES__:+:}${__ENV_FILES__}"
+        	__ENV_FILES__="${__SELF_NAME__}-env${__ENV_FILES__:+:}${__ENV_FILES__}"
         	unset __DNLC__
 
         	# load env file sequence from this config dir rung
@@ -2653,7 +2653,6 @@ def find_terminal_entry():
     "Finds default terminal entry, returns tuple of (entry object, entry_id, entry_action) or (None, None, None)"
 
     terminal_entries = []
-    explicit = False
 
     ## read configs, compose preferred terminal entry list
     # iterate config dirs
@@ -2666,7 +2665,7 @@ def find_terminal_entry():
         ] + ["xdg-terminals.list"]:
             config_file = os.path.join(config_dir, config_file)
             try:
-                with open(config_file, "r") as terminal_list:
+                with open(config_file, "r", encoding="UTF-8") as terminal_list:
                     print_debug(f"reading {config_file}")
                     for line in [line.strip() for line in terminal_list.readlines()]:
                         if not line or line.startswith("#"):
@@ -2678,7 +2677,6 @@ def find_terminal_entry():
                         ):
                             print_debug(f"got terminal entry {line}")
                             terminal_entries.append((entry_id, entry_action))
-                            explicit = True
             except FileNotFoundError:
                 pass
             except Exception as E:
@@ -2723,7 +2721,7 @@ def read_neg_cache(name: str) -> dict:
     if os.path.isfile(neg_cache_path):
         print_debug(f"reading cache {neg_cache_path}")
         try:
-            with open(neg_cache_path, "r") as neg_cache_file:
+            with open(neg_cache_path, "r", encoding="UTF-8") as neg_cache_file:
                 for line in neg_cache_file.readlines():
                     path, mtime = line.strip().split(";")
                     out.update({path: float(mtime)})
@@ -2743,7 +2741,7 @@ def write_neg_cahce(name: str, data: dict):
     try:
         if not os.path.isdir(BaseDirectory.xdg_cache_home):
             os.mkdir(BaseDirectory.xdg_cache_home)
-        with open(neg_cache_path, "w") as neg_cache_file:
+        with open(neg_cache_path, "w", encoding="UTF-8") as neg_cache_file:
             for path, mtime in data.items():
                 neg_cache_file.write(f"{path};{mtime}\n")
     except Exception as E:
@@ -2769,6 +2767,7 @@ def app(
 
     global terminal_entry
     global terminal_entry_action
+    global terminal_entry_id
 
     # detect desktop entry, update cmdline, app_name
     # cmdline can be empty if terminal is requested with -T
@@ -2790,8 +2789,8 @@ def app(
         print_debug("got entrires", entries)
         if not entries:
             raise FileNotFoundError(f'Could not find deskop entry "{cmdline[0]}"')
-        else:
-            entry = entries[0]
+
+        entry = entries[0]
 
         # request terminal
         if entry.getTerminal():
@@ -2837,6 +2836,7 @@ def app(
                         app_unit_type,
                         app_name,
                         unit_name,
+                        unit_description,
                         fork=True,
                     )
                 )
@@ -2967,11 +2967,10 @@ def app(
                 else:
                     if fragment.startswith(r"\x"):
                         break
-                    else:
-                        desktop_unit_substring = (
-                            desktop_unit_substring + fragment[0 : 127 - l_check]
-                        )
-                        break
+                    desktop_unit_substring = (
+                        desktop_unit_substring + fragment[0 : 127 - l_check]
+                    )
+                    break
 
         l_all = l_static + len(desktop_unit_substring) + len(cmd_unit_substring)
 
@@ -2988,11 +2987,10 @@ def app(
                 else:
                     if fragment.startswith(r"\x"):
                         break
-                    else:
-                        cmd_unit_substring = (
-                            cmd_unit_substring + fragment[0 : 255 - l_check]
-                        )
-                        break
+                    cmd_unit_substring = (
+                        cmd_unit_substring + fragment[0 : 255 - l_check]
+                    )
+                    break
 
         if app_unit_type == "scope":
             unit_name = f"app-{desktop_unit_substring}-{cmd_unit_substring}-{random_hex(8)}.{app_unit_type}"
@@ -3107,8 +3105,8 @@ def fill_wm_globals():
         )
         if not entries:
             raise FileNotFoundError(f'Could not find entry "{wm_id}"')
-        else:
-            entry = entries[0]
+
+        entry = entries[0]
 
         print_debug("entry", entry)
 
@@ -3347,6 +3345,7 @@ if __name__ == "__main__":
     wm_cmdline: List[str] = []
     wm_cli_args: List[str] = []
     wm_id: str = ""
+    wm_id_unit_string: str = ""
     wm_bin_id: str = ""
     wm_desktop_names: List[str] = []
     wm_cli_desktop_names: List[str] = []
