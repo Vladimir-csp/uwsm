@@ -429,6 +429,7 @@ def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
     (for first applicable entry)
       ('return', (entry, entry_id, None)) or ('drop', (None, None, None))
     """
+    global terminal_neg_cache
     # drop if not among explicitly listed IDs
     if explicit_terminals and entry_id not in (i[0] for i in explicit_terminals):
         print_debug("not an entry we are looking for")
@@ -437,15 +438,18 @@ def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
         entry = DesktopEntry(entry_path)
     except:
         print_debug("failed to parse entry")
+        terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
 
     # quick fail
     try:
         if "TerminalEmulator" not in entry.getCategories():
             print_debug("not a TerminalEmulator")
+            terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
             return ("drop", (None, None, None))
     except:
         print_debug("failed to get Categories")
+        terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
 
     # get requested actions for this entry ID
@@ -468,15 +472,22 @@ def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
     # not explicit_terminals
     if not check_entry_basic(entry, None):
         print_debug("failed basic checks")
+        terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
     if not check_entry_showin(entry):
         print_debug("failed ShowIn checks")
+        # not adding to neg cache here
         return ("drop", (None, None, None))
 
     return ("return", (entry, entry_id, None))
 
 
-def find_entries(subpath: str, parser: Callable = None, parser_args: dict = {}):
+def find_entries(
+    subpath: str,
+    parser: Callable = None,
+    parser_args: dict = {},
+    reject_pmt: dict = None,
+):
     """
     Takes data hierarchy subpath and optional arg parser
     If parser is callable, it is called for each found entry with (entry_id, entry_path)
@@ -499,6 +510,16 @@ def find_entries(subpath: str, parser: Callable = None, parser_args: dict = {}):
                     continue
 
                 entry_path = os.path.join(dirpath, filename)
+
+                # reject by path-mtime mapping
+                if (
+                    reject_pmt
+                    and entry_path in reject_pmt
+                    and os.path.getmtime(entry_path) == reject_pmt[entry_path]
+                ):
+                    print_debug(f"rejected {entry_path} by negative cache")
+                    continue
+
                 # get proper entry id relative to data_dir with path delimiters replaced by '-'
                 entry_id = os.path.relpath(entry_path, data_dir).replace("/", "-")
                 # get only valid IDs
@@ -779,7 +800,11 @@ def get_active_wm_id():
 
 def is_active(check_wm_id="", verbose=False):
     "Checks if graphical.target or specific wm_id is in active or activating state, returns bool"
-    check_units_generic = ["graphical-session-pre.target", "graphical-session.target", "wayland-wm@*.service"]
+    check_units_generic = [
+        "graphical-session-pre.target",
+        "graphical-session.target",
+        "wayland-wm@*.service",
+    ]
     if check_wm_id:
         # escape wm_id for systemd
         check_wm_id_unit_string = simple_systemd_escape(check_wm_id)
@@ -840,7 +865,9 @@ def is_active(check_wm_id="", verbose=False):
         if sprc.stderr.strip():
             print_error(sprc.stderr.strip())
         if check_units != check_units_generic:
-            print_normal(f'unit{"s" if len(check_units) > 1 else ""} {check_units} {"are" if len(check_units) > 1 else "is"} not active')
+            print_normal(
+                f'unit{"s" if len(check_units) > 1 else ""} {check_units} {"are" if len(check_units) > 1 else "is"} not active'
+            )
 
     return False
 
@@ -2685,30 +2712,42 @@ def find_terminal_entry():
     print_debug("explicit terminal_entries", terminal_entries)
 
     ## process explicitly listed terminals
-    found_terminal_entries = find_entries(
-        "applications",
-        parser=entry_parser_terminal,
-        parser_args={"explicit_terminals": terminal_entries},
-    )
-    print_debug(f"found {len(found_terminal_entries)} entries")
-    # find first match in found terminals
-    for entry_id, entry_action in terminal_entries:
-        for (
-            terminal_entry,
-            terminal_entry_id,
-            terminal_entry_action,
-        ) in found_terminal_entries:
-            if (entry_id, entry_action) == (terminal_entry_id, terminal_entry_action):
-                print_debug(f"found terminal {entry_id}:{entry_action}")
-                return (terminal_entry, terminal_entry_id, terminal_entry_action)
+    if terminal_entries:
+        found_terminal_entries = find_entries(
+            "applications",
+            parser=entry_parser_terminal,
+            parser_args={"explicit_terminals": terminal_entries},
+        )
+        print_debug(f"found {len(found_terminal_entries)} entries")
+        # find first match in found terminals
+        for entry_id, entry_action in terminal_entries:
+            for (
+                terminal_entry,
+                terminal_entry_id,
+                terminal_entry_action,
+            ) in found_terminal_entries:
+                if (entry_id, entry_action) == (
+                    terminal_entry_id,
+                    terminal_entry_action,
+                ):
+                    print_debug(f"found terminal {entry_id}:{entry_action}")
+                    return (terminal_entry, terminal_entry_id, terminal_entry_action)
 
     print_debug("no explicit terminals matched, starting terminal entry search")
 
+    global terminal_neg_cache
+    terminal_neg_cache = read_neg_cache("not-terminals")
+    terminal_neg_cache_initial = terminal_neg_cache.copy()
+
     # process all apps, find applicable terminal
-    found_terminal_entries = find_entries("applications", parser=entry_parser_terminal)
+    found_terminal_entries = find_entries(
+        "applications", parser=entry_parser_terminal, reject_pmt=terminal_neg_cache
+    )
     if found_terminal_entries:
         terminal_entry, terminal_entry_id, _ = found_terminal_entries[0]
         print_debug(f"found terminal {terminal_entry_id}")
+        if terminal_neg_cache != terminal_neg_cache_initial:
+            write_neg_cache("not-terminals", terminal_neg_cache)
         return (terminal_entry, terminal_entry_id, None)
 
     raise RuntimeError("Could not find a Terminal Emulator application")
@@ -2731,10 +2770,11 @@ def read_neg_cache(name: str) -> dict:
             os.remove(neg_cache_path)
     else:
         print_debug(f"no cache {neg_cache_path}")
+    print_debug(f"got {len(out)} items")
     return out
 
 
-def write_neg_cahce(name: str, data: dict):
+def write_neg_cache(name: str, data: dict):
     "Writes path;mtime to cache file f{self_name()}-{name}"
     neg_cache_path = os.path.join(BaseDirectory.xdg_cache_home, f"{self_name()}-{name}")
     print_debug(f"writing cache {neg_cache_path} ({len(data)} items)")
