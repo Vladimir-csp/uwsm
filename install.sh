@@ -42,14 +42,14 @@ uwsm_install() {
 
 	echo
 	echo "Installing as $NAME"
-	"$@" install -vpD -o root -m 0755 -T ./wayland-session "${BIN_PREFIX%/}/bin/${NAME}"
+	"$@" install -vpD -o root -m 0755 -T ./wayland-session "${EXEC_PREFIX%/}/bin/${NAME}"
 	"$@" install -vpD -o root -m 0644 -t "${PREFIX%/}/lib/${NAME}-plugins/" ./wayland-session-plugins/*
 	echo "Finished installation"
 
 	if [ "$NAME" != "$OLD_NAME" ]; then
 		OLD_FILES=''
-		if [ -f "${BIN_PREFIX%/}/bin/${OLD_NAME}" ]; then
-			OLD_FILES="  old executable exists: ${BIN_PREFIX%/}/bin/${OLD_NAME}"
+		if [ -f "${EXEC_PREFIX%/}/bin/${OLD_NAME}" ]; then
+			OLD_FILES="  old executable exists: ${EXEC_PREFIX%/}/bin/${OLD_NAME}"
 		fi
 		if [ -d "${PREFIX%/}/lib/${OLD_NAME}-plugins/" ]; then
 			OLD_FILES="${OLD_FILES}${OLD_FILES:+$N}  old plugin dir exists: ${PREFIX%/}/lib/${OLD_NAME}-plugins/"
