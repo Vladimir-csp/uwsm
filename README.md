@@ -459,6 +459,7 @@ It is used as plugin id and suffix in function names.
 Variables available to plugins:
 
 - `__WM_ID__` - compositor ID, effective first argument of `start`.
+- `__WM_ID_UNIT_STRING__` - compositor ID escaped for systemd unit name.
 - `__WM_BIN_ID__` - processed first item of compositor argv.
 - `__WM_DESKTOP_NAMES__` - `:`-separated desktop names from `DesktopNames=` of entry and `-D` cli argument.
 - `__WM_FIRST_DESKTOP_NAME__` - first of the above.

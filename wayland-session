@@ -799,13 +799,22 @@ def get_active_wm_id():
 
 
 def is_active(check_wm_id="", verbose=False):
-    "Checks if graphical.target or specific wm_id is in active or activating state, returns bool"
+    """
+    Checks if units are active or activating, returns bool.
+    If check_wm_id is empty, checks graphical*.target and wayland-wm@*.service
+    If check_wm_id is "wm-only", checks wayland-wm@*.service
+    If check_wm_id has other value, checks unit of specific wm_id
+    """
     check_units_generic = [
         "graphical-session-pre.target",
+        "wayland-session-pre@*.target",
         "graphical-session.target",
+        "wayland-session@*.target",
         "wayland-wm@*.service",
     ]
-    if check_wm_id:
+    if check_wm_id and check_wm_id == "wm-only":
+        check_units = ["wayland-wm@*.service"]
+    elif check_wm_id:
         # escape wm_id for systemd
         check_wm_id_unit_string = simple_systemd_escape(check_wm_id)
         check_units = [f"wayland-wm@{check_wm_id_unit_string}.service"]
@@ -866,7 +875,7 @@ def is_active(check_wm_id="", verbose=False):
             print_error(sprc.stderr.strip())
         if check_units != check_units_generic:
             print_normal(
-                f'unit{"s" if len(check_units) > 1 else ""} {check_units} {"are" if len(check_units) > 1 else "is"} not active'
+                f'Unit{"s" if len(check_units) > 1 else ""} {", ".join(check_units)} {"are" if len(check_units) > 1 else "is"} not active'
             )
 
     return False
@@ -1098,6 +1107,7 @@ def generate_units():
             BindsTo=wayland-session-pre@%i.target
             Before=wayland-session-pre@%i.target
             StopWhenUnneeded=yes
+            CollectMode=inactive-or-failed
             [Service]
             Type=oneshot
             RemainAfterExit=yes
@@ -1127,6 +1137,7 @@ def generate_units():
             PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
             # dirty fix of xdg-desktop-portal-gtk.service shudown
             PropagatesStopTo=xdg-desktop-portal-gtk.service
+            CollectMode=inactive-or-failed
             [Service]
             # awaits for 'systemd-notify --ready' from compositor child
             Type=notify
@@ -1721,7 +1732,7 @@ def parse_args(custom_args=None):
 
                 To integrate startup into shell profile, add:
 
-                  if {self_name()} check may-start
+                  if {self_name()} check may-start && {self_name()} select
                   then
                   	exec {self_name()} start select
                   fi
@@ -1729,13 +1740,10 @@ def parse_args(custom_args=None):
                 Condition is essential, since {self_name()}'s environment preloader sources
                 profile and can cause loops without protection.
 
-                A bit more complex variant with ability to drop to console:
+                Separate select action allows droping to normal shell.
 
-                  if {self_name()} check may-start && \\
-                    {self_name()} start -o select
-                  then
-                  	exec {self_name()} start default
-                  fi
+                If the only failed condition is already active user graphical-session*.target,
+                it will be printed unless -q is given
 
                 """
             )
@@ -1750,8 +1758,12 @@ def parse_args(custom_args=None):
         nargs="*",
         help="VT numbers allowed for start (default: %(default)s)",
     )
-    parsers["may_start"].add_argument(
-        "-v", action="store_true", dest="verbose", help="show info"
+    parsers["may_start_verbosity"] = parsers["may_start"].add_mutually_exclusive_group()
+    parsers["may_start_verbosity"].add_argument(
+        "-v", action="store_true", dest="verbose", help="show all failed tests"
+    )
+    parsers["may_start_verbosity"].add_argument(
+        "-q", action="store_true", dest="quiet", help="do not show anything"
     )
 
     # aux subcommand
@@ -2008,6 +2020,7 @@ def prepare_env_gen_sh(random_mark):
         f"""
         __SELF_NAME__={shlex.quote(self_name())}
         __WM_ID__={shlex.quote(wm_id)}
+        __WM_ID_UNIT_STRING__={shlex.quote(wm_id_unit_string)}
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(wm_desktop_names[0])}
@@ -3416,7 +3429,7 @@ if __name__ == "__main__":
                     save_default_comp_entry(select_wm_id)
                 sys.exit(0)
             else:
-                print_error("No compositor was selected")
+                print_warning("No compositor was selected")
                 sys.exit(1)
         except Exception as caught_exception:
             print_error_or_traceback(caught_exception)
@@ -3459,7 +3472,7 @@ if __name__ == "__main__":
         )
 
         if is_active(verbose=True):
-            print_error("Another compositor is already running.")
+            print_error("A compositor or graphical-session* target is already active!")
             if not args.dry_run:
                 sys.exit(1)
             else:
@@ -3568,9 +3581,12 @@ if __name__ == "__main__":
             sys.exit(1)
 
     elif args.mode == "check" and args.checker == "may-start":
+        already_active_msg = (
+            "A compositor and/or graphical-session* targets are already active"
+        )
         dealbreakers = []
         if is_active():
-            dealbreakers.append("Another compositor is running")
+            dealbreakers.append(already_active_msg)
 
         # check if parent process is a login shell
         try:
@@ -3616,8 +3632,13 @@ if __name__ == "__main__":
             dealbreakers.append("System has not reached graphical.target")
 
         if dealbreakers:
-            if args.verbose:
-                print_warning("\n".join(["May not start compositor:"] + dealbreakers))
+            if args.verbose or (
+                # if the only failed condition is active graphical session, say it,
+                # unless -q is given
+                not args.quiet
+                and dealbreakers == [already_active_msg]
+            ):
+                print_warning("\n  ".join(["May not start compositor:"] + dealbreakers))
             sys.exit(1)
         else:
             if args.verbose:
@@ -3646,7 +3667,7 @@ if __name__ == "__main__":
                     print_error_or_traceback(caught_exception)
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
-            if is_active("", True):
+            if is_active("wm-only", verbose=True):
                 print_error("A compositor is running, will not cleanup environment")
                 sys.exit(1)
             else:
