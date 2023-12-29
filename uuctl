@@ -114,21 +114,30 @@ while IFS="=" read -r prop value; do
 	case "$prop" in
 	Id)
 		case "$value" in
-		wayland-wm@*.service | init.scope) C_SKIP=1 ;;
+		graphical-*.target | wayland-wm-env@*.service | wayland-wm@*.service | init.scope)
+			if [ -n "$ALL" ]; then
+				C_UNIT="${value}"
+			else
+				C_SKIP=1
+			fi
+			;;
 		*) C_UNIT="${value}" ;;
 		esac
 		;;
 	Names)
-		case " $value " in
-		*' dbus.service '*) C_SKIP=1 ;;
+		case "x $value x" in
+		*' dbus.service '*)
+			if [ -z "$ALL" ]; then
+				C_SKIP=1
+			fi
+			;;
 		esac
 		;;
 	Description) C_NAME="${value}" ;;
 	ActiveState) C_ACTIVE_STATE="${value}" ;;
-	FreezerState) C_FREEZER_STATE="${value}" ;;
 	'' | END)
 		# skip if not grabbing
-		if [ -n "$ALL" ] || [ -z "$C_SKIP" ]; then
+		if [ -z "$C_SKIP" ]; then
 			case "$C_FREEZER_STATE" in
 			frozen) C_STATE_MSG=frozen ;;
 			*) C_STATE_MSG="$C_ACTIVE_STATE" ;;
