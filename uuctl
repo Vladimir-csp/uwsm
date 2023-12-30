@@ -104,6 +104,7 @@ reset_current() {
 	C_STATE_MSG=''
 	C_NAME=''
 	C_SKIP=''
+	C_UNIT_FILE_STATE=''
 }
 
 N='
@@ -133,13 +134,15 @@ while IFS="=" read -r prop value; do
 			;;
 		esac
 		;;
+	UnitFileState) C_UNIT_FILE_STATE="$value" ;;
 	Description) C_NAME="${value}" ;;
 	ActiveState) C_ACTIVE_STATE="${value}" ;;
 	'' | END)
 		# skip if not grabbing
 		if [ -z "$C_SKIP" ]; then
-			case "$C_FREEZER_STATE" in
-			frozen) C_STATE_MSG=frozen ;;
+			case "x $C_FREEZER_STATE $C_UNIT_FILE_STATE x" in
+			*' frozen '*) C_STATE_MSG=frozen ;;
+			*' masked '*) C_STATE_MSG=masked ;;
 			*) C_STATE_MSG="$C_ACTIVE_STATE" ;;
 			esac
 			case "$C_ACTIVE_STATE" in
@@ -151,7 +154,7 @@ while IFS="=" read -r prop value; do
 		;;
 	esac
 done <<- EOF
-	$(systemctl --user show --type=service,scope --all --no-pager --quiet --property=Id,ActiveState,Description,Names)
+	$(systemctl --user show --type=service,scope,socket --all --no-pager --quiet --property=Id,ActiveState,Description,Names,UnitFileState)
 	END
 EOF
 
@@ -175,39 +178,56 @@ while IFS="=" read -r prop value; do
 	CanFreeze) CAN_FREEZE="$value" ;;
 	FreezerState) FREEZER_STATE="$value" ;;
 	ActiveState) ACTIVE_STATE="$value" ;;
+	UnitFileState) UNIT_FILE_STATE="$value" ;;
+	WantedBy) WANTED_BY="$value" ;;
+	RequiredBy) REQUIRED_BY="$value" ;;
+	UpheldBy) UPHELD_BY="$value" ;;
 	esac
 done <<- EOF
-	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState "$UNIT")
+	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState,UnitFileState,WantedBy,RequiredBy,UpheldBy "$UNIT")
 EOF
 
 case "$UNIT" in
 *.service) UNIT_TYPE=service ;;
 *.scope) UNIT_TYPE=scope ;;
+*.socket) UNIT_TYPE=socket ;;
 esac
 
 # compose actions
 ACTIONS=''
-for ACTION in start stop reload restart reset-failed enable disable freeze thaw; do
-	case "${ACTION}++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}++" in
+for ACTION in start stop reload restart reset-failed enable disable freeze thaw mask unmask; do
+	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
+	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
 	# skip various combinations
-	start+*type:scope+* | restart+*type:scope+* | reload+*type:scope+* | enable+*type:scope+* | disable+*type:scope+*) continue ;;
-	start+*as:activ* | start+*as:reloading+* | start+*cstart:no+*) continue ;;
-	stop+*as:failed+* | stop+*as:inactive+* | stop+*as:deactivating+* | stop+*cstop:no+*) continue ;;
-	# strictly restarting a stopped unit is valid, but exclude it anyway
-	restart+*as:failed+* | restart+*as:inactive+* | restart+*as:deactivating+*) continue ;;
-	reload+*as:failed+* | reload+*as:inactive+* | reload+*as:deactivating+* | reload+*creload:no+*) continue ;;
-	reset-failed+*as:[!f][!a][!i]*) continue ;;
-	freeze+*cfreeze:no+* | freeze+*fs:frozen+* | freeze+*as:failed+* | freeze+*as:inactive+* | freeze+*as:deactivating+*) continue ;;
-	thaw+*fs:[!f][!r][!o]*) continue ;;
-	# add action
-	*) ACTIONS="${ACTIONS}${ACTIONS:+ }${ACTION}" ;;
+	start+*+type:scope+* | restart+*+type:scope+* | reload+*+type:scope+* | enable+*+type:scope+* | disable+*+type:scope+*) continue ;;
+	start+*+as:activ* | start+*+as:reloading+* | start+*+cstart:no+* | start+*+ufs:masked+*) continue ;;
+	stop+*+as:failed+* | stop+*+as:inactive+* | stop+*+as:deactivating+* | stop+*+cstop:no+* | stop+*+ufs:masked+*) continue ;;
+	# strictly speaking, restarting a stopped unit is valid, but exclude it anyway
+	restart+*+as:failed+* | restart+*+as:inactive+* | restart+*+as:deactivating+* | restart+*+ufs:masked+*) continue ;;
+	reload+*+as:failed+* | reload+*+as:inactive+* | reload+*+as:deactivating+* | reload+*+creload:no+*) continue ;;
+	reset-failed+*+as:[!f][!a][!i]*) continue ;;
+	freeze+*+cfreeze:no+* | freeze+*+fs:frozen+* | freeze+*+as:failed+* | freeze+*+as:inactive+* | freeze+*+as:deactivating+* | freeze+*+ufs:masked+*) continue ;;
+	thaw+*+fs:[!f][!r][!o]*) continue ;;
+	mask+*+ufs:masked+* | mask+*+as:activ* | mask+*+as:reloading+*) continue ;;
+	unmask+*+ufs:[!m][!a][!s][!k][!e][!d]*) continue ;;
+	enable+*+install:+* | enable+*+ufs:generated+* | enable+*+ufs:enabled+* | enable+*+ufs:runtime-enabled+* | enable+*+ufs:masked+*) continue ;;
+	disable+*+ufs:generated+* | disable+*+ufs:transient+*) continue ;;
+	# special handling of some surviving actions
+	disable+*+ufs:runtime-enabled+*+as:activ* | disable+*+ufs:runtime-enabled+*+as:reloading*) ACTIONS="${ACTIONS}${ACTIONS:+$N}disable --runtime${N}disable --runtime --now" ;;
+	disable+*+ufs:runtime-enabled+*) ACTIONS="${ACTIONS}${ACTIONS:+$N}disable --runtime" ;;
+	disable+*+as:activ* | disable+*+as:reloading*) ACTIONS="${ACTIONS}${ACTIONS:+$N}disable${N}disable --now" ;;
+	enable+*+as:activ* | enable+*+as:reloading*) ACTIONS="${ACTIONS}${ACTIONS:+$N}enable${N}enable --runtime" ;;
+	enable+*) ACTIONS="${ACTIONS}${ACTIONS:+$N}enable${N}enable --now${N}enable --runtime${N}enable --runtime --now" ;;
+	# another skip, has to be down here
+	disable+*+ufs:[!e][!n][!a][!b][!l][!e][!d]*) continue ;;
+	# generic add surviving action
+	*) ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}" ;;
 	esac
 done
 
 # select action
 ACTION=$(
-	# shellcheck disable=SC2086
-	printf '%s\n' $ACTIONS | "$@" "${DESCRIPTION#*=} (${STATE}): "
+	printf '%s' "$ACTIONS" | "$@" "${DESCRIPTION#*=} (${STATE}): "
 ) || cancel_exit
 
 report "$ACTION"
@@ -216,7 +236,8 @@ report "$ACTION"
 if command -v notify-send > /dev/null; then
 	# capture only stderr
 	ERR=$(
-		systemctl --user "$ACTION" "$UNIT" 2>&1 > /dev/null
+		# shellcheck disable=SC2086
+		systemctl --user $ACTION "$UNIT" 2>&1 > /dev/null
 	)
 	RC="$?"
 	if [ "$RC" = "0" ] && [ -z "$ERR" ]; then
@@ -232,5 +253,6 @@ if command -v notify-send > /dev/null; then
 	notify-send -a "$SELF" -u "$URG" "$AST" "${UNIT}${ERR:+:$N}${ERR}"
 	exit "$RC"
 else
-	exec systemctl --user "$ACTION" "$UNIT"
+	# shellcheck disable=SC2086
+	exec systemctl --user $ACTION "$UNIT"
 fi
