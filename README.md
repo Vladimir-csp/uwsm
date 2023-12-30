@@ -352,8 +352,12 @@ Basic set of generated units:
   - `background-graphical.slice`
   - `session-graphical.slice`
 - tweaks
-  - `wayland-wm-env@${compositor}.service.d/custom.conf`, `wayland-wm@${compositor}.service.d/custom.conf` - if arguments and/or various names were given on command line, they go here.
+  - `wayland-wm-env@${compositor}.service.d/custom.conf`, `wayland-wm@${compositor}.service.d/custom.conf` -
+    if arguments and/or various names were given on command line, they go here.
   - `app-@autostart.service.d/slice-tweak.conf` - assigns XDG autostart apps to `app-graphical.slice`
+- shutdown and cleanup target
+  - `wayland-session-shutdown.target` - conflicts with operational units. Triggered by the end of `wayland-wm*.service` units
+    for more robust cleanup, including on failures. But can also be called manually for shutdown.
 
 After units are generated, compositor can be started by: `systemctl --user start wayland-wm@${compositor}.service`
 

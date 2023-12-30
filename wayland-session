@@ -1010,7 +1010,7 @@ def remove_unit(unit):
         unit_filename = os.path.basename(unit_path)
         if os.path.isdir(unit_subdir_path):
             if set(os.listdir(unit_subdir_path)) - {unit_filename}:
-                print_warning(f"Subdir {unit_subdir_path} is not empty")
+                print_warning(f"Unit subdir {unit_subdir} is not empty")
             else:
                 if not args.dry_run:
                     os.rmdir(unit_subdir_path)
@@ -1093,6 +1093,35 @@ def generate_units():
             """
         ),
     )
+    update_unit(
+        "wayland-session-shutdown.target",
+        dedent(
+            f"""
+            # injected by {ws_self}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            Description=Brings down graphical session units
+            Documentation=man:systemd.special(7)
+            Conflicts=app-graphical.slice
+            Conflicts=background-graphical.slice
+            Conflicts=session-graphical.slice
+            Conflicts=xdg-desktop-autostart.target
+            # dirty fix of xdg-desktop-portal-gtk.service shudown
+            Conflicts=xdg-desktop-portal-gtk.service
+            Conflicts=graphical-session.target
+            Conflicts=graphical-session-pre.target
+            After=app-graphical.slice
+            After=background-graphical.slice
+            After=session-graphical.slice
+            After=xdg-desktop-autostart.target
+            # dirty fix of xdg-desktop-portal-gtk.service shudown
+            After=xdg-desktop-portal-gtk.service
+            After=graphical-session.target
+            After=graphical-session-pre.target
+            StopWhenUnneeded=yes
+            """
+        ),
+    )
 
     # services
     update_unit(
@@ -1108,6 +1137,8 @@ def generate_units():
             Before=wayland-session-pre@%i.target
             StopWhenUnneeded=yes
             CollectMode=inactive-or-failed
+            OnFailure=wayland-session-shutdown.target
+            OnSuccess=wayland-session-shutdown.target
             [Service]
             Type=oneshot
             RemainAfterExit=yes
@@ -1138,8 +1169,11 @@ def generate_units():
             # dirty fix of xdg-desktop-portal-gtk.service shudown
             PropagatesStopTo=xdg-desktop-portal-gtk.service
             CollectMode=inactive-or-failed
+            OnFailure=wayland-session-shutdown.target
+            OnSuccess=wayland-session-shutdown.target
             [Service]
             # awaits for 'systemd-notify --ready' from compositor child
+            # should be issued by '{ws_self} finalize'
             Type=notify
             NotifyAccess=all
             ExecStart={ws_self_full} aux exec %I
