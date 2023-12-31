@@ -269,10 +269,14 @@ def entry_action_keys(entry, entry_action=None):
     out = {"Name": entry.getName(), "Exec": entry.getExec(), "Icon": entry.getIcon()}
     if not entry_action:
         return out
+
     if entry_action not in entry.getActions():
         raise ValueError(
             f'entry "{entry.getFileName()}" does not have action "{entry_action}"'
         )
+
+    # switch to action group
+    entry.defaultGroup = f"Desktop Action {entry_action}"
     out.update(
         {
             "Name": entry.getName(),
@@ -281,6 +285,7 @@ def entry_action_keys(entry, entry_action=None):
     )
     if entry.getIcon():
         out.update({"Icon": entry.getIcon()})
+
     # restore default group
     entry.defaultGroup = "Desktop Entry"
     return out
