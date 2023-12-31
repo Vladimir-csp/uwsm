@@ -223,7 +223,7 @@ def self_path():
     path = which(self_name())
     if path:
         return path
-    print_error(f"{self_name()} is not in PATH or is not executable")
+    print_error(f"{self_name()} is not in PATH or is not executable!")
     sys.exit(0)
 
 
@@ -575,9 +575,9 @@ def save_default_comp_entry(default):
         )
         with open(config, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
-            print_ok(f"Saved default compositor ID: {default}")
+            print_ok(f"Saved default compositor ID: {default}.")
     else:
-        print_ok(f"Would save default compositor ID: {default}")
+        print_ok(f"Would save default compositor ID: {default}.")
 
 
 def select_comp_entry(default="", just_confirm=False):
@@ -760,7 +760,7 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
         except:
             pass
         if not unit_path:
-            print_error("Fatal: empty or undefined XDG_RUNTIME_DIR")
+            print_error("Fatal: empty or undefined XDG_RUNTIME_DIR!")
             sys.exit(0)
     else:
         raise RuntimeError(f"category {category} is not supported")
@@ -875,7 +875,7 @@ def is_active(check_wm_id="", verbose=False):
             print_error(sprc.stderr.strip())
         if check_units != check_units_generic:
             print_normal(
-                f'Unit{"s" if len(check_units) > 1 else ""} {", ".join(check_units)} {"are" if len(check_units) > 1 else "is"} not active'
+                f'Unit{"s" if len(check_units) > 1 else ""} {", ".join(check_units)} {"are" if len(check_units) > 1 else "is"} not active.'
             )
 
     return False
@@ -887,11 +887,11 @@ def reload_systemd():
     global units_changed
 
     if args.dry_run:
-        print_normal("Will reload systemd user manager")
+        print_normal("Will reload systemd user manager.")
         units_changed = False
         return True
 
-    print_normal("Reloading systemd user manager")
+    print_normal("Reloading systemd user manager.")
     sprc = subprocess.run(
         ["systemctl", "--user", "daemon-reload", "-q"],
         text=True,
@@ -962,9 +962,9 @@ def update_unit(unit, data):
     if not args.dry_run:
         with open(unit_path, "w", encoding="UTF-8") as unit_file:
             unit_file.write(data)
-        print_ok(f'Updated "{unit}"')
+        print_ok(f'Updated "{unit}".')
     else:
-        print_ok(f'Will update "{unit}"')
+        print_ok(f'Will update "{unit}".')
 
     print_debug(data)
 
@@ -997,9 +997,9 @@ def remove_unit(unit):
     if os.path.isfile(unit_path):
         if not args.dry_run:
             os.remove(unit_path)
-            print_ok(f"Removed unit {unit}")
+            print_ok(f"Removed unit {unit}.")
         else:
-            print_ok(f"Will remove unit {unit}")
+            print_ok(f"Will remove unit {unit}.")
         units_changed = True
         change = True
 
@@ -1010,13 +1010,13 @@ def remove_unit(unit):
         unit_filename = os.path.basename(unit_path)
         if os.path.isdir(unit_subdir_path):
             if set(os.listdir(unit_subdir_path)) - {unit_filename}:
-                print_warning(f"Unit subdir {unit_subdir} is not empty")
+                print_warning(f"Unit subdir {unit_subdir} is not empty.")
             else:
                 if not args.dry_run:
                     os.rmdir(unit_subdir_path)
-                    print_ok(f"Removed unit subdir {unit_subdir}")
+                    print_ok(f"Removed unit subdir {unit_subdir}.")
                 else:
-                    print_ok(f"Will remove unit subdir {unit_subdir}")
+                    print_ok(f"Will remove unit subdir {unit_subdir}.")
 
     return change
 
@@ -1570,7 +1570,7 @@ def parse_args(custom_args=None):
     use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", "false")
     if use_session_slice not in ("true", "false"):
         print_warning(
-            f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false"'
+            f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false".'
         )
         use_session_slice = "false"
     parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
@@ -1673,7 +1673,7 @@ def parse_args(custom_args=None):
         app_unit_type_preset = True
     elif app_unit_type_default is not None:
         print_warning(
-            f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope"'
+            f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope".'
         )
         app_unit_type_default = "scope"
     else:
@@ -1859,7 +1859,7 @@ def finalize(additional_vars=None):
     wm_id = get_active_wm_id()
     if not isinstance(wm_id, str) or not wm_id:
         print_error(
-            "Finalization: Could not get ID of active Wayland session. If it is running, it will timeout in 10 seconds"
+            "Finalization: Could not get ID of active Wayland session. If it is running, it will timeout in 10 seconds."
         )
         sys.exit(1)
 
@@ -1873,7 +1873,7 @@ def finalize(additional_vars=None):
                 l.strip() for l in open_cleanup_file.readlines() if l.strip()
             }
     else:
-        print_error(f'"{cleanup_file}" does not exist\nAssuming env preloader failed')
+        print_error(f'"{cleanup_file}" does not exist!\nAssuming env preloader failed.')
         sys.exit(1)
     with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
         open_cleanup_file.write(
@@ -1913,11 +1913,11 @@ def finalize(additional_vars=None):
         sys.exit(1)
 
     # if no prior failures, exec systemd-notify
-    print_normal(f"Finalizing startup of {wm_id}")
+    print_normal(f"Finalizing startup of {wm_id}.")
     os.execlp("systemd-notify", "systemd-notify", "--ready")
 
     # we should not be here
-    print_error("Something went wrong")
+    print_error("Something went wrong!")
     sys.exit(1)
 
 
@@ -1977,7 +1977,7 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
     print_debug(sprc)
     if sprc.returncode != 0:
         if verbose:
-            print_error(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
+            print_error(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}!')
         return None
     if sprc.stderr.strip():
         print_error(sprc.stderr.strip())
@@ -1988,7 +1988,7 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
         session_id = line.strip().split(" ")[0]
         if not session_id.isnumeric():
             if verbose:
-                print_error(f'Encountered malformed session ID "{session_id}"')
+                print_error(f'Encountered malformed session ID "{session_id}"!')
             continue
 
         # get session user and VTNr
@@ -2009,7 +2009,7 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
         print_debug(sprc2)
         if sprc2.returncode != 0:
             if verbose:
-                print_error(f'"{shlex.join(sprc2.args)}" returned {sprc2.returncode}')
+                print_error(f'"{shlex.join(sprc2.args)}" returned {sprc2.returncode}!')
             continue
         if sprc2.stderr.strip():
             print_error(sprc.stderr.strip())
@@ -2019,7 +2019,7 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
         if len(props) != 2:
             if verbose:
                 print_error(
-                    f'{shlex.join(sprc2.args)}" printed unparseable properties:\n{sprc2.stdout.strip()}'
+                    f'{shlex.join(sprc2.args)}" printed unparseable properties:\n{sprc2.stdout.strip()}!'
                 )
             continue
         user: str = props[0].split("=")[1]
@@ -2027,12 +2027,12 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
 
         if not user:
             if verbose:
-                print_error(f'{shlex.join(sprc2.args)}" printed empty user')
+                print_error(f'{shlex.join(sprc2.args)}" printed empty user!')
             continue
         if not vtnr.isnumeric():
             if verbose:
                 print_error(
-                    f'{shlex.join(sprc2.args)}" printed malformed vtnr: "{vtnr}"'
+                    f'{shlex.join(sprc2.args)}" printed malformed vtnr: "{vtnr}"!'
                 )
             continue
 
@@ -2251,7 +2251,7 @@ def filter_varnames(data):
     if isinstance(data, dict):
         for var in list(data.keys()):
             if not Val.sh_varname.search(var):
-                print_warning(f'Encountered illegal var "{var}"')
+                print_warning(f'Encountered illegal var "{var}".')
                 data.pop(var)
         return data
 
@@ -2259,7 +2259,7 @@ def filter_varnames(data):
         new_data = []
         for var in data:
             if not Val.sh_varname.search(var):
-                print_warning(f'Encountered illegal var "{var}"')
+                print_warning(f'Encountered illegal var "{var}".')
             else:
                 new_data.append(var)
         if isinstance(data, set):
@@ -2342,7 +2342,7 @@ def prepare_env():
         if len(env) == 2:
             env_post.update({env[0]: env[1]})
         else:
-            print_error(f"No value: {env}")
+            print_error(f"No value: {env}!")
     env_post = filter_varnames(env_post)
 
     # get systemd user manager ENV names
@@ -2488,11 +2488,11 @@ def cleanup_env():
             continue
         cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
         if os.path.isfile(cleanup_file):
-            print_normal(f'Found cleanup_file "{os.path.basename(cleanup_file)}"')
+            print_normal(f'Found cleanup_file "{os.path.basename(cleanup_file)}".')
             cleanup_files.append(cleanup_file)
 
     if not cleanup_files:
-        print_warning("No cleanup files found")
+        print_warning("No cleanup files found.")
         sys.exit(0)
 
     current_cleanup_varnames = set()
@@ -2532,7 +2532,7 @@ def cleanup_env():
             print_error(sprc.stderr.strip())
         if sprc.returncode != 0:
             # just print error here
-            print_error(f'"{shlex.join(sprc.args)}" returned {returncode}')
+            print_error(f'"{shlex.join(sprc.args)}" returned {returncode}!')
 
         sprc = subprocess.run(
             ["systemctl", "--user", "unset-environment"] + sorted(cleanup_varnames),
@@ -2550,7 +2550,7 @@ def cleanup_env():
 
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
-        print_ok(f'Removed "{os.path.basename(cleanup_file)}"')
+        print_ok(f'Removed "{os.path.basename(cleanup_file)}".')
 
 
 def path2url(arg):
@@ -2904,7 +2904,7 @@ def app(
             # drop unit_name if multiple instances required
             if unit_name:
                 print_warning(
-                    f'Dropping unit name "{unit_name}" because entry "{os.path.basename(entry.filename)}" requires multiple instances for given arguments'
+                    f'Dropping unit name "{unit_name}" because entry "{os.path.basename(entry.filename)}" requires multiple instances for given arguments.'
                 )
                 unit_name = ""
 
@@ -2941,7 +2941,7 @@ def app(
                     if not is_int(sub_apps_rc[idx]):
                         sub_apps_rc[idx] = sub_app.poll()
                         if is_int(sub_apps_rc[idx]):
-                            proc_exit_msg = f'systemd-run for "{shlex.join(sub_app.args[sub_app.args.index("--") + 1:])}" returned {sub_apps_rc[idx]}'
+                            proc_exit_msg = f'systemd-run for "{shlex.join(sub_app.args[sub_app.args.index("--") + 1:])}" returned {sub_apps_rc[idx]}.'
                             if sub_apps_rc[idx] == 0:
                                 print_normal(proc_exit_msg)
                             else:
@@ -3024,7 +3024,7 @@ def app(
         # slice_name = slice_name
         pass
     else:
-        print_error(f"Invalid slice name: {slice_name}")
+        print_error(f"Invalid slice name: {slice_name}!")
         sys.exit(1)
 
     if not unit_name:
@@ -3165,12 +3165,12 @@ def fill_wm_globals():
     wm_id = args.wm_cmdline[0]
 
     if not wm_id:
-        print_error("Compositor is not provided")
+        print_error("Compositor is not provided!")
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
     if not Val.wm_id.search(wm_id):
-        print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern')
+        print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!')
         sys.exit(1)
 
     # escape wm_id for systemd
@@ -3263,7 +3263,7 @@ def fill_wm_globals():
         if "desktop_names" in args:
             # check desktop names
             if args.desktop_names and not Val.dn_colon.search(args.desktop_names):
-                print_error(f'Got malformed desktop names: "{args.desktop_names}"')
+                print_error(f'Got malformed desktop names: "{args.desktop_names}"!')
                 sys.exit(1)
 
             # exclusive CLI desktop names
@@ -3271,7 +3271,7 @@ def fill_wm_globals():
                 # error out on conflicting args
                 if not args.desktop_names:
                     print_error(
-                        'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"'
+                        'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"!'
                     )
                     sys.exit(1)
                 else:
@@ -3282,7 +3282,7 @@ def fill_wm_globals():
             elif entry_uwsm_args and entry_uwsm_args.desktop_names_exclusive:
                 if not entry_uwsm_args.desktop_names:
                     print_error(
-                        f'{self_name()} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"'
+                        f'{self_name()} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
                     )
                     sys.exit(1)
                 else:
@@ -3332,7 +3332,7 @@ def fill_wm_globals():
 
         # check exec
         if not which(wm_id):
-            print_error(f'"{wm_id}" is not in PATH.')
+            print_error(f'"{wm_id}" is not in PATH!')
             sys.exit(1)
 
         wm_cmdline = args.wm_cmdline
@@ -3387,7 +3387,7 @@ def stop_wm():
     "Stops compositor if active, returns int returncode"
     if is_active():
         if not args.dry_run:
-            print_normal("Stopping compositor")
+            print_normal("Stopping compositor.")
             sprc = subprocess.run(
                 ["systemctl", "--user", "stop", "wayland-wm@*.service"],
                 text=True,
@@ -3401,29 +3401,52 @@ def stop_wm():
                 print_error(sprc.stderr.strip())
             returncode = sprc.returncode
         else:
-            print_normal("Will stop compositor")
+            print_normal("Will stop compositor.")
             returncode = 0
     else:
-        print_normal("Compositor is not running")
+        print_normal("Compositor is not running.")
         returncode = 0
 
     return returncode
 
 
-def trap_stopper(signal=0, stack_frame=None):
-    "For use in signal trap. Stops wm and exits."
+def trap_stopper(signal=0, stack_frame=None, systemctl_rc=0):
+    """
+    For use in signal trap or after waiting systemctl exits.
+    Ensures compositor is stopped and exits.
+    """
     if signal == 0:
-        # reuse second arg for systemctl returncode
-        print_normal(f"systemctl returned {stack_frame}")
+        if systemctl_rc != 0:
+            print_error(f"systemctl returned {systemctl_rc}!")
     else:
-        print(f"Received signal {signal}, stopping compositor...")
+        print_normal(f"Received signal {signal}, stopping compositor...")
         print_debug(stack_frame)
 
-    returncode = stop_wm()
-    if returncode != 0:
-        print_error(f"Stop returned {returncode}")
+    stop_rc = stop_wm()
+    if stop_rc != 0:
+        print_error(f"Stop returned {returncode}.")
 
-    sys.exit(returncode)
+    if stop_rc != 0 or systemctl_rc != 0:
+        # Check if parent process is login.
+        # If it is, sleep a bit to show messages before console is cleared.
+        try:
+            with open(
+                f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
+            ) as ppcmdline:
+                parent_cmdline = ppcmdline.read()
+            parent_cmdline = parent_cmdline.strip().split('\0')
+            print_debug(f"parent_pid: {os.getppid()}")
+            print_debug(f"parent_cmdline: {parent_cmdline}")
+            if os.path.basename(parent_cmdline[0]) == 'login':
+                print_normal("Will exit in 5 seconds...")
+                time.sleep(5)
+        except Exception as caught_exception:
+            # no error is needed here
+            print_debug("Could not determine parent process command")
+            print_debug(caught_exception)
+
+    print_normal("Exiting.")
+    sys.exit(stop_rc if signal == 0 else systemctl_rc)
 
 
 if __name__ == "__main__":
@@ -3458,12 +3481,12 @@ if __name__ == "__main__":
             select_wm_id = select_comp_entry(default_id)
             if select_wm_id:
                 if select_wm_id == default_id:
-                    print_normal(f"Default compositor ID unchanged: {select_wm_id}")
+                    print_normal(f"Default compositor ID unchanged: {select_wm_id}.")
                 else:
                     save_default_comp_entry(select_wm_id)
                 sys.exit(0)
             else:
-                print_warning("No compositor was selected")
+                print_warning("No compositor was selected.")
                 sys.exit(1)
         except Exception as caught_exception:
             print_error_or_traceback(caught_exception)
@@ -3484,7 +3507,7 @@ if __name__ == "__main__":
                     # update args.wm_cmdline in place
                     args.wm_cmdline = [select_wm_id]
                 else:
-                    print_error("No compositor was selected")
+                    print_error("No compositor was selected!")
                     sys.exit(1)
             except Exception as caught_exception:
                 print_error_or_traceback(caught_exception)
@@ -3517,7 +3540,7 @@ if __name__ == "__main__":
         if units_changed:
             reload_systemd()
         else:
-            print_normal("Units unchanged")
+            print_normal("Units unchanged.")
 
         if args.only_generate:
             print_warning("Only unit creation was requested. Will not go further.")
@@ -3541,11 +3564,11 @@ if __name__ == "__main__":
                     """
                     System has not reached graphical.target.
                     It might be a good idea to screen for this with a condition.
-                    Will continue in 3 seconds...
+                    Will continue in 5 seconds...
                     """
                 )
             )
-            time.sleep(3)
+            time.sleep(5)
 
         if args.dry_run:
             print_warning("Dry Run Mode. Will not go further.")
@@ -3568,15 +3591,14 @@ if __name__ == "__main__":
         )
         print_debug(sprc)
 
-        # in case systemctl is killed, run trap_stopper.
-        # reuse second arg for systemctl returncode
-        trap_stopper(0, sprc.returncode)
+        # reuse trap_stopper with signal 0 to report on ended systemctl
+        trap_stopper(signal=0, systemctl_rc=sprc.returncode)
 
     #### STOP
     elif args.mode == "stop":
         returncode = stop_wm()
         if returncode != 0:
-            print_error(f"Stop returned {returncode}")
+            print_error(f"Stop returned {returncode}!")
 
         # args.remove_units is False when not given, None if given without argument
         if args.remove_units is not False:
@@ -3584,7 +3606,7 @@ if __name__ == "__main__":
             if units_changed:
                 reload_systemd()
             else:
-                print_normal("Units unchanged")
+                print_normal("Units unchanged.")
 
         sys.exit(returncode)
 
@@ -3632,7 +3654,7 @@ if __name__ == "__main__":
             print_debug(f"parent_pid: {os.getppid()}")
             print_debug(f"parent_cmdline: {parent_cmdline}")
         except Exception as caught_exception:
-            print_error("Could not determine parent process command")
+            print_error("Could not determine parent process command!")
             print_error_or_traceback(caught_exception)
             sys.exit(1)
         if not parent_cmdline.startswith("-"):
@@ -3676,7 +3698,7 @@ if __name__ == "__main__":
             sys.exit(1)
         else:
             if args.verbose:
-                print_ok("May start compositor")
+                print_ok("May start compositor.")
             sys.exit(0)
 
     #### AUX
@@ -3685,7 +3707,7 @@ if __name__ == "__main__":
         ppid = int(os.getppid())
         print_debug(f"manager_pid: {manager_pid}, ppid: {ppid}")
         if not manager_pid or manager_pid != ppid:
-            print_error("Aux actions can only be run by systemd user manager")
+            print_error("Aux actions can only be run by systemd user manager!")
             sys.exit(1)
 
         if args.aux_action == "prepare-env":
@@ -3702,7 +3724,7 @@ if __name__ == "__main__":
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
             if is_active("wm-only", verbose=True):
-                print_error("A compositor is running, will not cleanup environment")
+                print_error("A compositor is running, will not cleanup environment!")
                 sys.exit(1)
             else:
                 try:
@@ -3714,5 +3736,5 @@ if __name__ == "__main__":
         elif args.aux_action == "exec":
             fill_wm_globals()
             print_debug(wm_cmdline)
-            print_normal(f"Starting: {shlex.join(wm_cmdline)}")
+            print_normal(f"Starting: {shlex.join(wm_cmdline)}...")
             os.execlp(wm_cmdline[0], *(wm_cmdline))
