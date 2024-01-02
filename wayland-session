@@ -18,9 +18,19 @@ Inspired by and uses some techniques from:
 Special thanks to @skewballfox for help with python and pointing me to useful tools.
 """
 
-import os, sys, shlex, argparse, re, subprocess, textwrap, random, time, signal, traceback
-from urllib import parse as urlparse
+import os
+import sys
+import shlex
+import argparse
+import re
+import subprocess
+import textwrap
+import random
+import time
+import signal
+import traceback
 from typing import List, IO, Any, Callable
+from urllib import parse as urlparse
 from xdg.DesktopEntry import DesktopEntry, which
 from xdg.Exceptions import ValidationError
 from xdg import BaseDirectory
