@@ -1,5 +1,7 @@
 #!/bin/sh
 
+SRC_NAME=wayland-session
+
 showhelp() {
 	while IFS='' read -r line; do
 		printf '%s\n' "$line"
@@ -12,7 +14,7 @@ showhelp() {
 		  		(default: value of --prefix)
 
 		  --name	executable destination name, also affects names of
-		  		plugin dir and config files (default: wayland-session)
+		  		plugin dir and config files (default: $SRC_NAME)
 
 		  --old-name	for warnings on things that may have been installed
 		  		under different name earlier (default: wayland-session)
@@ -42,8 +44,9 @@ uwsm_install() {
 
 	echo
 	echo "Installing as $NAME"
-	"$@" install -vpD -o root -m 0755 -T ./wayland-session "${EXEC_PREFIX%/}/bin/${NAME}"
-	"$@" install -vpD -o root -m 0644 -t "${PREFIX%/}/lib/${NAME}-plugins/" ./wayland-session-plugins/*
+	"$@" install -vpD -o root -m 0755 -T ./"${SRC_NAME}" "${EXEC_PREFIX%/}/bin/${NAME}"
+	"$@" install -vpD -o root -m 0755 -T ./"${SRC_NAME}-app" "${EXEC_PREFIX%/}/bin/${NAME}-app"
+	"$@" install -vpD -o root -m 0644 -t "${PREFIX%/}/lib/${NAME}-plugins/" ./"${SRC_NAME}-plugins"/*
 	echo "Finished installation"
 
 	if [ "$NAME" != "$OLD_NAME" ]; then

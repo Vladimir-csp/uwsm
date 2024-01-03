@@ -29,6 +29,7 @@ import random
 import time
 import signal
 import traceback
+import stat
 from typing import List, IO, Any, Callable
 from urllib import parse as urlparse
 from xdg.DesktopEntry import DesktopEntry, which
@@ -91,7 +92,7 @@ class Val:
     entry_id = re.compile(r"\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop\Z", re.MULTILINE)
     action_id = re.compile(r"\A[a-zA-Z0-9-]+\Z", re.MULTILINE)
     unit_ext = re.compile(
-        r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|d/[a-zA-Z0-9_:.\\-]+.conf)\Z",
+        r"[a-zA-Z0-9_:.\\-]+@?\.(service|slice|scope|target|socket|d/[a-zA-Z0-9_:.\\-]+.conf)\Z",
         re.MULTILINE,
     )
     sh_varname = re.compile(
@@ -1200,6 +1201,27 @@ def generate_units():
             """
         ),
     )
+    update_unit(
+        "wayland-wm-app-daemon.service",
+        dedent(
+            f"""
+            # injected by {ws_self}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            Description=Fast application argument generator
+            Documentation=man:systemd.service(7)
+            BindsTo=graphical-session.target
+            CollectMode=inactive-or-failed
+            [Service]
+            Type=exec
+            ExecStart={ws_self_full} aux app-daemon
+            Restart=on-failure
+            RestartMode=direct
+            SyslogIdentifier={ws_self}_app-daemon
+            Slice={wayland_wm_slice}
+            """
+        ),
+    )
 
     # slices
     update_unit(
@@ -1428,11 +1450,19 @@ def remove_units(only=None) -> None:
         remove_unit(file_path)
 
 
-def parse_args(custom_args=None):
+def parse_args(custom_args=None, exit_on_error=True):
     "Parses args, returns tuple with args and a dict of parsers, takes optional custom 'args'"
+
+    # for direct arg queries
+    if custom_args is None:
+        argv = sys.argv[1:]
+    else:
+        argv = custom_args
+
     print_debug(
-        f"parsing {'argv' if not custom_args else 'custom args'}",
-        custom_args or sys.argv[1:],
+        f"parsing {'argv' if custom_args is None else 'custom args'}",
+        argv,
+        f"exit_on_error: {exit_on_error}",
     )
 
     # keep parsers in a dict
@@ -1498,6 +1528,7 @@ def parse_args(custom_args=None):
                 """
             )
         ),
+        exit_on_error=exit_on_error,
     )
     parsers["main_subparsers"] = parsers["main"].add_subparsers(
         title="Action subcommands",
@@ -1508,7 +1539,7 @@ def parse_args(custom_args=None):
     )
 
     # compositor arguments for potential reuse via parents
-    parsers["wm_args"] = argparse.ArgumentParser(add_help=False)
+    parsers["wm_args"] = argparse.ArgumentParser(add_help=False, exit_on_error=exit_on_error)
     parsers["wm_args"].add_argument(
         "wm_cmdline",
         metavar="args",
@@ -1671,7 +1702,7 @@ def parse_args(custom_args=None):
         metavar="args",
         # allow empty cmdline if '-T' is given and comes before '--'
         nargs="*"
-        if [arg for arg in sys.argv if arg in ("-T", "--")][0:1] == ["-T"]
+        if [arg for arg in argv if arg in ("-T", "--")][0:1] == ["-T"]
         else "+",
         help="executable or desktop entry, can be followed by arguments",
     )
@@ -1849,6 +1880,49 @@ def parse_args(custom_args=None):
         nargs="+",
         metavar="wm",
         help="executable or desktop entry (used as compositor ID), may be followed by arbitrary arguments",
+    )
+    parsers["app_daemon"] = parsers["aux_subparsers"].add_parser(
+        "app-daemon",
+        help="Daemon for fast app argument generation",
+        description="Receives app arguments from a named pipe, returns shell code",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=wrap_pgs(
+            dedent(
+                f"""
+                Receives app arguments via "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in" pipe.
+
+                Arguments are expected to be "\\0"-delimited, leading "\\0" are stripped.
+                One command is received per write+close.
+
+                The first argument determines the behavior:
+
+                  app	the rest is processed the same as in "{self_name()} app"
+                  ping	just "pong" is returned
+                  stop	daemon is stopped
+
+                Resulting arguments are formatted as shell code and written to
+                "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out" pipe.
+
+                Single commands are prepended with "exec", iterated commands are assembled with trailing "&" each,
+                followed by "wait"
+
+                The purpose of all this is to skip all the expensive python startup and import routines that slow things
+                down every time "{self_name()} app" is called. Instead the daemon does it once and then listens for requests,
+                while a simple shell script may dump arguments to one pipe and run the code received from another via eval,
+                which is much faster
+
+                The simplest script is:
+
+                  #!/bin/sh
+                  printf '\\0%s' app "$@" > ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in
+                  IFS='' read -r cmd < ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out
+                  eval "$cmd"
+
+                Provided "{self_name()}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
+                and supports newlines in returned args.
+                """
+            )
+        ),
     )
 
     args = parsers["main"].parse_args(custom_args)
@@ -2861,6 +2935,7 @@ def app(
     unit_name,
     unit_description,
     fork=False,
+    return_cmdline=False,
 ):
     """
     Exec given command or desktop entry via systemd-run in specific slice.
@@ -2940,10 +3015,14 @@ def app(
                         unit_name,
                         unit_description,
                         fork=True,
+                        return_cmdline=return_cmdline,
                     )
                 )
                 # add placeholder for rc
                 sub_apps_rc.append(None)
+
+            if return_cmdline:
+                return sub_apps
 
             # function for map()
             def is_int(checkvar):
@@ -3128,10 +3207,145 @@ def app(
 
     print_debug("final_args", *(final_args))
 
+    if return_cmdline:
+        return final_args
+
     if fork:
         return subprocess.Popen(final_args)
 
     os.execlp(final_args[0], *(final_args))
+
+
+def app_daemon():
+    """
+    Listens for app arguments on uwsm-app-daemon-in fifo in runtime dir.
+    Writes shell code to uwsm-app-daemon-out fifo.
+    """
+
+    def trap_stopper(signal=0, stack_frame=None):
+        """
+        For use in signal trap to stop app daemon
+        """
+        print_normal(f"Received signal {signal}, stopping app daemon...")
+        print_debug(stack_frame)
+        # shutdown successfully
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, trap_stopper)
+    signal.signal(signal.SIGTERM, trap_stopper)
+    signal.signal(signal.SIGHUP, trap_stopper)
+
+    # these will be reset with every call
+    global args
+    global terminal_entry
+    global terminal_entry_action
+    global terminal_entry_id
+
+    # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
+    # crudely work around it
+    error_flag_path = os.path.join(BaseDirectory.get_runtime_dir(strict=True), "uwsm-app-daemon-error")
+
+    while True:
+        fifo_in_path = create_fifo("uwsm-app-daemon-in")
+        fifo_out_path = create_fifo("uwsm-app-daemon-out")
+
+        # argparse exit workaround
+        if os.path.isfile(error_flag_path):
+            print_normal(f"error flag {error_flag_path} exists")
+            with open(error_flag_path, 'r') as error_file:
+                old_args = error_file.read().lstrip("\0")
+            os.remove(error_flag_path)
+            old_args = shlex.join(sane_split(old_args, "\0"))
+            out_args = f"echo Invalid arguments: {shlex.quote(old_args)} >&2 ; exit 2"
+            with open(fifo_out_path, 'w') as fifo_out:
+                print_normal(f"sent: {out_args}\nremoved error flag")
+                fifo_out.write(f"{out_args}\n")
+            continue
+
+        print_debug("reading command...")
+        with open(fifo_in_path, "r") as fifo_in:
+            line = fifo_in.read().lstrip("\0")
+
+        args_in = sane_split(line, "\0")
+
+        print_debug("args_in", args_in)
+
+        # this will be written to fifo_out with trailing newline
+        out_args = ""
+
+        if len(args_in) == 0:
+            out_args = "echo 'No args given' >&2 ; exit 2"
+        elif args_in[0] == "stop":
+            out_args = "echo 'Stopping daemon.'"
+        elif args_in[0] == "ping":
+            out_args = "pong"
+        elif args_in[0] == "app":
+            # argparse exit workaround: write command as error flag file
+            with open(error_flag_path, 'w') as error_file:
+                print_debug(f"writing {error_flag_path} in case of argparse exit")
+                error_file.write(line.strip())
+            try:
+                args, _ = parse_args(args_in, exit_on_error=False)
+            except Exception as caught_exception:
+                out_args = f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 2\n"
+                continue
+            # remove error flag file since args are parsed successfully
+            print_debug(f"removing {error_flag_path}")
+            os.remove(error_flag_path)
+
+            # reset terminal entry
+            terminal_entry = None
+            terminal_entry_action = ""
+            terminal_entry_id = ""
+
+            # call app with return_cmdline=True
+            try:
+                app_args = app(
+                    cmdline=args.cmdline,
+                    slice_name=args.slice_name,
+                    app_unit_type=args.app_unit_type,
+                    app_name=args.app_name,
+                    unit_name=args.unit_name,
+                    unit_description=args.unit_description,
+                    return_cmdline=True,
+                )
+                if isinstance(app_args[0], str):
+                    print_debug("got single command")
+                    out_args = f"exec {shlex.join(app_args)}"
+                elif isinstance(app_args[0], (list, tuple)):
+                    print_debug("got iterated command")
+                    out_args = []
+                    for iter_app_args in app_args:
+                        out_args.append(f"{shlex.join(iter_app_args)} &")
+                    out_args.append("wait")
+                    out_args = " ".join(out_args)
+            except Exception as caught_exception:
+                out_args = f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 1"
+        else:
+            out_args = f"echo Invalid arguments: {shlex.quote(shlex.join(args_in))} >&2 ; exit 2"
+
+        print_normal(f"received: {shlex.join(args_in)}\nsent: {out_args}")
+        fifo_out_path = create_fifo("uwsm-app-daemon-out")
+        with open(fifo_out_path, "w") as fifo_out:
+            fifo_out.write(f"{out_args}\n")
+        if args_in[0] == "stop":
+            print_normal("Exiting.", file=sys.stderr)
+            sys.exit(0)
+
+
+def create_fifo(path):
+    "Ensures path in runtime dir is fifo, returns full path"
+    fifo_path = os.path.join(BaseDirectory.get_runtime_dir(strict=True), path)
+
+    if os.path.exists(fifo_path):
+        if stat.S_ISFIFO(os.stat(fifo_path).st_mode):
+            print_debug(f"fifo {fifo_path} already exists.")
+            return fifo_path
+        print_debug(f"not a fifo: {fifo_path}, removing.")
+        os.remove(fifo_path)
+    print_debug(f"creating fifo {fifo_path}.")
+    os.mkfifo(fifo_path)
+    return fifo_path
 
 
 def fill_wm_globals():
@@ -3449,10 +3663,10 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=0):
                 f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
             ) as ppcmdline:
                 parent_cmdline = ppcmdline.read()
-            parent_cmdline = parent_cmdline.strip().split('\0')
+            parent_cmdline = parent_cmdline.strip().split("\0")
             print_debug(f"parent_pid: {os.getppid()}")
             print_debug(f"parent_cmdline: {parent_cmdline}")
-            if os.path.basename(parent_cmdline[0]) == 'login':
+            if os.path.basename(parent_cmdline[0]) == "login":
                 print_normal("Will exit in 5 seconds...")
                 time.sleep(5)
         except Exception as caught_exception:
@@ -3753,3 +3967,11 @@ if __name__ == "__main__":
             print_debug(wm_cmdline)
             print_normal(f"Starting: {shlex.join(wm_cmdline)}...")
             os.execlp(wm_cmdline[0], *(wm_cmdline))
+
+        elif args.aux_action == "app-daemon":
+            print_normal("Launching app daemon", file=sys.stderr)
+            try:
+                app_daemon()
+            except Exception as caught_exception:
+                print_error_or_traceback(caught_exception)
+                sys.exit(1)

@@ -1,0 +1,67 @@
+#!/bin/sh
+
+# Simple client for wayland-wm-app-daemon.service
+# A drop-in replacement for "wayland-session app"
+
+set -e
+
+# various read and write timeouts
+TIMEOUT=10
+
+# assume uwsm is under the same name as us, without "-app"
+UWSM_NAME=${0##*/}
+UWSM_NAME=${UWSM_NAME%-app}
+
+PIPE_IN="${XDG_RUNTIME_DIR}/uwsm-app-daemon-in"
+PIPE_OUT="${XDG_RUNTIME_DIR}/uwsm-app-daemon-out"
+
+N='
+'
+
+# restart server if something is wrong with the pipes
+if [ ! -p "$PIPE_IN" ] || [ ! -p "$PIPE_OUT" ]; then
+	systemctl --user restart wayland-wm-app-daemon.service
+	PIPE_TIMEOUT=$TIMEOUT
+	# wait for pipes to become pipes
+	while [ ! -p "$PIPE_IN" ] && [ ! -p "$PIPE_OUT" ]; do
+		if [ "$PIPE_TIMEOUT" -le "0" ]; then
+			echo "Timed out waiting for pipes" >&2
+			exit 1
+		else
+			sleep 1
+			PIPE_TIMEOUT=$((PIPE_TIMEOUT - 1))
+		fi
+	done
+else
+	# check in background if server is not running and launch it
+	if ! systemctl --user is-active -q wayland-wm-app-daemon.service; then
+		systemctl --user restart wayland-wm-app-daemon.service
+	fi > /dev/null &
+fi
+
+# write args to input pipe
+if [ "$#" = "0" ]; then
+	echo "No args given!" >&2
+	exit 1
+elif [ "$#" = "1" ] && [ "$1" = "ping" ]; then
+	timeout "$TIMEOUT" printf '%s' 'ping' > "$PIPE_IN"
+elif [ "$#" = "1" ] && [ "$1" = "stop" ]; then
+	timeout "$TIMEOUT" printf '%s' 'stop' > "$PIPE_IN"
+else
+	timeout "$TIMEOUT" printf '\0%s' app "$@" > "$PIPE_IN"
+fi
+
+# read from output pipe
+CMDLINE=$(timeout $TIMEOUT cat "$PIPE_OUT")
+
+case "$CMDLINE" in
+pong)
+	echo pong
+	exit 0
+	;;
+'' | "$N")
+	echo "Received empty command" >&2
+	exit 1
+	;;
+*) eval "$CMDLINE" ;;
+esac
