@@ -1,6 +1,6 @@
 #!/bin/sh
 
-SRC_NAME=wayland-session
+SRC_NAME=uwsm
 
 showhelp() {
 	while IFS='' read -r line; do
@@ -60,10 +60,10 @@ uwsm_install() {
 
 		echo
 		if [ -n "$OLD_FILES" ]; then
-			echo "Found files related to old name $OLD_NAME:"
+			echo "Found files related to old name \"$OLD_NAME\":"
 			echo "$OLD_FILES"
 		fi
-		echo "Please rename any ${OLD_NAME}-* config files to ${NAME}-*:"
+		echo "Please rename any \"${OLD_NAME}-*\" config files to \"${NAME}-*\":"
 		printf '  %s\n' "${OLD_NAME}-default-id" "${OLD_NAME}-env" "${OLD_NAME}-env-*"
 		FOUND_CONFIGS=$(
 			IFS=:
@@ -73,6 +73,7 @@ uwsm_install() {
 			echo "Found:"
 			echo "$FOUND_CONFIGS"
 		fi
+		echo "Also do not forget to rename \"${OLD_NAME}\" to \"${NAME}\" in your compositor configs!"
 	fi
 
 }
@@ -135,7 +136,7 @@ done
 
 : "${PREFIX:=/usr/local}"
 : "${EXEC_PREFIX:=$PREFIX}"
-: "${NAME:=wayland-session}"
+: "${NAME:=$SRC_NAME}"
 : "${OLD_NAME:=wayland-session}"
 
 cd "$(dirname "$0")"

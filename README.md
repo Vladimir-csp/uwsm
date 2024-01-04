@@ -7,10 +7,8 @@ WIP(ish). The main structure of subcommands and features is more or less settled
 not receive any drastic changes unless some illuminative idea comes by.
 Nonetheless, keep an eye for commits with `[Breaking]` messages.
 
-One pending major change is changing `wayland-session` name to `uwsm` that will be done in 0.12.
-Should have done it much earlier, but the name stuck from times when it was not clear how many
-major executables UWSM would consist of. It can be properly installed by the new name already,
-see related installation [section](#1-executables-and-plugins).
+(!) v0.12 changed `wayland-session` name to `uwsm`. This affects names of executables, plugin dirs,
+and log identifiers. See related installation [section](#1-executables-and-plugins).
 
 ## Concepts and features
 
@@ -46,7 +44,7 @@ Idempotently (well, best-effort-idempotently) handles environment.
 
   - On startup environment is prepared by:
     - sourcing shell profile
-    - sourcing `wayland-session-env`, `wayland-session-env-${desktop}` files
+    - sourcing `uwsm-env`, `uwsm-env-${desktop}` files
       from each dir of reversed `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}` (in increasing priority),
       where `${desktop}` is each item of `${XDG_CURRENT_DESKTOP}`, lowercased
   - Difference between environment state before and after preparation is exported into systemd user manager
@@ -68,7 +66,7 @@ Can work with Desktop entries from `wayland-sessions` in XDG data hierarchy and/
       - `DesktopNames` for `XDG_CURRENT_DESKTOP` and `XDG_SESSION_DESKTOP`
       - `Name` and `Comment` for unit `Description`
     - Entries can be overridden, masked or added in `${XDG_DATA_HOME}/wayland-sessions/`
-    - Optional interactive selector (requires whiptail), choice is saved in `${XDG_CONFIG_HOME}/wayland-session-default-id`
+    - Optional interactive selector (requires whiptail), choice is saved in `${XDG_CONFIG_HOME}/uwsm-default-id`
     - Desktop entry [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html) are supported
   - Be launched via a Desktop entry by a login/display manager.
 </details>
@@ -112,21 +110,21 @@ Try `install.sh` (see `--help`).
 
 Or to do it manually:
 
-Put `wayland-session` executable somewhere in `$PATH` (should also be searchable by systemd user manager).
+Put `uwsm` executable somewhere in `$PATH` (should also be searchable by systemd user manager).
 
 - The executable can be renamed, and **it affects plugin dir and config file names (!)**, also log identifiers.
 - Executable name does **not** affect unit names, since `wayland-`, `wayland-session-` are valid systemd drop-in globs.
 
-Put `wayland-session-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
+Put `uwsm-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
 as `${executable}-plugins` (corresponding to the executable above).
 
-The rest of the manual will refer to default `wayland-session` name.
+The rest of the manual will refer to default `uwsm` name.
 
 Optional `uuctl` tool for managing user units (services and scopes) with dmenu-style menus can also be put in `$PATH`.
 
 ### 2. Vars set by compositor and startup notification
 
-Ensure your compositor runs `wayland-session finalize` at startup. Feed any environment variable names to be exported
+Ensure your compositor runs `uwsm finalize` at startup. Feed any environment variable names to be exported
 to systemd user environment
 
 <details><summary>
@@ -142,32 +140,32 @@ Details
 
 Example snippet for sway config:
 
-`exec exec wayland-session finalize SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME`
+`exec exec uwsm finalize SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME`
 
 ### 3. Applications and Slices
 
 To properly put applications in `app-graphical.slice` (or like), Configure application launching in compositor via:
 
-    wayland-session app -- {executable|entry.desktop[:action]} [args ...]
+    uwsm app -- {executable|entry.desktop[:action]} [args ...]
 
 When app launching is properly configured, compositor service itself can be placed in `session.slice` by either:
 
 - Setting environment variable `UWSM_USE_SESSION_SLICE=true` before generating units. Best places to put this:
-  - export in `~/.profile` before `wayland-session` invocation
+  - export in `~/.profile` before `uwsm` invocation
   - put in `~/.config/environment.d/*.conf` (see `man environment.d`)
-- Adding `-S` argument to `wayland-session start` subcommand.
+- Adding `-S` argument to `uwsm start` subcommand.
 
 <details><summary>
 Background and details
 </summary>
 
-By default `wayland-session` launhces compositor service in `app.slice` and all processes spawned by compositor
+By default `uwsm` launhces compositor service in `app.slice` and all processes spawned by compositor
 will be a part of `wayland-wm@${compositor}.service` unit. This works, but is not an optimal solution.
 
 Systemd [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
 recommends running compositors in `session.slice` and launch apps as scopes or services in `app.slice`.
 
-`wayland-session` provides convenient way of handling this, It generates special nested slices that will
+`uwsm` provides convenient way of handling this, It generates special nested slices that will
 also receive stop action ordered before `wayland-wm@${compositor}.service` shutdown:
 
 - `app-graphical.slice`
@@ -178,12 +176,12 @@ also receive stop action ordered before `wayland-wm@${compositor}.service` shutd
 
 To launch an app inside one of those slices, use:
 
-`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] -- your_app [with args]`
+`uwsm app [-s a|b|s|custom.slice] [-t scope|service] -- your_app [with args]`
 
 Launching desktop entries via a [valid ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s02.html#desktop-file-id)
 is also supported, (optionally with an [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s11.html) appended via ':'):
 
-`wayland-session app [-s a|b|s|custom.slice] [-t scope|service] -- your_app.desktop[:action] [with args]`
+`uwsm app [-s a|b|s|custom.slice] [-t scope|service] -- your_app.desktop[:action] [with args]`
 
 In this case args must be supported by the entry or its selected action according to
 [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
@@ -194,19 +192,19 @@ Example snippets for sway config for launching apps:
 
 Launch [proposed](https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/3) default terminal:
 
-`bindsym --to-code $mod+t exec exec wayland-session app -T`
+`bindsym --to-code $mod+t exec exec uwsm app -T`
 
 Fuzzel has a very handy launch-prefix option:
 
-`bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='wayland-session app --' --log-no-syslog --log-level=warning`
+`bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='uwsm app --' --log-no-syslog --log-level=warning`
 
 Launch SpaceFM via a desktop entry:
 
-`bindsym --to-code $mod+e exec exec wayland-session app spacefm.desktop`
+`bindsym --to-code $mod+e exec exec uwsm app spacefm.desktop`
 
 Featherpad desktop entry has "standalone-window" action:
 
-`bindsym --to-code $mod+n exec exec wayland-session app featherpad.desktop:standalone-window`
+`bindsym --to-code $mod+n exec exec uwsm app featherpad.desktop:standalone-window`
 
 Unit type of launched apps can be controlled by `-t service|scope` argument or setting its default
 via `UWSM_APP_UNIT_TYPE` env var.
@@ -216,11 +214,11 @@ via `UWSM_APP_UNIT_TYPE` env var.
 
 ### Syntax and behavior
 
-`-h|--help` option is available for `wayland-session` and all of its subcommands.
+`-h|--help` option is available for `uwsm` and all of its subcommands.
 
 Basics:
 
-    wayland-session start [options] -- ${compositor} [arguments]
+    uwsm start [options] -- ${compositor} [arguments]
 
 Always use `--` to disambiguate command line if any dashed arguments are intended for launched compositor.
 
@@ -239,9 +237,9 @@ Arguments and metadata are stored in specifier unit drop-ins if needed.
 Some details
 </summary>
 
-    wayland-session start [-[a|e]D DesktopName1[:DesktopMame2:...]] [-N Name] [-C "Compositor description"] -- ${compositor} [with "any complex" --arguments]
+    uwsm start [-[a|e]D DesktopName1[:DesktopMame2:...]] [-N Name] [-C "Compositor description"] -- ${compositor} [with "any complex" --arguments]
 
-If `${compositor}` is a desktop entry ID, `wayland-session` will get desktop entry from `wayland-sessions` data hierarchy,
+If `${compositor}` is a desktop entry ID, `uwsm` will get desktop entry from `wayland-sessions` data hierarchy,
 `Exec` will be used for command line, and `DesktopNames` will fill `$XDG_CURRENT_DESKTOP`, `Name` and `Comment` will go to units' descriptons.
 
 Arguments provided on command line are appended to the command line of session desktop entry (unlike application entries),
@@ -251,15 +249,15 @@ if you encounter any wayland-sessions desktop entry with `%`-fields which would 
 If you want to customize compositor execution provided with a desktop entry, copy it to
 `~/.local/share/wayland-sessions/` and change to your liking, including adding [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
 
-If `${compositor}` is `select` or `default`, `wayland-session` invokes a menu to select desktop entries available in
+If `${compositor}` is `select` or `default`, `uwsm` invokes a menu to select desktop entries available in
 `wayland-sessions` data hierarchy (including their actions). Selection is saved, previous selection is highlighted
 (or launched right away in case of `default`). Selected entry is used as instance ID.
 
-There is also a separate `select` action (`wayland-session select`) that only selects and saves default `${compositor}`
+There is also a separate `select` action (`uwsm select`) that only selects and saves default `${compositor}`
 and does nothing else, which is handy for seamless shell profile integration.
 </details>
 
-When started, `wayland-session` will wait while wayland session is running, and terminate session if
+When started, `uwsm` will wait while wayland session is running, and terminate session if
 is itself interrupted or terminated.
 
 ### Where to launch from
@@ -269,8 +267,8 @@ is itself interrupted or terminated.
 To launch automatically after login on virtual console 1, if systemd is at `graphical.target`,
 add this to shell profile:
 
-    if wayland-session check may-start && wayland-session select; then
-    	exec wayland-session start default
+    if uwsm check may-start && uwsm select; then
+    	exec uwsm start default
     fi
 
 `check may-start` checker subcommand, among other things, **screens for being in interactive login shell,
@@ -281,28 +279,28 @@ and continue to the normal login shell.
 
 `start default` launches the previously selected default compositor.
 
-`exec` in shell profile causes `wayland-session` to replace login shell, binding it to user's login session.
+`exec` in shell profile causes `uwsm` to replace login shell, binding it to user's login session.
 
 #### From display manager
 
-To launch uwsm from a display/login manager, `wayland-session` can be used inside desktop entries.
+To launch uwsm from a display/login manager, `uwsm` can be used inside desktop entries.
 Example `/usr/local/share/wayland-sessions/my-compositor.desktop`:
 
     [Desktop Entry]
     Name=My compositor (with UWSM)
     Comment=My cool compositor
-    Exec=wayland-session start -N "My compositor" -D mycompositor -C "My cool compositor" mywm
+    Exec=uwsm start -N "My compositor" -D mycompositor -C "My cool compositor" mywm
     DesktopNames=mycompositor
     Type=Application
 
 Things to keep in mind:
 
 - For consistency, command line arguments should mirror the keys of the entry
-- Command in `Exec=` should start with `wayland-session`
+- Command in `Exec=` should start with `uwsm`
 - It should not launch a desktop entry, only an executable.
 
-Potentially such entries may be found and used by `wayland-session` itself, i.e. in shell profile integration
-situation, or when launched manually. Following the principles above ensures `wayland-session` will properly
+Potentially such entries may be found and used by `uwsm` itself, i.e. in shell profile integration
+situation, or when launched manually. Following the principles above ensures `uwsm` will properly
 recognize itself and parse requested arguments inside the entry without any side effects.
 
 Testing and feedback is needed.
@@ -311,9 +309,11 @@ Testing and feedback is needed.
 
 Either of:
 
-- `loginctl terminate-user ""` (this ends all login sessions and units of current user)
-- `loginctl terminate-sesion ""` (this ends current login session)
-- `wayland-session stop` (effectively the same as previous one due to shell binding)
+- `loginctl terminate-user ""` (this ends all login sessions and units of current user,
+  good for resetting everything including runtime units)
+- `loginctl terminate-sesion "$XDG_SESSION_ID"` (this ends current login session.
+  Empty argument will only work if loginctl is called from session scope)
+- `uwsm stop` (effectively the same as previous one due to shell binding)
 - `systemctl --user stop wayland-session@*.service` (effectively the same as previous one)
 
 ## Longer story, tour under the hood
@@ -328,13 +328,13 @@ Dive
 
 (At least for now) units are generated by the script.
 
-Run `wayland-session start -o ${compositor}` to populate `${XDG_RUNTIME_DIR}/systemd/user/` with them and do
+Run `uwsm start -o ${compositor}` to populate `${XDG_RUNTIME_DIR}/systemd/user/` with them and do
 nothing else (`-o`).
 
 Any remainder arguments are appended to compositor argument list (even when `${compositor}` is a desktop entry).
 Use `--` to disambigue:
 
-`wayland-session start -o -- ${compositor} with "any complex" --arguments`
+`uwsm start -o -- ${compositor} with "any complex" --arguments`
 
 Desktop entries can be overridden or added in `${XDG_DATA_HOME}/wayland-sessions/`.
 
@@ -347,6 +347,7 @@ Basic set of generated units:
 - templated services
   - `wayland-wm-env@.service` - environment preloader service
   - `wayland-wm@.service` - main compositor service
+  - `wayland-wm-app-daemon.service` - fast app command generator
 - slices for apps nested in stock systemd user-level slices
   - `app-graphical.slice`
   - `background-graphical.slice`
@@ -376,11 +377,11 @@ To also bind it the other way around, shell traps are used:
 This makes the end of login shell also be the end of wayland session.
 
 When `wayland-wm-env@.service` is started during `graphical-session-pre.target` startup,
-`wayland-session aux prepare-env ${compositor}` is launched (with shared set of custom arguments).
+`uwsm aux prepare-env ${compositor}` is launched (with shared set of custom arguments).
 
-It runs shell code to prepare environment, that sources shell profile, `wayland-session-env*` files,
+It runs shell code to prepare environment, that sources shell profile, `uwsm-env*` files,
 anything that plugins dictate. Environment state at the end of shell code is given back to the main process.
-`wayland-session` is also smart enough to find login session associated with current TTY
+`uwsm` is also smart enough to find login session associated with current TTY
 and set `$XDG_SESSION_ID`, `$XDG_VTNR`.
 
 The difference between initial env (that is the state of activation environment) and after all the
@@ -396,7 +397,7 @@ a cleanup list file in runtime dir.
 Activation environments will also need to receive essential variables like `WAYLAND_DISPLAY`
 to launch graphical applications successfully.
 
-`wayland-session finalize [VAR [VAR2...]]` runs:
+`uwsm finalize [VAR [VAR2...]]` runs:
 
     dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
     systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
@@ -417,14 +418,14 @@ Wildcard `systemctl --user stop "wayland-wm@*.service"` will also work.
 If start command was run with `exec` from login shell or `.profile`,
 this stop command also doubles as a logout command.
 
-When `wayland-wm-env@${compositor}.service` is stopped, `wayland-session aux cleanup-env` is launched.
+When `wayland-wm-env@${compositor}.service` is stopped, `uwsm aux cleanup-env` is launched.
 It looks for **any** cleanup files (`env_names_for_cleanup_*`) in runtime dir. Listed variables,
 plus `varnames.always_cleanup` minus `varnames.never_cleanup`
 are emptied in dbus activation environment and unset from systemd user manager environment.
 
-When no compositor is running, units can be removed (`-r`) by `wayland-session stop -r`.
+When no compositor is running, units can be removed (`-r`) by `uwsm stop -r`.
 
-Add compositor to `-r` to remove only customization drop-ins: `wayland-session stop -r ${compositor}`.
+Add compositor to `-r` to remove only customization drop-ins: `uwsm stop -r ${compositor}`.
 
 ### Profile integration
 
@@ -441,7 +442,7 @@ unconditionally. Other conditions are a recommendation:
        systemctl is-active -q graphical.target &&
        ! systemctl --user is-active -q wayland-wm@*.service
     then
-        wayland-session start -o ${MY_COMPOSITOR}
+        uwsm start -o ${MY_COMPOSITOR}
         trap "if systemctl --user is-active -q wayland-wm@${MY_COMPOSITOR}.service ; then systemctl --user --stop wayland-wm@${MY_COMPOSITOR}.service ; fi" INT EXIT HUP TERM
         echo Starting ${MY_COMPOSITOR} compositor
         systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service &
@@ -479,13 +480,13 @@ Standard functions:
 - `process_config_dirs_reversed` - called by `load_wm_env`,
   iterates over XDG_CONFIG hierarchy in reverse (increasing priority)
 - `in_each_config_dir_reversed` - called by `process_config_dirs_reversed` for each config dir,
-  loads `wayland-session-env`, `wayland-session-env-${desktop}` files
+  loads `uwsm-env`, `uwsm-env-${desktop}` files
 - `process_config_dirs` - called by `load_wm_env`,
   iterates over XDG_CONFIG hierarchy (decreasing priority)
 - `in_each_config_dir` - called by `process_config_dirs` for each config dir, does nothing ATM
 - `source_file` - sources `$1` file, providing messages for log.
 
-See code inside `wayland-session` for more auxillary funcions.
+See code inside `uwsm` for more auxillary funcions.
 
 Functions that can be added by plugins, replacing standard funcions:
 
@@ -508,7 +509,7 @@ Example:
       export I_WANT_THIS_IN_SESSION=yes
       unset I_DO_NOT_WANT_THAT
       # or prepare a config for compositor
-      # or set a var to modify what sourcing wayland-session-env, wayland-session-env-${__WM_ID__}
+      # or set a var to modify what sourcing uwsm-env, uwsm-env-${__WM_ID__}
       # in the next stage will do
       ...
     }
