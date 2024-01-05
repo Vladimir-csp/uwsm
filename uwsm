@@ -715,26 +715,18 @@ def get_systemd_system_manager():
     "returns org.freedesktop.systemd1.Manager interface from dbus.SystemBus()"
     bus_system = dbus.SystemBus()
     systemd_system = bus_system.get_object(
-        'org.freedesktop.systemd1',
-        '/org/freedesktop/systemd1'
+        "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
     )
-    return dbus.Interface(
-        systemd_system,
-        'org.freedesktop.systemd1.Manager'
-    )
+    return dbus.Interface(systemd_system, "org.freedesktop.systemd1.Manager")
 
 
 def get_systemd_user_manager():
     "returns org.freedesktop.systemd1.Manager interface from dbus.SessionBus()"
     bus_session = dbus.SessionBus()
     systemd_user = bus_session.get_object(
-        'org.freedesktop.systemd1',
-        '/org/freedesktop/systemd1'
+        "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
     )
-    return dbus.Interface(
-        systemd_user,
-        'org.freedesktop.systemd1.Manager'
-    )
+    return dbus.Interface(systemd_user, "org.freedesktop.systemd1.Manager")
 
 
 def char2cesc(string: str) -> str:
@@ -795,19 +787,22 @@ def get_active_wm_id():
         systemd_user_manager = get_systemd_user_manager()
 
     # query systemd dbus for matching units
-    units = systemd_user_manager.ListUnitsByPatterns(['active', 'activating'], ['wayland-wm@*.service'])
-    active_id = ''
+    units = systemd_user_manager.ListUnitsByPatterns(
+        ["active", "activating"], ["wayland-wm@*.service"]
+    )
+    active_id = ""
     for unit in units:
         active_id = str(unit[0])
         break
 
     if active_id:
         # extract and unescape specifier
-        active_id = active_id.split('@')[1].removesuffix('.service')
-        active_id = bytes(active_id, 'UTF-8').decode('unicode_escape')
+        active_id = active_id.split("@")[1].removesuffix(".service")
+        active_id = bytes(active_id, "UTF-8").decode("unicode_escape")
         return active_id
 
     return ""
+
 
 def is_active(check_wm_id="", verbose=False):
     """
@@ -842,10 +837,14 @@ def is_active(check_wm_id="", verbose=False):
     active_units = []
     inactive_units = []
     for unit in units:
-        if str(unit[3]) in ['active', 'activating']:
-            active_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+        if str(unit[3]) in ["active", "activating"]:
+            active_units.append(
+                (str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4]))
+            )
         else:
-            inactive_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+            inactive_units.append(
+                (str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4]))
+            )
 
     if active_units:
         if verbose:
@@ -868,17 +867,21 @@ def is_active(check_wm_id="", verbose=False):
     active_units = []
     inactive_units = []
     for unit in units:
-        if str(unit[3]) in ['active', 'activating']:
-            active_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+        if str(unit[3]) in ["active", "activating"]:
+            active_units.append(
+                (str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4]))
+            )
         else:
-            inactive_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+            inactive_units.append(
+                (str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4]))
+            )
     print_normal("No units matched. Listing other relevant units:")
     if active_units:
         print_normal(f"  {len(active_units)} active:")
         for name, descr, state, substate in active_units:
             print_normal(f"    {name} ({descr})")
     if inactive_units:
-        print_normal(f"{len(inactive_units)} inactive:")
+        print_normal(f"  {len(inactive_units)} inactive:")
         for name, descr, state, substate in inactive_units:
             print_normal(f"    {name} ({descr})")
     return False
@@ -1527,7 +1530,9 @@ def parse_args(custom_args=None, exit_on_error=True):
     )
 
     # compositor arguments for potential reuse via parents
-    parsers["wm_args"] = argparse.ArgumentParser(add_help=False, exit_on_error=exit_on_error)
+    parsers["wm_args"] = argparse.ArgumentParser(
+        add_help=False, exit_on_error=exit_on_error
+    )
     parsers["wm_args"].add_argument(
         "wm_cmdline",
         metavar="args",
@@ -3231,7 +3236,9 @@ def app_daemon():
 
     # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
     # crudely work around it
-    error_flag_path = os.path.join(BaseDirectory.get_runtime_dir(strict=True), "uwsm-app-daemon-error")
+    error_flag_path = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True), "uwsm-app-daemon-error"
+    )
 
     while True:
         fifo_in_path = create_fifo("uwsm-app-daemon-in")
@@ -3240,12 +3247,12 @@ def app_daemon():
         # argparse exit workaround
         if os.path.isfile(error_flag_path):
             print_normal(f"error flag {error_flag_path} exists")
-            with open(error_flag_path, 'r') as error_file:
+            with open(error_flag_path, "r") as error_file:
                 old_args = error_file.read().lstrip("\0")
             os.remove(error_flag_path)
             old_args = shlex.join(sane_split(old_args, "\0"))
             out_args = f"echo Invalid arguments: {shlex.quote(old_args)} >&2 ; exit 2"
-            with open(fifo_out_path, 'w') as fifo_out:
+            with open(fifo_out_path, "w") as fifo_out:
                 print_normal(f"sent: {out_args}\nremoved error flag")
                 fifo_out.write(f"{out_args}\n")
             continue
@@ -3269,13 +3276,15 @@ def app_daemon():
             out_args = "pong"
         elif args_in[0] == "app":
             # argparse exit workaround: write command as error flag file
-            with open(error_flag_path, 'w') as error_file:
+            with open(error_flag_path, "w") as error_file:
                 print_debug(f"writing {error_flag_path} in case of argparse exit")
                 error_file.write(line.strip())
             try:
                 args, _ = parse_args(args_in, exit_on_error=False)
             except Exception as caught_exception:
-                out_args = f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 2\n"
+                out_args = (
+                    f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 2\n"
+                )
                 continue
             # remove error flag file since args are parsed successfully
             print_debug(f"removing {error_flag_path}")
@@ -3308,7 +3317,9 @@ def app_daemon():
                     out_args.append("wait")
                     out_args = " ".join(out_args)
             except Exception as caught_exception:
-                out_args = f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 1"
+                out_args = (
+                    f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 1"
+                )
         else:
             out_args = f"echo Invalid arguments: {shlex.quote(shlex.join(args_in))} >&2 ; exit 2"
 
@@ -3601,42 +3612,43 @@ def fill_wm_globals():
 
 
 def stop_wm():
-    "Stops compositor if active, returns int returncode"
-    if not args.dry_run:
-        global systemd_user_manager
-        if systemd_user_manager is None:
-            systemd_user_manager = get_systemd_user_manager()
+    "Stops compositor if active, returns True if stopped, False if was already inactive"
 
-        # query systemd dbus for matching compositor units
-        units = systemd_user_manager.ListUnitsByPatterns(['active', 'activating'], ['wayland-wm@*.service'])
-        units = [str(unit[0]) for unit in units]
+    global systemd_user_manager
+    if systemd_user_manager is None:
+        systemd_user_manager = get_systemd_user_manager()
 
-        if not units:
-            print_normal("Compositor is not running.")
-            return 0
+    # query systemd dbus for matching compositor units
+    units = systemd_user_manager.ListUnitsByPatterns(
+        ["active", "activating"], ["wayland-wm@*.service"]
+    )
+    # get only IDs
+    units = [str(unit[0]) for unit in units]
 
-        print_normal(f"Stopping compositor {units[0]}.")
+    if not units:
+        print_normal("Compositor is not running.")
+        return False
 
-        if len(units) > 1:
-            print_warning(f"Multiple compositor units found: {', '.join(units)}!")
+    # this really shoud not happen
+    if len(units) > 1:
+        print_warning(f"Multiple compositor units found: {', '.join(units)}!")
 
-        try:
-            job = systemd_user_manager.StopUnit(units[0], "fail")
+    if args.dry_run:
+        print_normal(f"Will stop compositor {units[0]}.")
+        return True
 
-            # wait for job to be done
-            while True:
-                jobs = systemd_user_manager.ListJobs()
-                if job not in [check_job[4] for check_job in jobs]:
-                    break
-                time.sleep(0.1)
+    print_normal(f"Stopping compositor {units[0]}.")
 
-            return 0
-        except Exception as caught_exception:
-            print_error_or_exception(caught_exception)
-            return 1
-    else:
-        print_normal("Will stop compositor.")
-        return 0
+    job = systemd_user_manager.StopUnit(units[0], "fail")
+
+    # wait for job to be done
+    while True:
+        jobs = systemd_user_manager.ListJobs()
+        if job not in [check_job[4] for check_job in jobs]:
+            break
+        time.sleep(0.1)
+
+    return True
 
 
 def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
@@ -3648,7 +3660,9 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     # initiate only once
     global stopper_initiated
     if stopper_initiated:
-        print_debug(f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc}")
+        print_debug(
+            f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc}"
+        )
         return
     stopper_initiated = True
 
@@ -3659,9 +3673,12 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
         print_normal(f"Received signal {signal}, stopping compositor...")
         print_debug(stack_frame)
 
-    stop_rc = stop_wm()
-    if stop_rc != 0:
-        print_error(f"Stop returned {returncode}.")
+    try:
+        stop_wm()
+        stop_rc = 0
+    except Exception as caught_exception:
+        print_error_or_traceback(caught_exception)
+        stop_rc = 1
 
     if stop_rc or systemctl_rc:
         # Check if parent process is login.
@@ -3795,7 +3812,9 @@ if __name__ == "__main__":
             systemd_system_manager = get_systemd_system_manager()
 
         # query systemd dbus for active matching units
-        units = systemd_system_manager.ListUnitsByPatterns(['active', 'activating'], ['graphical.target'])
+        units = systemd_system_manager.ListUnitsByPatterns(
+            ["active", "activating"], ["graphical.target"]
+        )
         if len(units) < 1:
             print_warning(
                 dedent(
@@ -3836,9 +3855,13 @@ if __name__ == "__main__":
 
     #### STOP
     elif args.mode == "stop":
-        returncode = stop_wm()
-        if returncode != 0:
-            print_error(f"Stop returned {returncode}!")
+        try:
+            stop_result = stop_wm()
+            stop_rc = 0
+        except Exception as caught_exception:
+            print_error_or_traceback(caught_exception)
+            stop_result = False
+            stop_rc = 1
 
         # args.remove_units is False when not given, None if given without argument
         if args.remove_units is not False:
@@ -3848,7 +3871,7 @@ if __name__ == "__main__":
             else:
                 print_normal("Units unchanged.")
 
-        sys.exit(returncode)
+        sys.exit(stop_rc)
 
     #### FINALIZE
     elif args.mode == "finalize":
@@ -3915,7 +3938,9 @@ if __name__ == "__main__":
         # check for graphical target
         if systemd_system_manager is None:
             systemd_system_manager = get_systemd_system_manager()
-        units = systemd_system_manager.ListUnitsByPatterns(['active', 'activating'], ['graphical.target'])
+        units = systemd_system_manager.ListUnitsByPatterns(
+            ["active", "activating"], ["graphical.target"]
+        )
         if len(units) < 1:
             dealbreakers.append("System has not reached graphical.target")
 
