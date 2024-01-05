@@ -31,9 +31,9 @@ import signal
 import traceback
 import stat
 from typing import List, IO, Any, Callable
+from urllib import parse as urlparse
 
 import dbus
-from urllib import parse as urlparse
 from xdg import BaseDirectory
 from xdg.DesktopEntry import DesktopEntry, which
 from xdg.Exceptions import ValidationError
@@ -2839,8 +2839,8 @@ def find_terminal_entry():
                             terminal_entries.append((entry_id, entry_action))
             except FileNotFoundError:
                 pass
-            except Exception as E:
-                print_error_or_traceback(E)
+            except Exception as caught_exception:
+                print_error_or_traceback(caught_exception)
 
     print_debug("explicit terminal_entries", terminal_entries)
 
@@ -2897,9 +2897,9 @@ def read_neg_cache(name: str) -> dict:
                 for line in neg_cache_file.readlines():
                     path, mtime = line.strip().split(";")
                     out.update({path: float(mtime)})
-        except Exception as E:
+        except Exception as caught_exception:
             # just remove it if something is wrong
-            print_debug(f"Removing cahce file {neg_cache_path} due to: {E}")
+            print_debug(f"Removing cahce file {neg_cache_path} due to: {caught_exception}")
             os.remove(neg_cache_path)
     else:
         print_debug(f"no cache {neg_cache_path}")
@@ -2917,9 +2917,9 @@ def write_neg_cache(name: str, data: dict):
         with open(neg_cache_path, "w", encoding="UTF-8") as neg_cache_file:
             for path, mtime in data.items():
                 neg_cache_file.write(f"{path};{mtime}\n")
-    except Exception as E:
+    except Exception as caught_exception:
         # just remove it if something is wrong
-        print_debug(f"Removing cahce file {neg_cache_path} due to: {E}")
+        print_debug(f"Removing cahce file {neg_cache_path} due to: {caught_exception}")
         if os.path.isfile(neg_cache_path):
             os.remove(neg_cache_path)
 
@@ -3251,18 +3251,18 @@ def app_daemon():
         # argparse exit workaround
         if os.path.isfile(error_flag_path):
             print_normal(f"error flag {error_flag_path} exists")
-            with open(error_flag_path, "r") as error_file:
+            with open(error_flag_path, "r", encoding='UTF-8') as error_file:
                 old_args = error_file.read().lstrip("\0")
             os.remove(error_flag_path)
             old_args = shlex.join(sane_split(old_args, "\0"))
             out_args = f"echo Invalid arguments: {shlex.quote(old_args)} >&2 ; exit 2"
-            with open(fifo_out_path, "w") as fifo_out:
+            with open(fifo_out_path, "w", encoding='UTF-8') as fifo_out:
                 print_normal(f"sent: {out_args}\nremoved error flag")
                 fifo_out.write(f"{out_args}\n")
             continue
 
         print_debug("reading command...")
-        with open(fifo_in_path, "r") as fifo_in:
+        with open(fifo_in_path, "r", encoding='UTF-8') as fifo_in:
             line = fifo_in.read().lstrip("\0")
 
         args_in = sane_split(line, "\0")
@@ -3280,7 +3280,7 @@ def app_daemon():
             out_args = "pong"
         elif args_in[0] == "app":
             # argparse exit workaround: write command as error flag file
-            with open(error_flag_path, "w") as error_file:
+            with open(error_flag_path, "w", encoding='UTF-8') as error_file:
                 print_debug(f"writing {error_flag_path} in case of argparse exit")
                 error_file.write(line.strip())
             try:
@@ -3329,7 +3329,7 @@ def app_daemon():
 
         print_normal(f"received: {shlex.join(args_in)}\nsent: {out_args}")
         fifo_out_path = create_fifo("uwsm-app-daemon-out")
-        with open(fifo_out_path, "w") as fifo_out:
+        with open(fifo_out_path, "w", encoding='UTF-8') as fifo_out:
             fifo_out.write(f"{out_args}\n")
         if args_in[0] == "stop":
             print_normal("Exiting.", file=sys.stderr)
