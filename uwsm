@@ -735,24 +735,27 @@ def char2cesc(string: str) -> str:
     return "".join("\\x%02x" % b for b in bytes(string, "utf-8"))
 
 
-def simple_systemd_escape(string: str) -> str:
-    "Escapes simple strings by systemd rules"
-    out = ""
-    # escape '.' if first
-    if string.startswith("."):
-        out = out + char2cesc(".")
+def simple_systemd_escape(string: str, start: bool = True) -> str:
+    """
+    Escapes simple strings by systemd rules.
+    Set 'start=False' if string is not intended for start of resutling string
+    """
+    out = []
+    # escape '.' if starts with it
+    if start and string.startswith("."):
+        out.append(char2cesc("."))
         string = string[1:]
     for ch, ucp in ((c, ord(c)) for c in string):
         # replace '/' with '-'
         if ch == "/":
-            out = out + "-"
+            out.append("-")
         # append as is if ._0-9:A-Z
         elif ucp in [46, 95] or 48 <= ucp <= 58 or 65 <= ucp <= 90 or 97 <= ucp <= 122:
-            out = out + ch
+            out.append(ch)
         # append c-style escape
         else:
-            out = out + char2cesc(ch)
-    return out
+            out.append(char2cesc(ch))
+    return ''.join(out)
 
 
 def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
@@ -829,7 +832,7 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
         check_units = ["wayland-wm@*.service"]
     elif check_wm_id:
         # escape wm_id for systemd
-        check_wm_id_unit_string = simple_systemd_escape(check_wm_id)
+        check_wm_id_unit_string = simple_systemd_escape(check_wm_id, start=False)
         check_units = [f"wayland-wm@{check_wm_id_unit_string}.service"]
     else:
         check_units = check_units_generic
@@ -3122,10 +3125,12 @@ def app(
         # use first XDG_CURRENT_DESKTOP as part of scope name
         # use app command as part of scope name
         desktop_unit_substring = simple_systemd_escape(
-            sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0]
+            sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0],
+            start=False
         )
         cmd_unit_substring = simple_systemd_escape(
             app_name or os.path.basename(cmdline[0]),
+            start=False
         )
 
         ## cut unit name to fit unit name in 255 chars
@@ -3406,7 +3411,7 @@ def fill_wm_globals():
         sys.exit(1)
 
     # escape wm_id for systemd
-    wm_id_unit_string = simple_systemd_escape(wm_id)
+    wm_id_unit_string = simple_systemd_escape(wm_id, start=False)
 
     # detect and parse desktop entry
     entry_id, entry_action = arg_entry_or_executable(wm_id)
