@@ -804,12 +804,14 @@ def get_active_wm_id():
     return ""
 
 
-def is_active(check_wm_id="", verbose=False):
+def is_active(check_wm_id="", verbose=False, verbose_active=False):
     """
     Checks if units are active or activating, returns bool.
     If check_wm_id is empty, checks graphical*.target and wayland-wm@*.service
     If check_wm_id is "compositor-only", checks wayland-wm@*.service
     If check_wm_id has other value, checks unit of specific wm_id
+    verbose=True prints matched or relevant units
+    verbose_active=True prints matched active units
     """
     global systemd_user_manager
     if systemd_user_manager is None:
@@ -847,14 +849,15 @@ def is_active(check_wm_id="", verbose=False):
             )
 
     if active_units:
-        if verbose:
+        if verbose or verbose_active:
             print_normal(f"Matched {len(units)} units, {len(active_units)} active:")
             for name, descr, state, substate in active_units:
                 print_normal(f"  {name} ({descr})")
-            if inactive_units:
-                print_normal(f"{len(inactive_units)} inactive:")
-            for name, descr, state, substate in inactive_units:
-                print_normal(f"  {name} ({descr})")
+            if verbose:
+                if inactive_units:
+                    print_normal(f"{len(inactive_units)} inactive:")
+                for name, descr, state, substate in inactive_units:
+                    print_normal(f"  {name} ({descr})")
         return True
 
     if not verbose:
@@ -3785,7 +3788,7 @@ if __name__ == "__main__":
             )
         )
 
-        if is_active(verbose=True):
+        if is_active(verbose_active=True):
             print_error("A compositor or graphical-session* target is already active!")
             if not args.dry_run:
                 sys.exit(1)
@@ -3980,7 +3983,7 @@ if __name__ == "__main__":
                     print_error_or_traceback(caught_exception)
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
-            if is_active("compositor-only", verbose=True):
+            if is_active("compositor-only", verbose_active=True):
                 print_error("A compositor is running, will not cleanup environment!")
                 sys.exit(1)
             else:
