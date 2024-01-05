@@ -1104,23 +1104,23 @@ def generate_units():
             # injected by {ws_self}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
-            Description=Brings down graphical session units
+            Description=Shutdown graphical session units
             Documentation=man:systemd.special(7)
+            DefaultDependencies=no
             Conflicts=app-graphical.slice
-            Conflicts=background-graphical.slice
-            Conflicts=session-graphical.slice
-            Conflicts=xdg-desktop-autostart.target
-            # dirty fix of xdg-desktop-portal-gtk.service shudown
-            Conflicts=xdg-desktop-portal-gtk.service
-            Conflicts=graphical-session.target
-            Conflicts=graphical-session-pre.target
             After=app-graphical.slice
+            Conflicts=background-graphical.slice
             After=background-graphical.slice
+            Conflicts=session-graphical.slice
             After=session-graphical.slice
+            Conflicts=xdg-desktop-autostart.target
             After=xdg-desktop-autostart.target
             # dirty fix of xdg-desktop-portal-gtk.service shudown
+            Conflicts=xdg-desktop-portal-gtk.service
             After=xdg-desktop-portal-gtk.service
+            Conflicts=graphical-session.target
             After=graphical-session.target
+            Conflicts=graphical-session-pre.target
             After=graphical-session-pre.target
             StopWhenUnneeded=yes
             """
