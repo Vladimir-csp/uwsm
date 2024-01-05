@@ -654,7 +654,16 @@ def select_comp_entry(default="", just_confirm=False):
 
     # pretty format choices
     col_overhead = 10
-    col = os.get_terminal_size().columns
+    try:
+        col = os.get_terminal_size().columns
+    except OSError:
+        print_warning("Could not get terminal width, assuming 128")
+        col = 128
+    except Exception as caught_exception:
+        print_error_or_traceback(caught_exception)
+        print_warning("Could not get terminal width, assuming 128")
+        col = 128
+
     for choice in choices_raw:
         choices.append(choice[0])
         if choice[2]:
@@ -681,6 +690,15 @@ def select_comp_entry(default="", just_confirm=False):
         for choice in choices[::2]:
             if choice == default:
                 return choice
+
+    # no default default here, fail on noninteractive terminal
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        io = []
+        if not sys.stdin.isatty():
+            io.append('stdin')
+        if not sys.stdout.isatty():
+            io.append('stdout')
+        raise IOError(f"{', '.join(io)} {'is' if len(io) == 1 else 'are'} not attached to interactive terminal! Can not launch menu!")
 
     # generate arguments for whiptail exec
     argv = [
@@ -2422,7 +2440,7 @@ def prepare_env():
         print_error(sprc.stderr.strip())
 
     if sprc.returncode != 0:
-        raise RuntimeError(f"Shell returned {returncode}!")
+        raise RuntimeError(f"Shell returned {sprc.returncode}!")
 
     # parse env
     env_post = {}
@@ -2621,7 +2639,7 @@ def cleanup_env():
             print_error(sprc.stderr.strip())
         if sprc.returncode != 0:
             # just print error here
-            print_error(f'"{shlex.join(sprc.args)}" returned {returncode}!')
+            print_error(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}!')
 
         sprc = subprocess.run(
             ["systemctl", "--user", "unset-environment"] + sorted(cleanup_varnames),
@@ -2635,7 +2653,7 @@ def cleanup_env():
         if sprc.stderr.strip():
             print_error(sprc.stderr.strip())
         if sprc.returncode != 0:
-            raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {returncode}')
+            raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
 
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
