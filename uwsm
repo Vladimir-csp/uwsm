@@ -3225,7 +3225,7 @@ def app_daemon():
         print_normal(f"Received signal {signal}, stopping app daemon...")
         print_debug(stack_frame)
         # shutdown successfully
-        sys.exit(0)
+        sys.exit()
 
     signal.signal(signal.SIGINT, trap_stopper)
     signal.signal(signal.SIGTERM, trap_stopper)
@@ -3617,6 +3617,8 @@ def fill_wm_globals():
 def stop_wm():
     "Stops compositor if active, returns True if stopped, False if was already inactive"
 
+    print_normal("Stopping compositor...")
+
     global systemd_user_manager
     if systemd_user_manager is None:
         systemd_user_manager = get_systemd_user_manager()
@@ -3629,7 +3631,7 @@ def stop_wm():
     units = [str(unit[0]) for unit in units]
 
     if not units:
-        print_normal("Compositor is not running.")
+        print_ok("Compositor is not running.")
         return False
 
     # this really shoud not happen
@@ -3640,7 +3642,7 @@ def stop_wm():
         print_normal(f"Will stop compositor {units[0]}.")
         return True
 
-    print_normal(f"Stopping compositor {units[0]}.")
+    print_normal(f"Found running compositor {units[0]}.")
 
     job = systemd_user_manager.StopUnit(units[0], "fail")
 
@@ -3650,6 +3652,7 @@ def stop_wm():
         if job not in [check_job[4] for check_job in jobs]:
             break
         time.sleep(0.1)
+    print_ok("Sent stop job.")
 
     return True
 
@@ -3670,10 +3673,12 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     stopper_initiated = True
 
     if systemctl_rc is not None:
-        if systemctl_rc != 0:
+        if systemctl_rc < 0 and systemctl_rc != -15:
+            print_error(f"systemctl was killed with signal {systemctl_rc * -1}!")
+        if systemctl_rc > 0:
             print_error(f"systemctl returned {systemctl_rc}!")
     else:
-        print_normal(f"Received signal {signal}, stopping compositor...")
+        print_normal(f"Received signal {signal}.")
         print_debug(stack_frame)
 
     try:
