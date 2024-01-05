@@ -30,6 +30,7 @@ import time
 import signal
 import traceback
 import stat
+import dbus
 from typing import List, IO, Any, Callable
 from urllib import parse as urlparse
 from xdg.DesktopEntry import DesktopEntry, which
@@ -710,6 +711,32 @@ def select_comp_entry(default="", just_confirm=False):
     return sprc.stderr.strip() if sprc.returncode == 0 and sprc.stderr else ""
 
 
+def get_systemd_system_manager():
+    "returns org.freedesktop.systemd1.Manager interface from dbus.SystemBus()"
+    bus_system = dbus.SystemBus()
+    systemd_system = bus_system.get_object(
+        'org.freedesktop.systemd1',
+        '/org/freedesktop/systemd1'
+    )
+    return dbus.Interface(
+        systemd_system,
+        'org.freedesktop.systemd1.Manager'
+    )
+
+
+def get_systemd_user_manager():
+    "returns org.freedesktop.systemd1.Manager interface from dbus.SessionBus()"
+    bus_session = dbus.SessionBus()
+    systemd_user = bus_session.get_object(
+        'org.freedesktop.systemd1',
+        '/org/freedesktop/systemd1'
+    )
+    return dbus.Interface(
+        systemd_user,
+        'org.freedesktop.systemd1.Manager'
+    )
+
+
 def char2cesc(string: str) -> str:
     "takes a string, returns c-style '\\xXX' sequence"
     return "".join("\\x%02x" % b for b in bytes(string, "utf-8"))
@@ -733,33 +760,6 @@ def simple_systemd_escape(string: str) -> str:
         else:
             out = out + char2cesc(ch)
     return out
-
-
-def systemd_escape(strings, se_args: list = []) -> str:
-    """
-    passes string(s) (string or list) through systemd-escape,
-    optional se_args list of systemd-escape args
-    """
-    if isinstance(strings, str):
-        strings = [strings]
-    sprc = subprocess.run(
-        ["systemd-escape", *se_args, "--", *strings],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-
-    if sprc.returncode != 0 or not sprc.stdout.strip():
-        raise RuntimeError(
-            f'Could not escape sequence "{strings}":\n{sprc.stderr.strip()}'
-        )
-    output = sane_split(sprc.stdout.strip(), " ")
-    if len(output) == 1:
-        return output[0]
-    if len(output) > 1:
-        return output
-    raise RuntimeError(f'Could not escape sequence "{strings}"')
 
 
 def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
@@ -790,37 +790,36 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
 
 def get_active_wm_id():
     "Finds running wayland-wm@*.service, returns specifier"
-    sprc = subprocess.run(
-        [
-            "systemctl",
-            "--user",
-            "show",
-            "--state=active,activating",
-            "--property",
-            "Id",
-            "--value",
-            "wayland-wm@*.service",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if not sprc.stdout.strip() or sprc.returncode != 0:
-        raise RuntimeError(sprc.stdout, sprc.stderr)
+    global systemd_user_manager
+    if systemd_user_manager is None:
+        systemd_user_manager = get_systemd_user_manager()
 
-    active_id = sprc.stdout.strip()
+    # query systemd dbus for matching units
+    units = systemd_user_manager.ListUnitsByPatterns(['active', 'activating'], ['wayland-wm@*.service'])
+    active_id = ''
+    for unit in units:
+        active_id = str(unit[0])
+        break
 
-    return systemd_escape([active_id], se_args=["--unescape", "--instance"])
+    if active_id:
+        # extract and unescape specifier
+        active_id = active_id.split('@')[1].removesuffix('.service')
+        active_id = bytes(active_id, 'UTF-8').decode('unicode_escape')
+        return active_id
 
+    return ""
 
 def is_active(check_wm_id="", verbose=False):
     """
     Checks if units are active or activating, returns bool.
     If check_wm_id is empty, checks graphical*.target and wayland-wm@*.service
-    If check_wm_id is "wm-only", checks wayland-wm@*.service
+    If check_wm_id is "compositor-only", checks wayland-wm@*.service
     If check_wm_id has other value, checks unit of specific wm_id
     """
+    global systemd_user_manager
+    if systemd_user_manager is None:
+        systemd_user_manager = get_systemd_user_manager()
+
     check_units_generic = [
         "graphical-session-pre.target",
         "wayland-session-pre@*.target",
@@ -828,7 +827,7 @@ def is_active(check_wm_id="", verbose=False):
         "wayland-session@*.target",
         "wayland-wm@*.service",
     ]
-    if check_wm_id and check_wm_id == "wm-only":
+    if check_wm_id and check_wm_id == "compositor-only":
         check_units = ["wayland-wm@*.service"]
     elif check_wm_id:
         # escape wm_id for systemd
@@ -837,63 +836,51 @@ def is_active(check_wm_id="", verbose=False):
     else:
         check_units = check_units_generic
 
-    sprc = subprocess.run(
-        [
-            "systemctl",
-            "--user",
-            "list-units",
-            "--state=active,activating",
-            "-q",
-            "--full",
-            "--plain",
-            *check_units,
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
+    # query systemd dbus for matching units
+    units = systemd_user_manager.ListUnitsByPatterns([], check_units)
+    # extract strings
+    active_units = []
+    inactive_units = []
+    for unit in units:
+        if str(unit[3]) in ['active', 'activating']:
+            active_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+        else:
+            inactive_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
 
-    if sprc.returncode != 0:
-        # list-units always returns 0
-        raise RuntimeError(sprc.stdout, sprc.stderr, sprc.returncode)
-
-    if sprc.stdout.strip():
+    if active_units:
         if verbose:
-            if sprc.stdout.strip():
-                print_normal(sprc.stdout.strip())
-            if sprc.stderr.strip():
-                print_error(sprc.stderr.strip())
+            print_normal(f"Matched {len(units)} units, {len(active_units)} active:")
+            for name, descr, state, substate in active_units:
+                print_normal(f"  {name} ({descr})")
+            if inactive_units:
+                print_normal(f"{len(inactive_units)} inactive:")
+            for name, descr, state, substate in inactive_units:
+                print_normal(f"  {name} ({descr})")
         return True
 
-    # just show generic check if above came empty and in verbose mode
-    if verbose:
-        sprc = subprocess.run(
-            [
-                "systemctl",
-                "--user",
-                "list-units",
-                "--all",
-                "-q",
-                "--full",
-                "--plain",
-                *check_units_generic,
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-        # don't bother for returncode here
-        if sprc.stdout.strip():
-            print_normal(sprc.stdout.strip())
-        if sprc.stderr.strip():
-            print_error(sprc.stderr.strip())
-        if check_units != check_units_generic:
-            print_normal(
-                f'Unit{"s" if len(check_units) > 1 else ""} {", ".join(check_units)} {"are" if len(check_units) > 1 else "is"} not active.'
-            )
+    if not verbose:
+        return False
 
+    # just show generic check if above came empty and in verbose mode
+    # query systemd dbus for matching units
+    units = systemd_user_manager.ListUnitsByPatterns([], check_units_generic)
+    # extract strings
+    active_units = []
+    inactive_units = []
+    for unit in units:
+        if str(unit[3]) in ['active', 'activating']:
+            active_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+        else:
+            inactive_units.append((str(unit[0]), str(unit[1]), str(unit[3]), str(unit[4])))
+    print_normal("No units matched. Listing other relevant units:")
+    if active_units:
+        print_normal(f"  {len(active_units)} active:")
+        for name, descr, state, substate in active_units:
+            print_normal(f"    {name} ({descr})")
+    if inactive_units:
+        print_normal(f"{len(inactive_units)} inactive:")
+        for name, descr, state, substate in inactive_units:
+            print_normal(f"    {name} ({descr})")
     return False
 
 
@@ -907,21 +894,22 @@ def reload_systemd():
         units_changed = False
         return True
 
-    print_normal("Reloading systemd user manager.")
-    sprc = subprocess.run(
-        ["systemctl", "--user", "daemon-reload", "-q"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
+    global systemd_user_manager
+    if systemd_user_manager is None:
+        systemd_user_manager = get_systemd_user_manager()
 
-    if sprc.returncode != 0:
-        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
+    # query systemd dbus for matching units
+    print_normal("Reloading systemd user manager.")
+    job = systemd_user_manager.Reload()
+    # wait for job to be done
+    while True:
+        jobs = systemd_user_manager.ListJobs()
+        print_debug("current systemd jobs", jobs)
+        if job not in [check_job[4] for check_job in jobs]:
+            break
+        time.sleep(0.1)
+
+    print_debug(f"reload systemd job {job} finished")
 
     units_changed = False
     return True
@@ -2025,7 +2013,7 @@ def get_systemd_varnames():
     # Either var=value or var=$'complex\nescaped\nvalue'.
     # Seems to be safe to use .splitlines().
     # If values are needed, they can be rendered
-    return {v.split("=")[0] for v in sprc.stdout.splitlines()}
+    return {v.split("=", maxsplit=1)[0] for v in sprc.stdout.splitlines()}
 
 
 def get_fg_vt():
@@ -3614,37 +3602,57 @@ def fill_wm_globals():
 
 def stop_wm():
     "Stops compositor if active, returns int returncode"
-    if is_active():
-        if not args.dry_run:
-            print_normal("Stopping compositor.")
-            sprc = subprocess.run(
-                ["systemctl", "--user", "stop", "wayland-wm@*.service"],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            print_debug(sprc)
-            if sprc.stdout.strip():
-                print_normal(sprc.stdout.strip())
-            if sprc.stderr.strip():
-                print_error(sprc.stderr.strip())
-            returncode = sprc.returncode
-        else:
-            print_normal("Will stop compositor.")
-            returncode = 0
+    if not args.dry_run:
+        global systemd_user_manager
+        if systemd_user_manager is None:
+            systemd_user_manager = get_systemd_user_manager()
+
+        # query systemd dbus for matching compositor units
+        units = systemd_user_manager.ListUnitsByPatterns(['active', 'activating'], ['wayland-wm@*.service'])
+        units = [str(unit[0]) for unit in units]
+
+        if not units:
+            print_normal("Compositor is not running.")
+            return 0
+
+        print_normal(f"Stopping compositor {units[0]}.")
+
+        if len(units) > 1:
+            print_warning(f"Multiple compositor units found: {', '.join(units)}!")
+
+        try:
+            job = systemd_user_manager.StopUnit(units[0], "fail")
+
+            # wait for job to be done
+            while True:
+                jobs = systemd_user_manager.ListJobs()
+                if job not in [check_job[4] for check_job in jobs]:
+                    break
+                time.sleep(0.1)
+
+            return 0
+        except Exception as caught_exception:
+            print_error_or_exception(caught_exception)
+            return 1
     else:
-        print_normal("Compositor is not running.")
-        returncode = 0
-
-    return returncode
+        print_normal("Will stop compositor.")
+        return 0
 
 
-def trap_stopper(signal=0, stack_frame=None, systemctl_rc=0):
+def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     """
     For use in signal trap or after waiting systemctl exits.
     Ensures compositor is stopped and exits.
     """
-    if signal == 0:
+
+    # initiate only once
+    global stopper_initiated
+    if stopper_initiated:
+        print_debug(f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc}")
+        return
+    stopper_initiated = True
+
+    if systemctl_rc is not None:
         if systemctl_rc != 0:
             print_error(f"systemctl returned {systemctl_rc}!")
     else:
@@ -3655,7 +3663,7 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=0):
     if stop_rc != 0:
         print_error(f"Stop returned {returncode}.")
 
-    if stop_rc != 0 or systemctl_rc != 0:
+    if stop_rc or systemctl_rc:
         # Check if parent process is login.
         # If it is, sleep a bit to show messages before console is cleared.
         try:
@@ -3675,7 +3683,7 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=0):
             print_debug(caught_exception)
 
     print_normal("Exiting.")
-    sys.exit(stop_rc if signal == 0 else systemctl_rc)
+    sys.exit(stop_rc if systemctl_rc is None else systemctl_rc)
 
 
 if __name__ == "__main__":
@@ -3697,6 +3705,9 @@ if __name__ == "__main__":
     terminal_entry_action: str = ""
     terminal_entry_id: str = ""
     terminal_neg_cache: dict = {}
+    stopper_initiated = False
+    systemd_system_manager = None
+    systemd_user_manager = None
 
     # get args and parsers (for help)
     args, parsers = parse_args()
@@ -3780,14 +3791,12 @@ if __name__ == "__main__":
         else:
             print_normal(f"Starting {wm_id}...")
 
-        sprc = subprocess.run(
-            ["systemctl", "is-active", "-q", "graphical.target"],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-        if sprc.returncode != 0:
+        if systemd_system_manager is None:
+            systemd_system_manager = get_systemd_system_manager()
+
+        # query systemd dbus for active matching units
+        units = systemd_system_manager.ListUnitsByPatterns(['active', 'activating'], ['graphical.target'])
+        if len(units) < 1:
             print_warning(
                 dedent(
                     """
@@ -3808,6 +3817,8 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTERM, trap_stopper)
         signal.signal(signal.SIGHUP, trap_stopper)
 
+        # run start job via systemctl
+        # this will wait until compositor is stopped
         sprc = subprocess.run(
             [
                 "systemctl",
@@ -3821,7 +3832,7 @@ if __name__ == "__main__":
         print_debug(sprc)
 
         # reuse trap_stopper with signal 0 to report on ended systemctl
-        trap_stopper(signal=0, systemctl_rc=sprc.returncode)
+        trap_stopper(systemctl_rc=sprc.returncode)
 
     #### STOP
     elif args.mode == "stop":
@@ -3902,18 +3913,10 @@ if __name__ == "__main__":
                 )
 
         # check for graphical target
-        sprc = subprocess.run(
-            ["systemctl", "is-active", "-q", "graphical.target"],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-        if sprc.stdout.strip():
-            print_normal(sprc.stdout.strip())
-        if sprc.stderr.strip():
-            print_normal(sprc.stderr.strip())
-        if sprc.returncode != 0:
+        if systemd_system_manager is None:
+            systemd_system_manager = get_systemd_system_manager()
+        units = systemd_system_manager.ListUnitsByPatterns(['active', 'activating'], ['graphical.target'])
+        if len(units) < 1:
             dealbreakers.append("System has not reached graphical.target")
 
         if dealbreakers:
@@ -3952,7 +3955,7 @@ if __name__ == "__main__":
                     print_error_or_traceback(caught_exception)
                 sys.exit(1)
         elif args.aux_action == "cleanup-env":
-            if is_active("wm-only", verbose=True):
+            if is_active("compositor-only", verbose=True):
                 print_error("A compositor is running, will not cleanup environment!")
                 sys.exit(1)
             else:
