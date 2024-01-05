@@ -10,6 +10,14 @@ Nonetheless, keep an eye for commits with `[Breaking]` messages.
 (!) v0.12 changed `wayland-session` name to `uwsm`. This affects names of executables, plugin dirs,
 and log identifiers. See related installation [section](#1-executables-and-plugins).
 
+(!) v0.13 added python-dbus dependency
+
+Python dependencies:
+
+- xdg
+- urllib
+- dbus
+
 ## Concepts and features
 
 <details><summary>

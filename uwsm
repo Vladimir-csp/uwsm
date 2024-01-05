@@ -30,12 +30,13 @@ import time
 import signal
 import traceback
 import stat
-import dbus
 from typing import List, IO, Any, Callable
+
+import dbus
 from urllib import parse as urlparse
+from xdg import BaseDirectory
 from xdg.DesktopEntry import DesktopEntry, which
 from xdg.Exceptions import ValidationError
-from xdg import BaseDirectory
 
 stdStream = None | int | IO[Any]
 
