@@ -15,7 +15,6 @@ and log identifiers. See related installation [section](#1-executables-and-plugi
 Python dependencies:
 
 - xdg
-- urllib
 - dbus
 
 ## Concepts and features

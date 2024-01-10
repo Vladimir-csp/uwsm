@@ -695,10 +695,12 @@ def select_comp_entry(default="", just_confirm=False):
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         io = []
         if not sys.stdin.isatty():
-            io.append('stdin')
+            io.append("stdin")
         if not sys.stdout.isatty():
-            io.append('stdout')
-        raise IOError(f"{', '.join(io)} {'is' if len(io) == 1 else 'are'} not attached to interactive terminal! Can not launch menu!")
+            io.append("stdout")
+        raise IOError(
+            f"{', '.join(io)} {'is' if len(io) == 1 else 'are'} not attached to interactive terminal! Can not launch menu!"
+        )
 
     # generate arguments for whiptail exec
     argv = [
@@ -731,21 +733,58 @@ def select_comp_entry(default="", just_confirm=False):
 
 
 def get_systemd_system_manager():
-    "returns org.freedesktop.systemd1.Manager interface from dbus.SystemBus()"
-    bus_system = dbus.SystemBus()
-    systemd_system = bus_system.get_object(
-        "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+    "returns org.freedesktop.systemd1.Manager method interface from dbus.SystemBus()"
+    global dbus_objects
+    if "bus_system" not in dbus_objects:
+        dbus_objects["bus_system"] = dbus.SystemBus()
+    if "systemd_system" not in dbus_objects:
+        dbus_objects["systemd_system"] = dbus_objects["bus_system"].get_object(
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+        )
+    return dbus.Interface(
+        dbus_objects["systemd_system"], "org.freedesktop.systemd1.Manager"
     )
-    return dbus.Interface(systemd_system, "org.freedesktop.systemd1.Manager")
 
 
 def get_systemd_user_manager():
-    "returns org.freedesktop.systemd1.Manager interface from dbus.SessionBus()"
-    bus_session = dbus.SessionBus()
-    systemd_user = bus_session.get_object(
-        "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+    "returns org.freedesktop.systemd1.Manager method interface from dbus.SessionBus()"
+    global dbus_objects
+    if "bus_session" not in dbus_objects:
+        dbus_objects["bus_session"] = dbus.SessionBus()
+    if "systemd_user" not in dbus_objects:
+        dbus_objects["systemd_user"] = dbus_objects["bus_session"].get_object(
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+        )
+    return dbus.Interface(
+        dbus_objects["systemd_user"], "org.freedesktop.systemd1.Manager"
     )
-    return dbus.Interface(systemd_user, "org.freedesktop.systemd1.Manager")
+
+
+def get_systemd_user_properties():
+    "returns org.freedesktop.systemd1.Manager properties interface from dbus.SessionBus()"
+    global dbus_objects
+    if "bus_session" not in dbus_objects:
+        dbus_objects["bus_session"] = dbus.SessionBus()
+    if "systemd_user" not in dbus_objects:
+        dbus_objects["systemd_user"] = dbus_objects["bus_session"].get_object(
+            "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+        )
+    return dbus.Interface(
+        dbus_objects["systemd_user"], "org.freedesktop.DBus.Properties"
+    )
+
+
+def get_systemd_user_unit_properties(unit_id):
+    "Returns user unit properties interface by unit_id"
+    global dbus_objects
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    # bus_session is also set by get_systemd_user_manager
+    unit_path = dbus_objects["bus_session"].get_object(
+        "org.freedesktop.systemd1",
+        dbus_objects["systemd_user_manager"].GetUnit(unit_id),
+    )
+    return dbus.Interface(unit_path, "org.freedesktop.DBus.Properties")
 
 
 def char2cesc(string: str) -> str:
@@ -773,7 +812,7 @@ def simple_systemd_escape(string: str, start: bool = True) -> str:
         # append c-style escape
         else:
             out.append(char2cesc(ch))
-    return ''.join(out)
+    return "".join(out)
 
 
 def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
@@ -802,20 +841,31 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     return (unit_dir, unit)
 
 
-def get_active_wm_id():
-    "Finds running wayland-wm@*.service, returns specifier"
-    global systemd_user_manager
-    if systemd_user_manager is None:
-        systemd_user_manager = get_systemd_user_manager()
+def get_active_wm_unit(active=True, activating=True):
+    """
+    Finds activating or active wayland-wm@*.service, returns unit ID.
+    Bool strict_active to match only active state.
+    """
+    global dbus_objects
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
 
     # query systemd dbus for matching units
-    units = systemd_user_manager.ListUnitsByPatterns(
-        ["active", "activating"], ["wayland-wm@*.service"]
+    units = dbus_objects["systemd_user_manager"].ListUnitsByPatterns(
+        (["active"] if active else []) + (["activating"] if activating else []),
+        ["wayland-wm@*.service"],
     )
-    active_id = ""
+
     for unit in units:
-        active_id = str(unit[0])
-        break
+        return str(unit[0])
+
+    return ""
+
+
+def get_active_wm_id(active=True, activating=True):
+    "Finds running wayland-wm@*.service, returns specifier"
+
+    active_id = get_active_wm_unit(active, activating)
 
     if active_id:
         # extract and unescape specifier
@@ -835,9 +885,9 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
     verbose=True prints matched or relevant units
     verbose_active=True prints matched active units
     """
-    global systemd_user_manager
-    if systemd_user_manager is None:
-        systemd_user_manager = get_systemd_user_manager()
+    global dbus_objects
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
 
     check_units_generic = [
         "graphical-session-pre.target",
@@ -856,7 +906,7 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
         check_units = check_units_generic
 
     # query systemd dbus for matching units
-    units = systemd_user_manager.ListUnitsByPatterns([], check_units)
+    units = dbus_objects["systemd_user_manager"].ListUnitsByPatterns([], check_units)
     # extract strings
     active_units = []
     inactive_units = []
@@ -887,7 +937,9 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
 
     # just show generic check if above came empty and in verbose mode
     # query systemd dbus for matching units
-    units = systemd_user_manager.ListUnitsByPatterns([], check_units_generic)
+    units = dbus_objects["systemd_user_manager"].ListUnitsByPatterns(
+        [], check_units_generic
+    )
     # extract strings
     active_units = []
     inactive_units = []
@@ -916,22 +968,22 @@ def reload_systemd():
     "Reloads systemd user manager"
 
     global units_changed
+    global dbus_objects
 
     if args.dry_run:
         print_normal("Will reload systemd user manager.")
         units_changed = False
         return True
 
-    global systemd_user_manager
-    if systemd_user_manager is None:
-        systemd_user_manager = get_systemd_user_manager()
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
 
     # query systemd dbus for matching units
     print_normal("Reloading systemd user manager.")
-    job = systemd_user_manager.Reload()
+    job = dbus_objects["systemd_user_manager"].Reload()
     # wait for job to be done
     while True:
-        jobs = systemd_user_manager.ListJobs()
+        jobs = dbus_objects["systemd_user_manager"].ListJobs()
         print_debug("current systemd jobs", jobs)
         if job not in [check_job[4] for check_job in jobs]:
             break
@@ -1947,8 +1999,99 @@ def parse_args(custom_args=None, exit_on_error=True):
     return (args, parsers)
 
 
+def set_dbus_vars(vars_dict):
+    "Sets vars in dbus activation environment"
+    sprc = subprocess.run(
+        ["dbus-update-activation-environment", "--systemd"]
+        + sorted([f"{k}={v}" for k, v in vars_dict.items()]),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    print_debug(sprc)
+    # print any output or errors
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
+    # if sprc.returncode != 0:
+
+
+def blank_dbus_vars(vars_list):
+    "Sets empty vars in dbus activation environment as best effort cleanup"
+    sprc = subprocess.run(
+        ["dbus-update-activation-environment", "--systemd"]
+        + sorted([f"{n}=" for n in vars_list]),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    print_debug(sprc)
+    # print any output or errors
+    if sprc.stdout.strip():
+        print_normal(sprc.stdout.strip())
+    if sprc.stderr.strip():
+        print_error(sprc.stderr.strip())
+    # if sprc.returncode != 0:
+
+
+def set_systemd_vars(vars_dict: dict):
+    "Exports vars from given dict to systemd user manager"
+    global dbus_objects
+
+    # check what dbus service is running
+    # if it is not dbus-broker, also set dbus environmetn vars
+    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
+        dbus_objects[
+            "systemd_user_unit_properties_dbus_service"
+        ] = get_systemd_user_unit_properties("dbus.service")
+    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
+        "org.freedesktop.systemd1.Unit", "Id"
+    )
+    if dbus_unit != "dbus-broker.service":
+        print_debug(
+            "dbus unit", dbus_unit, "managing separate dbus activation environment"
+        )
+        set_dbus_vars(vars_dict)
+
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    assignments = [f"{var}={value}" for var, value in vars_dict.items()]
+    print_debug("assignments", assignments)
+    dbus_objects["systemd_user_manager"].SetEnvironment(assignments)
+
+
+def unset_systemd_vars(vars_list):
+    "Unsets vars from given list from systemd user manager"
+    global dbus_objects
+    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
+        dbus_objects[
+            "systemd_user_unit_properties_dbus_service"
+        ] = get_systemd_user_unit_properties("dbus.service")
+    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
+        "org.freedesktop.systemd1.Unit", "Id"
+    )
+    if dbus_unit != "dbus-broker.service":
+        print_debug(
+            "dbus unit", dbus_unit, "managing separate dbus activation environment"
+        )
+        blank_dbus_vars(vars_list)
+
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    print_debug("unassignments", vars_list)
+    dbus_objects["systemd_user_manager"].UnsetEnvironment(vars_list)
+
+
 def finalize(additional_vars=None):
-    "Optionally takes list of additional vars. Exports defined subset of WAYLAND_DISPLAY, DISPLAY, additional vars."
+    """
+    Exports variables to systemd and dbus activation environments,
+    Sends service startup notification to systemd user manager to mark compositor service as active
+    (if not already active).
+    Optionally takes a list of additional vars to export.
+    """
+
+    print_debug("additional_vars", additional_vars)
 
     if additional_vars is None:
         additional_vars = []
@@ -1958,15 +2101,26 @@ def finalize(additional_vars=None):
             "WAYLAND_DISPLAY is not defined or empty. Are we being run by a wayland compositor or not?"
         )
         sys.exit(1)
-    export_vars = []
+    export_vars = {}
     for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(additional_vars):
-        if os.getenv(var, None) is not None and var not in export_vars:
-            export_vars.append(var)
+        value = os.getenv(var, None)
+        if value is not None:
+            export_vars.update({var: value})
+    export_vars_names = sorted(export_vars.keys())
 
+    # get id of active or activating compositor
     wm_id = get_active_wm_id()
+    # get id ofactivating compositor for later decisions
+    activating_wm_id = get_active_wm_id(active=False, activating=True)
+
     if not isinstance(wm_id, str) or not wm_id:
         print_error(
-            "Finalization: Could not get ID of active Wayland session. If it is running, it will timeout in 10 seconds."
+            "Finalization: Could not get ID of active or activating Wayland session. If it is in activating state, it will timeout in 10 seconds."
+        )
+        sys.exit(1)
+    if activating_wm_id and wm_id != activating_wm_id:
+        print_error(
+            f'Finalization: Unit conflict, active: "{wm_id}", but another is activating: "{activating_wm_id}"!'
         )
         sys.exit(1)
 
@@ -1984,66 +2138,49 @@ def finalize(additional_vars=None):
         sys.exit(1)
     with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
         open_cleanup_file.write(
-            "\n".join(sorted(current_cleanup_varnames | set(export_vars)))
+            "\n".join(sorted(current_cleanup_varnames | set(export_vars_names)))
         )
 
     # export vars
     print_normal(
-        "Exporting variables to systemd user manager:\n  " + "\n  ".join(export_vars)
+        "Exporting variables to systemd user manager:\n  "
+        + "\n  ".join(export_vars_names)
     )
-    sprc = subprocess.run(
-        ["dbus-update-activation-environment", "--systemd", *(export_vars)],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-    if sprc.returncode != 0:
+
+    try:
+        set_systemd_vars(export_vars)
+    except Exception as caught_exception:
+        print_error_or_traceback(caught_exception)
         sys.exit(1)
 
-    sprc = subprocess.run(
-        ["systemctl", "--user", "import-environment", *(export_vars)],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-    if sprc.returncode != 0:
-        sys.exit(1)
-
-    # if no prior failures, exec systemd-notify
-    print_normal(f"Finalizing startup of {wm_id}.")
-    os.execlp("systemd-notify", "systemd-notify", "--ready")
+    # if no prior failures and unit is in activating state, exec systemd-notify
+    if activating_wm_id:
+        print_normal(f"Finalizing startup of {wm_id}.")
+        os.execlp("systemd-notify", "systemd-notify", "--ready")
+    else:
+        print_normal(f"Wayland session for {wm_id} is already active.")
+        sys.exit(0)
 
     # we should not be here
     print_error("Something went wrong!")
     sys.exit(1)
 
 
-def get_systemd_varnames():
-    "Returns set of env names from systemd user manager"
-    sprc = subprocess.run(
-        ["systemctl", "--user", "show-environment"],
-        text=True,
-        capture_output=True,
-        check=False,
+def get_systemd_vars():
+    "Returns dict of env from systemd user manager"
+    global dbus_objects
+    if "systemd_user_properties" not in dbus_objects:
+        dbus_objects["systemd_user_properties"] = get_systemd_user_properties()
+    assignments = dbus_objects["systemd_user_properties"].Get(
+        "org.freedesktop.systemd1.Manager", "Environment"
     )
-    print_debug(sprc)
-    if sprc.returncode != 0:
-        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
-    # Systemctl always returns one value per line
-    # Either var=value or var=$'complex\nescaped\nvalue'.
+    # Environment is returned as array of assignment strings
     # Seems to be safe to use .splitlines().
-    # If values are needed, they can be rendered
-    return {v.split("=", maxsplit=1)[0] for v in sprc.stdout.splitlines()}
+    env = {}
+    for assignment in assignments:
+        var, value = str(assignment).split("=", maxsplit=1)
+        env.update({var: value})
+    return env
 
 
 def get_fg_vt():
@@ -2389,8 +2526,10 @@ def prepare_env():
 
     print_normal(f"Preparing environment for {wm_name or wm_cmdline[0]}...")
 
-    # get current ENV
-    env_pre = filter_varnames(dict(os.environ))
+    # get current ENV from systemd user manager
+    # could use os.environ, but this is cleaner
+    env_pre = filter_varnames(get_systemd_vars())
+    systemd_varnames = set(env_pre.keys())
 
     # override XDG_VTNR and XDG_SESSION_ID right away, they are in Varnames.always_export
     v_term = get_fg_vt()
@@ -2401,7 +2540,7 @@ def prepare_env():
         raise RuntimeError("Could not determine session of foreground VT")
     env_pre.update({"XDG_VTNR": str(v_term), "XDG_SESSION_ID": str(session_id)})
 
-    # Run shell code to prepare env and print results
+    # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
 
@@ -2451,9 +2590,6 @@ def prepare_env():
         else:
             print_error(f"No value: {env}!")
     env_post = filter_varnames(env_post)
-
-    # get systemd user manager ENV names
-    systemd_varnames = get_systemd_varnames()
 
     ## Dict of vars to put into systemd user manager
     # raw difference dict between env_post and env_pre
@@ -2513,37 +2649,8 @@ def prepare_env():
         sorted(set_env.keys())
     )
     print_normal(set_env_msg)
-    # export env by running systemctl in set_env environment
-    sprc = subprocess.run(
-        ["systemctl", "--user", "import-environment"] + sorted(set_env.keys()),
-        env=env_post,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-    if sprc.returncode != 0:
-        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
-
-    # export env by running dbus-update-activation-environment in set_env environment
-    sprc = subprocess.run(
-        ["dbus-update-activation-environment", "--systemd"] + sorted(set_env.keys()),
-        env=env_post,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-    if sprc.returncode != 0:
-        raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
+    # export env to systemd user manager
+    set_systemd_vars(set_env)
 
     if unset_varnames:
         # print message about env unset
@@ -2553,20 +2660,8 @@ def prepare_env():
         )
         print_normal(unset_varnames_msg)
 
-        # unset env by running systemctl
-        sprc = subprocess.run(
-            ["systemctl", "--user", "unset-environment"] + sorted(unset_varnames),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-        if sprc.stdout.strip():
-            print_normal(sprc.stdout.strip())
-        if sprc.stderr.strip():
-            print_error(sprc.stderr.strip())
-        if sprc.returncode != 0:
-            raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
+        # unset env
+        unset_systemd_vars(unset_varnames)
 
     # print message about future env cleanup
     cleanup_varnames_msg = (
@@ -2610,7 +2705,8 @@ def cleanup_env():
                     l.strip() for l in open_cleanup_file.readlines() if l.strip()
                 }
 
-    systemd_varnames = get_systemd_varnames()
+    systemd_vars = get_systemd_vars()
+    systemd_varnames = set(systemd_vars.keys())
 
     cleanup_varnames = (
         current_cleanup_varnames
@@ -2624,36 +2720,8 @@ def cleanup_env():
         )
         print_normal(cleanup_varnames_msg)
 
-        # nullify vars in dbus environment
-        sprc = subprocess.run(
-            ["dbus-update-activation-environment", "--systemd"]
-            + sorted([f"{n}=" for n in cleanup_varnames]),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-        if sprc.stdout.strip():
-            print_normal(sprc.stdout.strip())
-        if sprc.stderr.strip():
-            print_error(sprc.stderr.strip())
-        if sprc.returncode != 0:
-            # just print error here
-            print_error(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}!')
-
-        sprc = subprocess.run(
-            ["systemctl", "--user", "unset-environment"] + sorted(cleanup_varnames),
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        print_debug(sprc)
-        if sprc.stdout.strip():
-            print_normal(sprc.stdout.strip())
-        if sprc.stderr.strip():
-            print_error(sprc.stderr.strip())
-        if sprc.returncode != 0:
-            raise RuntimeError(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}')
+        # unset vars
+        unset_systemd_vars(cleanup_varnames)
 
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
@@ -2920,7 +2988,9 @@ def read_neg_cache(name: str) -> dict:
                     out.update({path: float(mtime)})
         except Exception as caught_exception:
             # just remove it if something is wrong
-            print_debug(f"Removing cahce file {neg_cache_path} due to: {caught_exception}")
+            print_debug(
+                f"Removing cahce file {neg_cache_path} due to: {caught_exception}"
+            )
             os.remove(neg_cache_path)
     else:
         print_debug(f"no cache {neg_cache_path}")
@@ -2957,7 +3027,8 @@ def app(
 ):
     """
     Exec given command or desktop entry via systemd-run in specific slice.
-    Or fork and return subprocess object.
+    If return_cmdline: return cmdline as list
+    If fork: return subprocess object.
     """
 
     global terminal_entry
@@ -3143,12 +3214,10 @@ def app(
         # use first XDG_CURRENT_DESKTOP as part of scope name
         # use app command as part of scope name
         desktop_unit_substring = simple_systemd_escape(
-            sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0],
-            start=False
+            sane_split(os.getenv("XDG_CURRENT_DESKTOP", "uwsm"), ":")[0], start=False
         )
         cmd_unit_substring = simple_systemd_escape(
-            app_name or os.path.basename(cmdline[0]),
-            start=False
+            app_name or os.path.basename(cmdline[0]), start=False
         )
 
         ## cut unit name to fit unit name in 255 chars
@@ -3274,18 +3343,18 @@ def app_daemon():
         # argparse exit workaround
         if os.path.isfile(error_flag_path):
             print_normal(f"error flag {error_flag_path} exists")
-            with open(error_flag_path, "r", encoding='UTF-8') as error_file:
+            with open(error_flag_path, "r", encoding="UTF-8") as error_file:
                 old_args = error_file.read().lstrip("\0")
             os.remove(error_flag_path)
             old_args = shlex.join(sane_split(old_args, "\0"))
             out_args = f"echo Invalid arguments: {shlex.quote(old_args)} >&2 ; exit 2"
-            with open(fifo_out_path, "w", encoding='UTF-8') as fifo_out:
+            with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
                 print_normal(f"sent: {out_args}\nremoved error flag")
                 fifo_out.write(f"{out_args}\n")
             continue
 
         print_debug("reading command...")
-        with open(fifo_in_path, "r", encoding='UTF-8') as fifo_in:
+        with open(fifo_in_path, "r", encoding="UTF-8") as fifo_in:
             line = fifo_in.read().lstrip("\0")
 
         args_in = sane_split(line, "\0")
@@ -3303,7 +3372,7 @@ def app_daemon():
             out_args = "pong"
         elif args_in[0] == "app":
             # argparse exit workaround: write command as error flag file
-            with open(error_flag_path, "w", encoding='UTF-8') as error_file:
+            with open(error_flag_path, "w", encoding="UTF-8") as error_file:
                 print_debug(f"writing {error_flag_path} in case of argparse exit")
                 error_file.write(line.strip())
             try:
@@ -3352,7 +3421,7 @@ def app_daemon():
 
         print_normal(f"received: {shlex.join(args_in)}\nsent: {out_args}")
         fifo_out_path = create_fifo("uwsm-app-daemon-out")
-        with open(fifo_out_path, "w", encoding='UTF-8') as fifo_out:
+        with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
             fifo_out.write(f"{out_args}\n")
         if args_in[0] == "stop":
             print_normal("Exiting.", file=sys.stderr)
@@ -3643,12 +3712,12 @@ def stop_wm():
 
     print_normal("Stopping compositor...")
 
-    global systemd_user_manager
-    if systemd_user_manager is None:
-        systemd_user_manager = get_systemd_user_manager()
+    global dbus_objects
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
 
     # query systemd dbus for matching compositor units
-    units = systemd_user_manager.ListUnitsByPatterns(
+    units = dbus_objects["systemd_user_manager"].ListUnitsByPatterns(
         ["active", "activating"], ["wayland-wm@*.service"]
     )
     # get only IDs
@@ -3668,11 +3737,11 @@ def stop_wm():
 
     print_normal(f"Found running compositor {units[0]}.")
 
-    job = systemd_user_manager.StopUnit(units[0], "fail")
+    job = dbus_objects["systemd_user_manager"].StopUnit(units[0], "fail")
 
     # wait for job to be done
     while True:
-        jobs = systemd_user_manager.ListJobs()
+        jobs = dbus_objects["systemd_user_manager"].ListJobs()
         if job not in [check_job[4] for check_job in jobs]:
             break
         time.sleep(0.1)
@@ -3691,7 +3760,7 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     global stopper_initiated
     if stopper_initiated:
         print_debug(
-            f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc}"
+            f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc})"
         )
         return
     stopper_initiated = True
@@ -3714,7 +3783,7 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
 
     if stop_rc or systemctl_rc:
         # Check if parent process is login.
-        # If it is, sleep a bit to show messages before console is cleared.
+        # If it is, and stdout is a tty, sleep a bit to show messages before console is cleared.
         try:
             with open(
                 f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
@@ -3723,7 +3792,7 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
             parent_cmdline = parent_cmdline.strip().split("\0")
             print_debug(f"parent_pid: {os.getppid()}")
             print_debug(f"parent_cmdline: {parent_cmdline}")
-            if os.path.basename(parent_cmdline[0]) == "login":
+            if os.path.basename(parent_cmdline[0]) == "login" and sys.stdout.isatty():
                 print_normal("Will exit in 5 seconds...")
                 time.sleep(5)
         except Exception as caught_exception:
@@ -3755,8 +3824,7 @@ if __name__ == "__main__":
     terminal_entry_id: str = ""
     terminal_neg_cache: dict = {}
     stopper_initiated = False
-    systemd_system_manager = None
-    systemd_user_manager = None
+    dbus_objects: dict = {}
 
     # get args and parsers (for help)
     args, parsers = parse_args()
@@ -3840,11 +3908,11 @@ if __name__ == "__main__":
         else:
             print_normal(f"Starting {wm_id}...")
 
-        if systemd_system_manager is None:
-            systemd_system_manager = get_systemd_system_manager()
+        if "systemd_system_manager" not in dbus_objects:
+            dbus_objects["systemd_system_manager"] = get_systemd_system_manager()
 
         # query systemd dbus for active matching units
-        units = systemd_system_manager.ListUnitsByPatterns(
+        units = dbus_objects["systemd_system_manager"].ListUnitsByPatterns(
             ["active", "activating"], ["graphical.target"]
         )
         if len(units) < 1:
@@ -3968,9 +4036,9 @@ if __name__ == "__main__":
                 )
 
         # check for graphical target
-        if systemd_system_manager is None:
-            systemd_system_manager = get_systemd_system_manager()
-        units = systemd_system_manager.ListUnitsByPatterns(
+        if "systemd_system_manager" not in dbus_objects:
+            dbus_objects["systemd_system_manager"] = get_systemd_system_manager()
+        units = dbus_objects["systemd_system_manager"].ListUnitsByPatterns(
             ["active", "activating"], ["graphical.target"]
         )
         if len(units) < 1:
