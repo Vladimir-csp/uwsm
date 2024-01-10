@@ -158,24 +158,33 @@ def print_normal(*what, **how):
 
 
 def print_ok(*what, **how):
-    "Prints in green"
-    print(Styles.green, end="", flush=True)
-    print(*what, **how, flush=True)
-    print(Styles.reset, end="", flush=True)
+    "Prints in green (if interactive) to stdout"
+    file = how.pop('file', sys.stdout)
+    if file.isatty():
+        print(Styles.green, end="", file=file, flush=True)
+    print(*what, **how, file=file, flush=True)
+    if file.isatty():
+        print(Styles.reset, end="", file=file, flush=True)
 
 
 def print_warning(*what, **how):
-    "Prints in yellow"
-    print(Styles.yellow, end="", flush=True)
-    print(*what, **how, flush=True)
-    print(Styles.reset, end="", flush=True)
+    "Prints in yellow (if interactive) to stdout"
+    file = how.pop('file', sys.stdout)
+    if file.isatty():
+        print(Styles.yellow, end="", file=file, flush=True)
+    print(*what, **how, file=file, flush=True)
+    if file.isatty():
+        print(Styles.reset, end="", file=file, flush=True)
 
 
 def print_error(*what, **how):
-    "Prints in red to stderr"
-    print(Styles.red, end="", file=sys.stderr, flush=True)
-    print(*what, **how, file=sys.stderr, flush=True)
-    print(Styles.reset, end="", file=sys.stderr, flush=True)
+    "Prints in red (if interactive) to stderr"
+    file = how.pop('file', sys.stderr)
+    if file.isatty():
+        print(Styles.red, end="", file=file, flush=True)
+    print(*what, **how, file=file, flush=True)
+    if file.isatty():
+        print(Styles.reset, end="", file=file, flush=True)
 
 
 if int(os.getenv("DEBUG", "0")) > 0:
@@ -214,16 +223,22 @@ def print_style(stls, *what, **how):
 def print_error_or_traceback(exception, warning=False) -> None:
     "Depending on DEBUG, print nice error/warning or entire exception traceback"
     if int(os.getenv("DEBUG", "0")) > 0:
-        print(
-            Styles.yellow if warning else Styles.red,
-            end="",
-            file=sys.stderr,
-            flush=True,
-        )
-        traceback.print_exception(exception, file=sys.stderr)
-        print(Styles.reset, end="", file=sys.stderr, flush=True)
+        file = sys.stdout if warning else sys.stderr
+        if file.isatty():
+            print(
+                Styles.yellow if warning else Styles.red,
+                end="",
+                file=file,
+                flush=True,
+            )
+        traceback.print_exception(exception, file=file)
+        if file.isatty():
+            print(Styles.reset, end="", file=file, flush=True)
     else:
-        print_error(exception)
+        if warning:
+            print_warning(exception)
+        else:
+            print_error(exception)
 
 
 def self_name():
@@ -3424,7 +3439,7 @@ def app_daemon():
         with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
             fifo_out.write(f"{out_args}\n")
         if args_in[0] == "stop":
-            print_normal("Exiting.", file=sys.stderr)
+            print_normal("Exiting.")
             sys.exit(0)
 
 
