@@ -7,15 +7,16 @@ WIP(ish). The main structure of subcommands and features is more or less settled
 not receive any drastic changes unless some illuminative idea comes by.
 Nonetheless, keep an eye for commits with `[Breaking]` messages.
 
-(!) v0.12 changed `wayland-session` name to `uwsm`. This affects names of executables, plugin dirs,
-and log identifiers. See related installation [section](#1-executables-and-plugins).
-
-(!) v0.13 added python-dbus dependency
-
 Python dependencies:
 
 - xdg
 - dbus
+
+Also dbus-broker is highly recomended as dbus daemon implementation. Among other benefits, it reuses
+systemd activation environment instead of having its own separate one. This simplifies environment management
+and allows proper cleanup.
+Separate activation environment of classic dbus daemon does not allow unsetting vars, so they are
+set empty instead as best effort cleanup. The only way of proper cleanup in this case is `loginctl terminate-user ""`.
 
 ## Concepts and features
 
@@ -317,10 +318,11 @@ Testing and feedback is needed.
 Either of:
 
 - `loginctl terminate-user ""` (this ends all login sessions and units of current user,
-  good for resetting everything including runtime units)
-- `loginctl terminate-sesion "$XDG_SESSION_ID"` (this ends current login session.
-  Empty argument will only work if loginctl is called from session scope)
-- `uwsm stop` (effectively the same as previous one due to shell binding)
+  good for resetting everything, including runtime units, environments, etc.)
+- `loginctl terminate-sesion "$XDG_SESSION_ID"` (this ends current login session,
+  uwsm in this session will bring down graphical session units before exiting.
+  Empty argument will only work if loginctl is called from session scope itself)
+- `uwsm stop` (brings down graphical session units. Login session will end if `uwsm start` replaces login shell)
 - `systemctl --user stop wayland-session@*.service` (effectively the same as previous one)
 
 ## Longer story, tour under the hood

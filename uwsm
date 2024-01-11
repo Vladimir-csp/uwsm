@@ -159,7 +159,7 @@ def print_normal(*what, **how):
 
 def print_ok(*what, **how):
     "Prints in green (if interactive) to stdout"
-    file = how.pop('file', sys.stdout)
+    file = how.pop("file", sys.stdout)
     if file.isatty():
         print(Styles.green, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
@@ -169,7 +169,7 @@ def print_ok(*what, **how):
 
 def print_warning(*what, **how):
     "Prints in yellow (if interactive) to stdout"
-    file = how.pop('file', sys.stdout)
+    file = how.pop("file", sys.stdout)
     if file.isatty():
         print(Styles.yellow, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
@@ -179,7 +179,7 @@ def print_warning(*what, **how):
 
 def print_error(*what, **how):
     "Prints in red (if interactive) to stderr"
-    file = how.pop('file', sys.stderr)
+    file = how.pop("file", sys.stderr)
     if file.isatty():
         print(Styles.red, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
@@ -802,8 +802,140 @@ def get_systemd_user_unit_properties(unit_id):
     return dbus.Interface(unit_path, "org.freedesktop.DBus.Properties")
 
 
+def get_dbus_user_interface():
+    "Returns user dbus interface"
+    global dbus_objects
+    if "bus_session" not in dbus_objects:
+        dbus_objects["bus_session"] = dbus.SessionBus()
+    if "dbus_user" not in dbus_objects:
+        dbus_objects["dbus_user"] = dbus_objects["bus_session"].get_object(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus"
+        )
+    return dbus.Interface(dbus_objects["dbus_user"], "org.freedesktop.DBus")
+
+
+def reload_systemd():
+    "Reloads systemd user manager"
+
+    global units_changed
+    global dbus_objects
+
+    if args.dry_run:
+        print_normal("Will reload systemd user manager.")
+        units_changed = False
+        return True
+
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+
+    # query systemd dbus for matching units
+    print_normal("Reloading systemd user manager.")
+    job = dbus_objects["systemd_user_manager"].Reload()
+    # wait for job to be done
+    while True:
+        jobs = dbus_objects["systemd_user_manager"].ListJobs()
+        print_debug("current systemd jobs", jobs)
+        if job not in [check_job[4] for check_job in jobs]:
+            break
+        time.sleep(0.1)
+
+    print_debug(f"reload systemd job {job} finished")
+
+    units_changed = False
+    return True
+
+
+def set_dbus_vars(vars_dict: dict):
+    "Sets vars in dbus activation environment"
+    global dbus_objects
+    if "dbus_user_interface" not in dbus_objects:
+        dbus_objects["dbus_user_interface"] = get_dbus_user_interface()
+
+    print_debug("sending to .UpdateActivationEnvironment", vars_dict)
+    dbus_objects["dbus_user_interface"].UpdateActivationEnvironment(vars_dict)
+
+
+def blank_dbus_vars(vars_list: list):
+    "Sets empty vars in dbus activation environment as best effort cleanup"
+    global dbus_objects
+    if "dbus_user_interface" not in dbus_objects:
+        dbus_objects["dbus_user_interface"] = get_dbus_user_interface()
+
+    vars_dict = {}
+    for var in vars_list:
+        vars_dict.update({var: ""})
+
+    print_debug("sending to .UpdateActivationEnvironment", vars_dict)
+    dbus_objects["dbus_user_interface"].UpdateActivationEnvironment(vars_dict)
+
+
+def set_systemd_vars(vars_dict: dict):
+    "Exports vars from given dict to systemd user manager"
+    global dbus_objects
+
+    # check what dbus service is running
+    # if it is not dbus-broker, also set dbus environmetn vars
+    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
+        dbus_objects[
+            "systemd_user_unit_properties_dbus_service"
+        ] = get_systemd_user_unit_properties("dbus.service")
+    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
+        "org.freedesktop.systemd1.Unit", "Id"
+    )
+    if dbus_unit != "dbus-broker.service":
+        print_debug(
+            "dbus unit", dbus_unit, "managing separate dbus activation environment"
+        )
+        set_dbus_vars(vars_dict)
+
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    assignments = [f"{var}={value}" for var, value in vars_dict.items()]
+    print_debug("assignments", assignments)
+    dbus_objects["systemd_user_manager"].SetEnvironment(assignments)
+
+
+def unset_systemd_vars(vars_list):
+    "Unsets vars from given list from systemd user manager"
+    global dbus_objects
+    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
+        dbus_objects[
+            "systemd_user_unit_properties_dbus_service"
+        ] = get_systemd_user_unit_properties("dbus.service")
+    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
+        "org.freedesktop.systemd1.Unit", "Id"
+    )
+    if dbus_unit != "dbus-broker.service":
+        print_debug(
+            "dbus unit", dbus_unit, "managing separate dbus activation environment"
+        )
+        blank_dbus_vars(vars_list)
+
+    if "systemd_user_manager" not in dbus_objects:
+        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    print_debug("unassignments", vars_list)
+    dbus_objects["systemd_user_manager"].UnsetEnvironment(vars_list)
+
+
+def get_systemd_vars():
+    "Returns dict of env from systemd user manager"
+    global dbus_objects
+    if "systemd_user_properties" not in dbus_objects:
+        dbus_objects["systemd_user_properties"] = get_systemd_user_properties()
+    assignments = dbus_objects["systemd_user_properties"].Get(
+        "org.freedesktop.systemd1.Manager", "Environment"
+    )
+    # Environment is returned as array of assignment strings
+    # Seems to be safe to use .splitlines().
+    env = {}
+    for assignment in assignments:
+        var, value = str(assignment).split("=", maxsplit=1)
+        env.update({var: value})
+    return env
+
+
 def char2cesc(string: str) -> str:
-    "takes a string, returns c-style '\\xXX' sequence"
+    "Takes a string, returns c-style '\\xXX' sequence"
     return "".join("\\x%02x" % b for b in bytes(string, "utf-8"))
 
 
@@ -977,37 +1109,6 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
         for name, descr, state, substate in inactive_units:
             print_normal(f"    {name} ({descr})")
     return False
-
-
-def reload_systemd():
-    "Reloads systemd user manager"
-
-    global units_changed
-    global dbus_objects
-
-    if args.dry_run:
-        print_normal("Will reload systemd user manager.")
-        units_changed = False
-        return True
-
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
-
-    # query systemd dbus for matching units
-    print_normal("Reloading systemd user manager.")
-    job = dbus_objects["systemd_user_manager"].Reload()
-    # wait for job to be done
-    while True:
-        jobs = dbus_objects["systemd_user_manager"].ListJobs()
-        print_debug("current systemd jobs", jobs)
-        if job not in [check_job[4] for check_job in jobs]:
-            break
-        time.sleep(0.1)
-
-    print_debug(f"reload systemd job {job} finished")
-
-    units_changed = False
-    return True
 
 
 def update_unit(unit, data):
@@ -1558,7 +1659,7 @@ def parse_args(custom_args=None, exit_on_error=True):
             dedent(
                 """
                 Universal Wayland Session Manager.
-                
+
                 Launches arbitrary wayland compositor via a set of systemd user units
                 to provide graphical user session with environment management,
                 XDG autostart support, scoped application launch helpers,
@@ -2014,90 +2115,6 @@ def parse_args(custom_args=None, exit_on_error=True):
     return (args, parsers)
 
 
-def set_dbus_vars(vars_dict):
-    "Sets vars in dbus activation environment"
-    sprc = subprocess.run(
-        ["dbus-update-activation-environment", "--systemd"]
-        + sorted([f"{k}={v}" for k, v in vars_dict.items()]),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    # print any output or errors
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-    # if sprc.returncode != 0:
-
-
-def blank_dbus_vars(vars_list):
-    "Sets empty vars in dbus activation environment as best effort cleanup"
-    sprc = subprocess.run(
-        ["dbus-update-activation-environment", "--systemd"]
-        + sorted([f"{n}=" for n in vars_list]),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    # print any output or errors
-    if sprc.stdout.strip():
-        print_normal(sprc.stdout.strip())
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-    # if sprc.returncode != 0:
-
-
-def set_systemd_vars(vars_dict: dict):
-    "Exports vars from given dict to systemd user manager"
-    global dbus_objects
-
-    # check what dbus service is running
-    # if it is not dbus-broker, also set dbus environmetn vars
-    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
-        dbus_objects[
-            "systemd_user_unit_properties_dbus_service"
-        ] = get_systemd_user_unit_properties("dbus.service")
-    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
-        "org.freedesktop.systemd1.Unit", "Id"
-    )
-    if dbus_unit != "dbus-broker.service":
-        print_debug(
-            "dbus unit", dbus_unit, "managing separate dbus activation environment"
-        )
-        set_dbus_vars(vars_dict)
-
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
-    assignments = [f"{var}={value}" for var, value in vars_dict.items()]
-    print_debug("assignments", assignments)
-    dbus_objects["systemd_user_manager"].SetEnvironment(assignments)
-
-
-def unset_systemd_vars(vars_list):
-    "Unsets vars from given list from systemd user manager"
-    global dbus_objects
-    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
-        dbus_objects[
-            "systemd_user_unit_properties_dbus_service"
-        ] = get_systemd_user_unit_properties("dbus.service")
-    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
-        "org.freedesktop.systemd1.Unit", "Id"
-    )
-    if dbus_unit != "dbus-broker.service":
-        print_debug(
-            "dbus unit", dbus_unit, "managing separate dbus activation environment"
-        )
-        blank_dbus_vars(vars_list)
-
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
-    print_debug("unassignments", vars_list)
-    dbus_objects["systemd_user_manager"].UnsetEnvironment(vars_list)
-
-
 def finalize(additional_vars=None):
     """
     Exports variables to systemd and dbus activation environments,
@@ -2179,23 +2196,6 @@ def finalize(additional_vars=None):
     # we should not be here
     print_error("Something went wrong!")
     sys.exit(1)
-
-
-def get_systemd_vars():
-    "Returns dict of env from systemd user manager"
-    global dbus_objects
-    if "systemd_user_properties" not in dbus_objects:
-        dbus_objects["systemd_user_properties"] = get_systemd_user_properties()
-    assignments = dbus_objects["systemd_user_properties"].Get(
-        "org.freedesktop.systemd1.Manager", "Environment"
-    )
-    # Environment is returned as array of assignment strings
-    # Seems to be safe to use .splitlines().
-    env = {}
-    for assignment in assignments:
-        var, value = str(assignment).split("=", maxsplit=1)
-        env.update({var: value})
-    return env
 
 
 def get_fg_vt():
@@ -3781,9 +3781,13 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     stopper_initiated = True
 
     if systemctl_rc is not None:
-        if systemctl_rc < 0 and systemctl_rc != -15:
+        if systemctl_rc == 0:
+            print_normal("systemctl exited normally")
+        elif systemctl_rc == -15:
+            print_warning("systemctl was terminated")
+        elif systemctl_rc < 0:
             print_error(f"systemctl was killed with signal {systemctl_rc * -1}!")
-        if systemctl_rc > 0:
+        elif systemctl_rc > 0:
             print_error(f"systemctl returned {systemctl_rc}!")
     else:
         print_normal(f"Received signal {signal}.")
@@ -3796,9 +3800,9 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
         print_error_or_traceback(caught_exception)
         stop_rc = 1
 
-    if stop_rc or systemctl_rc:
+    if (stop_rc or systemctl_rc) and (sys.stdout.isatty() or sys.stderr.isatty()):
         # Check if parent process is login.
-        # If it is, and stdout is a tty, sleep a bit to show messages before console is cleared.
+        # If it is, sleep a bit to show messages before console is cleared.
         try:
             with open(
                 f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
@@ -3807,9 +3811,9 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
             parent_cmdline = parent_cmdline.strip().split("\0")
             print_debug(f"parent_pid: {os.getppid()}")
             print_debug(f"parent_cmdline: {parent_cmdline}")
-            if os.path.basename(parent_cmdline[0]) == "login" and sys.stdout.isatty():
-                print_normal("Will exit in 5 seconds...")
-                time.sleep(5)
+            if os.path.basename(parent_cmdline[0]) == "login":
+                print_warning("Will exit in 10 seconds...")
+                time.sleep(10)
         except Exception as caught_exception:
             # no error is needed here
             print_debug("Could not determine parent process command")
@@ -3918,11 +3922,6 @@ if __name__ == "__main__":
             print_warning("Only unit creation was requested. Will not go further.")
             sys.exit(0)
 
-        if args.dry_run:
-            print_normal(f"Will start {wm_id}...")
-        else:
-            print_normal(f"Starting {wm_id}...")
-
         if "systemd_system_manager" not in dbus_objects:
             dbus_objects["systemd_system_manager"] = get_systemd_system_manager()
 
@@ -3943,8 +3942,11 @@ if __name__ == "__main__":
             time.sleep(5)
 
         if args.dry_run:
+            print_normal(f"Will start {wm_id}...")
             print_warning("Dry Run Mode. Will not go further.")
             sys.exit(0)
+        else:
+            print_normal(f"Starting {wm_id} and waiting while it is running...")
 
         # trap exit on INT TERM HUP
         signal.signal(signal.SIGINT, trap_stopper)
