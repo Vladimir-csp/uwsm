@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "uwsm"
-version = "0.1.0"
+version = "0.13.1"
 description = "Universal Wayland Session Manager"
 authors = ["Vladimir-csp"]
 license = "MIT"
@@ -9,9 +9,8 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = ">=3.7"
 pyxdg = "^0.28"
+dbus = ">=1.3"
 whiptail-dialogs = "^0.4.0"
-
-
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.1.0"
