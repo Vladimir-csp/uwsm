@@ -3324,6 +3324,7 @@ def app_daemon():
     """
     Listens for app arguments on uwsm-app-daemon-in fifo in runtime dir.
     Writes shell code to uwsm-app-daemon-out fifo.
+    Expects receiving script to have functions "message", "error".
     """
 
     def trap_stopper(signal=0, stack_frame=None):
@@ -3351,21 +3352,28 @@ def app_daemon():
         BaseDirectory.get_runtime_dir(strict=True), "uwsm-app-daemon-error"
     )
 
+    def send_cmdline(args_in: List, args_out: str):
+        "Takes original args_in (list), and final args_out (str), writes to output fifo"
+        print_normal(f"received: {shlex.join(args_in)}\nsent: {args_out}")
+        fifo_out_path = create_fifo("uwsm-app-daemon-out")
+        with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
+            fifo_out.write(f"{args_out}\n")
+
     while True:
         fifo_in_path = create_fifo("uwsm-app-daemon-in")
         fifo_out_path = create_fifo("uwsm-app-daemon-out")
 
-        # argparse exit workaround
+        # argparse exit workaround: read previous wrong args and send error message
         if os.path.isfile(error_flag_path):
             print_normal(f"error flag {error_flag_path} exists")
             with open(error_flag_path, "r", encoding="UTF-8") as error_file:
                 old_args = error_file.read().lstrip("\0")
             os.remove(error_flag_path)
-            old_args = shlex.join(sane_split(old_args, "\0"))
-            out_args = f"echo Invalid arguments: {shlex.quote(old_args)} >&2 ; exit 2"
-            with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
-                print_normal(f"sent: {out_args}\nremoved error flag")
-                fifo_out.write(f"{out_args}\n")
+            old_args = sane_split(old_args, "\0")
+            send_cmdline(
+                old_args,
+                f"error {shlex.quote('Invalid arguments: ' + shlex.join(old_args))} 2",
+            )
             continue
 
         print_debug("reading command...")
@@ -3377,70 +3385,76 @@ def app_daemon():
         print_debug("args_in", args_in)
 
         # this will be written to fifo_out with trailing newline
-        out_args = ""
+        args_out = ""
 
         if len(args_in) == 0:
-            out_args = "echo 'No args given' >&2 ; exit 2"
-        elif args_in[0] == "stop":
-            out_args = "echo 'Stopping daemon.'"
-        elif args_in[0] == "ping":
-            out_args = "pong"
-        elif args_in[0] == "app":
-            # argparse exit workaround: write command as error flag file
-            with open(error_flag_path, "w", encoding="UTF-8") as error_file:
-                print_debug(f"writing {error_flag_path} in case of argparse exit")
-                error_file.write(line.strip())
-            try:
-                args, _ = parse_args(args_in, exit_on_error=False)
-            except Exception as caught_exception:
-                out_args = (
-                    f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 2\n"
-                )
-                continue
-            # remove error flag file since args are parsed successfully
-            print_debug(f"removing {error_flag_path}")
-            os.remove(error_flag_path)
-
-            # reset terminal entry
-            terminal_entry = None
-            terminal_entry_action = ""
-            terminal_entry_id = ""
-
-            # call app with return_cmdline=True
-            try:
-                app_args = app(
-                    cmdline=args.cmdline,
-                    slice_name=args.slice_name,
-                    app_unit_type=args.app_unit_type,
-                    app_name=args.app_name,
-                    unit_name=args.unit_name,
-                    unit_description=args.unit_description,
-                    return_cmdline=True,
-                )
-                if isinstance(app_args[0], str):
-                    print_debug("got single command")
-                    out_args = f"exec {shlex.join(app_args)}"
-                elif isinstance(app_args[0], (list, tuple)):
-                    print_debug("got iterated command")
-                    out_args = []
-                    for iter_app_args in app_args:
-                        out_args.append(f"{shlex.join(iter_app_args)} &")
-                    out_args.append("wait")
-                    out_args = " ".join(out_args)
-            except Exception as caught_exception:
-                out_args = (
-                    f"echo Error: {shlex.quote(str(caught_exception))} >&2 ; exit 1"
-                )
-        else:
-            out_args = f"echo Invalid arguments: {shlex.quote(shlex.join(args_in))} >&2 ; exit 2"
-
-        print_normal(f"received: {shlex.join(args_in)}\nsent: {out_args}")
-        fifo_out_path = create_fifo("uwsm-app-daemon-out")
-        with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
-            fifo_out.write(f"{out_args}\n")
+            send_cmdline(args_in, "error 'No args given!' 2")
+            continue
         if args_in[0] == "stop":
+            send_cmdline(args_in, "message 'Stopping app daemon.'")
             print_normal("Exiting.")
             sys.exit(0)
+        if args_in[0] == "ping":
+            send_cmdline(args_in, "pong")
+            continue
+        if args_in[0] != "app":
+            send_cmdline(
+                args_in,
+                f"error {shlex.quote('Invalid arguments: ' + shlex.join(args_in))} 2",
+            )
+            continue
+
+        # argparse exit workaround: write command as error flag file
+        with open(error_flag_path, "w", encoding="UTF-8") as error_file:
+            print_debug(f"writing {error_flag_path} in case of argparse exit")
+            error_file.write(line.strip())
+
+        # parse args via standard parser
+        try:
+            args, _ = parse_args(args_in, exit_on_error=False)
+        except Exception as caught_exception:
+            send_cmdline(
+                args_in,
+                f"error {shlex.quote('Invalid arguments: ' + str(caught_exception))} 2",
+            )
+            continue
+
+        # remove error flag file since args are parsed successfully
+        print_debug(f"removing {error_flag_path}")
+        os.remove(error_flag_path)
+
+        # reset terminal entry
+        terminal_entry = None
+        terminal_entry_action = ""
+        terminal_entry_id = ""
+
+        # call app with return_cmdline=True
+        try:
+            app_args = app(
+                cmdline=args.cmdline,
+                slice_name=args.slice_name,
+                app_unit_type=args.app_unit_type,
+                app_name=args.app_name,
+                unit_name=args.unit_name,
+                unit_description=args.unit_description,
+                return_cmdline=True,
+            )
+            if isinstance(app_args[0], str):
+                print_debug("got single command")
+                args_out = f"exec {shlex.join(app_args)}"
+            elif isinstance(app_args[0], (list, tuple)):
+                print_debug("got iterated command")
+                args_out = []
+                for iter_app_args in app_args:
+                    args_out.append(f"{shlex.join(iter_app_args)} &")
+                args_out.append("wait")
+                args_out = " ".join(args_out)
+            send_cmdline(args_in, args_out)
+        except Exception as caught_exception:
+            send_cmdline(
+                args_in, f"error {shlex.quote('Error: ' + str(caught_exception))} 1"
+            )
+            continue
 
 
 def create_fifo(path):
