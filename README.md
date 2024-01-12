@@ -6,12 +6,6 @@ wrapping standalone Wayland compositors into a set of systemd units.
 WIP(ish). The main structure of subcommands and features is more or less settled and will likely
 not receive any drastic changes unless some illuminative idea comes by.
 Nonetheless, keep an eye for commits with `[Breaking]` messages.
-
-Python dependencies:
-
-- xdg
-- dbus
-
 Also dbus-broker is highly recomended as dbus daemon implementation. Among other benefits, it reuses
 systemd activation environment instead of having its own separate one. This simplifies environment management
 and allows proper cleanup.
@@ -112,23 +106,14 @@ Provides helpers for various operations.
 
 ## Installation
 
-### 1. Executables and plugins
+### 1. Building the project
 
-Try `install.sh` (see `--help`).
 
-Or to do it manually:
+    meson setup --prefix=/usr/local build
+    meson install -C build
 
-Put `uwsm` executable somewhere in `$PATH` (should also be searchable by systemd user manager).
-
-- The executable can be renamed, and **it affects plugin dir and config file names (!)**, also log identifiers.
-- Executable name does **not** affect unit names, since `wayland-`, `wayland-session-` are valid systemd drop-in globs.
-
-Put `uwsm-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
-as `${executable}-plugins` (corresponding to the executable above).
-
-The rest of the manual will refer to default `uwsm` name.
-
-Optional `uuctl` tool for managing user units (services and scopes) with dmenu-style menus can also be put in `$PATH`.
+If you wish to install `uuctl`, a graphical tool for managing user units, you can pass `-Duuctl=enabled` to `meson setup`.
+Likewise, you can use `-Duwsm-app=enabled` to install `uwsm-app`.
 
 ### 2. Vars set by compositor and startup notification
 
