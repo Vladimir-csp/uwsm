@@ -2307,7 +2307,7 @@ def prepare_env_gen_sh(random_mark):
     )
 
     # bake plugin loading into shell code
-    shell_plugins = BaseDirectory.load_data_paths(f"uwsm/plugins/{wm_bin_id}.sh.in")
+    shell_plugins = BaseDirectory.load_data_paths(f"uwsm/plugins/{wm_bin_id}.sh")
     shell_plugins_load = []
     for plugin in shell_plugins:
         shell_plugins_load.append(

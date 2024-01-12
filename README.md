@@ -449,7 +449,7 @@ unconditionally. Other conditions are a recommendation:
 
 Shell plugins provide compositor-specific functions during environment preparation.
 
-Named `${__WM_BIN_ID__}.sh.in`, they should only contain specifically named functions.
+Named `${__WM_BIN_ID__}.sh`, they should only contain specifically named functions.
 
 `${__WM_BIN_ID__}` is derived from the item 0 of compositor command line by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
 

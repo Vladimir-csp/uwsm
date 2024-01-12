@@ -1,8 +1,8 @@
 uwsm_plugins = [
-  'labwc.sh.in',
-  'wayfire.sh.in',
-  'sway.sh.in',
-  'Hyprland.sh.in',
+  'labwc.sh',
+  'wayfire.sh',
+  'sway.sh',
+  'Hyprland.sh',
 ]
 
 install_data(
