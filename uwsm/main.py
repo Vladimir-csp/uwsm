@@ -33,7 +33,8 @@ from urllib import parse as urlparse
 
 import dbus
 from xdg import BaseDirectory
-from xdg.DesktopEntry import DesktopEntry, which
+from xdg.util import which
+from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
 from uwsm.params import *
