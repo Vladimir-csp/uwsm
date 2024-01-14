@@ -28,7 +28,7 @@ import time
 import signal
 import traceback
 import stat
-from typing import List, IO, Any, Callable
+from typing import Union, List, IO, Any, Callable
 from urllib import parse as urlparse
 
 import dbus
@@ -38,7 +38,7 @@ from xdg.Exceptions import ValidationError
 
 from uwsm.params import *
 
-stdStream = None | int | IO[Any]
+stdStream = Union[None, int, IO[Any]]
 
 units_changed: bool
 wm_cmdline: List[str]
