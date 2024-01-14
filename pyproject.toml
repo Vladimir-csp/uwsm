@@ -1,0 +1,6 @@
+[tool.pyright]
+pythonVersion = "3.7"
+pythonPlatform = "Linux"
+executionEnvironments = [
+  { root = "uwsm", extraPaths = [ "build/uwsm-generated" ] },
+]
