@@ -1,0 +1,8 @@
+#!@PYTHON_BIN@
+
+import sys
+
+if __name__ == '__main__':
+    sys.path.insert(1, "@PKG_PYTHON_MODULES_DIR@")
+    from uwsm.main import main
+    main()

@@ -1,5 +1,3 @@
-#!/usr/bin/python
-
 """
 # Universal Wayland Desktop Session Manager
 https://github.com/Vladimir-csp/uwsm
@@ -30,16 +28,38 @@ import time
 import signal
 import traceback
 import stat
-from typing import List, IO, Any, Callable
+from typing import Union, List, IO, Any, Callable
 from urllib import parse as urlparse
 
 import dbus
 from xdg import BaseDirectory
-from xdg.DesktopEntry import DesktopEntry, which
+from xdg.util import which
+from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
-stdStream = None | int | IO[Any]
+from uwsm.params import *
 
+stdStream = Union[None, int, IO[Any]]
+
+units_changed: bool
+wm_cmdline: List[str]
+wm_cli_args: List[str]
+wm_id: str
+wm_id_unit_string: str
+wm_bin_id: str
+wm_desktop_names: List[str]
+wm_cli_desktop_names: List[str]
+wm_cli_desktop_names_exclusive: bool
+wm_name: str
+wm_cli_name: str
+wm_description: str
+wm_cli_description: str
+terminal_entry: any
+terminal_entry_action: str
+terminal_entry_id: str
+terminal_neg_cache: dict
+stopper_initiated: bool
+dbus_objects: dict
 
 class Varnames:
     "Sets of varnames"
@@ -239,35 +259,6 @@ def print_error_or_traceback(exception, warning=False) -> None:
             print_warning(exception)
         else:
             print_error(exception)
-
-
-def self_name():
-    "returns basename of argv[0]"
-    return os.path.basename(sys.argv[0])
-
-
-def self_path():
-    "returns path to argv[0] in PATH"
-    path = which(self_name())
-    if path:
-        return path
-    print_error(f"{self_name()} is not in PATH or is not executable!")
-    sys.exit(0)
-
-
-def load_lib_paths(subpath):
-    "get plugins in style of BaseDirectory.load_*_paths"
-    out = []
-    for path in reversed(
-        os.getenv(
-            "UWSM_PLUGIN_PREFIX_PATH",
-            f"{os.getenv('HOME')}/.local/lib:/usr/local/lib:/usr/lib:/lib",
-        ).split(":")
-    ):
-        file = os.path.join(path, subpath)
-        if os.path.isfile(file):
-            out.append(file)
-    return out
 
 
 def arg_entry_or_executable(arg):
@@ -583,8 +574,8 @@ def find_entries(
 
 
 def get_default_comp_entry():
-    "Gets compositor desktop entry ID from {self_name()}-default-id file in config hierarchy"
-    for cmd_cache_file in BaseDirectory.load_config_paths(f"{self_name()}-default-id"):
+    "Gets compositor desktop entry ID from {BIN_NAME}-default-id file in config hierarchy"
+    for cmd_cache_file in BaseDirectory.load_config_paths(f"{BIN_NAME}-default-id"):
         if os.path.isfile(cmd_cache_file):
             try:
                 with open(cmd_cache_file, "r", encoding="UTF-8") as cmd_cache_file:
@@ -599,12 +590,12 @@ def get_default_comp_entry():
 
 
 def save_default_comp_entry(default):
-    "Gets saves compositor desktop entry ID from {self_name()}-default-id file in config hierarchy"
+    "Gets saves compositor desktop entry ID from {BIN_NAME}-default-id file in config hierarchy"
     if "dry_run" not in args or not args.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
             os.mkdir(BaseDirectory.xdg_config_home)
         config = os.path.join(
-            BaseDirectory.xdg_config_home, f"{self_name()}-default-id"
+            BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
         )
         with open(config, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
@@ -1225,12 +1216,6 @@ def generate_units():
     # sourcery skip: assign-if-exp, extract-duplicate-method, remove-redundant-if, split-or-ifs
     "Generates basic unit structure"
 
-    ws_self = self_name()
-    ws_self_full = self_path()
-    if not ws_self_full:
-        print_error(f"{ws_self} is not in PATH. Can not continue!")
-        sys.exit(1)
-
     if args.use_session_slice:
         wayland_wm_slice = "session.slice"
     else:
@@ -1244,7 +1229,7 @@ def generate_units():
         "wayland-session-pre@.target",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Preparation for session of %I Wayland compositor
@@ -1261,7 +1246,7 @@ def generate_units():
         "wayland-session@.target",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Session of %I Wayland compositor
@@ -1279,7 +1264,7 @@ def generate_units():
         "wayland-session-xdg-autostart@.target",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=XDG Autostart for session of %I Wayland compositor
@@ -1297,7 +1282,7 @@ def generate_units():
         "wayland-session-shutdown.target",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Shutdown graphical session units
@@ -1328,7 +1313,7 @@ def generate_units():
         "wayland-wm-env@.service",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Environment preloader for %I
@@ -1342,10 +1327,10 @@ def generate_units():
             [Service]
             Type=oneshot
             RemainAfterExit=yes
-            ExecStart={ws_self_full} aux prepare-env "%I"
-            ExecStop={ws_self_full} aux cleanup-env
+            ExecStart={BIN_PATH} aux prepare-env "%I"
+            ExecStop={BIN_PATH} aux cleanup-env
             Restart=no
-            SyslogIdentifier={ws_self}_env-preloader
+            SyslogIdentifier={BIN_NAME}_env-preloader
             Slice={wayland_wm_slice}
             """
         ),
@@ -1354,7 +1339,7 @@ def generate_units():
         "wayland-wm@.service",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Main service for %I
@@ -1373,14 +1358,14 @@ def generate_units():
             OnSuccess=wayland-session-shutdown.target
             [Service]
             # awaits for 'systemd-notify --ready' from compositor child
-            # should be issued by '{ws_self} finalize'
+            # should be issued by '{BIN_NAME} finalize'
             Type=notify
             NotifyAccess=all
-            ExecStart={ws_self_full} aux exec %I
+            ExecStart={BIN_PATH} aux exec %I
             Restart=no
             TimeoutStartSec=10
             TimeoutStopSec=10
-            SyslogIdentifier={ws_self}_%I
+            SyslogIdentifier={BIN_NAME}_%I
             Slice={wayland_wm_slice}
             """
         ),
@@ -1389,7 +1374,7 @@ def generate_units():
         "wayland-wm-app-daemon.service",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Fast application argument generator
@@ -1398,10 +1383,10 @@ def generate_units():
             CollectMode=inactive-or-failed
             [Service]
             Type=exec
-            ExecStart={ws_self_full} aux app-daemon
+            ExecStart={BIN_PATH} aux app-daemon
             Restart=on-failure
             RestartMode=direct
-            SyslogIdentifier={ws_self}_app-daemon
+            SyslogIdentifier={BIN_NAME}_app-daemon
             Slice={wayland_wm_slice}
             """
         ),
@@ -1412,7 +1397,7 @@ def generate_units():
         "app-graphical.slice",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=User Graphical Application Slice
@@ -1426,7 +1411,7 @@ def generate_units():
         "background-graphical.slice",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=User Graphical Background Application Slice
@@ -1440,7 +1425,7 @@ def generate_units():
         "session-graphical.slice",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
             Description=User Graphical Session Application Slice
@@ -1459,7 +1444,7 @@ def generate_units():
     wm_specific_preloader_data = [
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID={wm_id}
             """
@@ -1468,7 +1453,7 @@ def generate_units():
     wm_specific_service_data = [
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID={wm_id}
             """
@@ -1513,7 +1498,7 @@ def generate_units():
                 f"""
                 [Service]
                 ExecStart=
-                ExecStart={ws_self_full} aux prepare-env{prepend} "%I"{append}
+                ExecStart={BIN_PATH} aux prepare-env{prepend} "%I"{append}
                 """
             )
         )
@@ -1524,7 +1509,7 @@ def generate_units():
                 f"""
                 [Service]
                 ExecStart=
-                ExecStart={ws_self_full} aux exec "%I"{append}
+                ExecStart={BIN_PATH} aux exec "%I"{append}
                 """
             )
         )
@@ -1556,7 +1541,7 @@ def generate_units():
         "app-@autostart.service.d/slice-tweak.conf",
         dedent(
             f"""
-            # injected by {ws_self}, do not edit
+            # injected by {BIN_NAME}, do not edit
             [Unit]
             # make autostart apps stoppable by target
             #StopPropagatedFrom=xdg-desktop-autostart.target
@@ -1573,7 +1558,7 @@ def generate_units():
     #     "xdg-desktop-portal-gtk.service.d/part-tweak.conf",
     #     dedent(
     #        f"""
-    #        # injected by {ws_self}, do not edit
+    #        # injected by {BIN_NAME}, do not edit
     #        [Unit]
     #        # make the same thing as -wlr portal to stop correctly
     #        PartOf=graphical-session.target
@@ -1588,7 +1573,7 @@ def generate_units():
     #     "xdg-desktop-portal-.service.d/slice-tweak.conf",
     #     dedent(
     #        f"""
-    #        # injected by {ws_self}, do not edit
+    #        # injected by {BIN_NAME}, do not edit
     #        [Service]
     #        # make xdg-desktop-portal-*.service implementations part of graphical scope
     #        Slice=app-graphical.slice
@@ -1671,26 +1656,26 @@ def parse_args(custom_args=None, exit_on_error=True):
         epilog=wrap_pgs(
             dedent(
                 f"""
-                Also see "{self_name()} {{subcommand}} -h" for further info.
+                Also see "{BIN_NAME} {{subcommand}} -h" for further info.
 
                 Compositor should be configured to run this on startup:
 
-                  {self_name()} finalize [[VAR] ANOTHER_VAR]
+                  {BIN_NAME} finalize [[VAR] ANOTHER_VAR]
 
-                (See "{self_name()} finalize --help")
+                (See "{BIN_NAME} finalize --help")
 
                 Startup can be integrated conditionally into shell profile
-                (See "{self_name()} check --help").
+                (See "{BIN_NAME} check --help").
 
                 During startup at stage of "graphical-session-pre.target" environment is
-                sourced from shell profile and from files "{self_name()}-env" and
-                "{self_name()}-env-${{compositor}}" in XDG config hierarchy
+                sourced from shell profile and from files "{BIN_NAME}-env" and
+                "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
                 (in order of increasing importance). Delta will be exported to systemd and
                 dbus activation environments, and cleaned up when services are stopped.
 
                 It is highly recommended to configure your compositor to launch apps explicitly scoped
                 in special user session slices (app.slice, background.slice, session.slice).
-                {self_name()} provides custom nested slices for apps to live in and be
+                {BIN_NAME} provides custom nested slices for apps to live in and be
                 terminated on session end:
 
                   app-graphical.slice
@@ -1698,7 +1683,7 @@ def parse_args(custom_args=None, exit_on_error=True):
                   session-graphical.slice
 
                 And a helper command to handle all the systemd-run invocations for you:
-                (See "{self_name()} app --help", "man systemd.special", "man systemd-run"
+                (See "{BIN_NAME} app --help", "man systemd.special", "man systemd-run"
 
                 If app launching is configured as recommended, you can put compositor itself in
                 session.slice (as recommended by man systemd.special) by adding "-S" to "start"
@@ -1707,7 +1692,7 @@ def parse_args(custom_args=None, exit_on_error=True):
                   UWSM_USE_SESSION_SLICE=true
 
                 This var affects unit generation phase during start, Slice= parameter
-                of compositor services (best to export it in shell profile before "{self_name()}",
+                of compositor services (best to export it in shell profile before "{BIN_NAME}",
                 or add to environment.d (see "man environment.d")).
                 """
             )
@@ -1777,7 +1762,7 @@ def parse_args(custom_args=None, exit_on_error=True):
         epilog=dedent(
             f"""
             Invokes a whiptail menu to select a default session among desktop entries in
-            wayland-sessions XDG data hierarchy. Writes to ${{XDG_CONFIG_HOME}}/{self_name()}-default-id
+            wayland-sessions XDG data hierarchy. Writes to ${{XDG_CONFIG_HOME}}/{BIN_NAME}-default-id
             Nothing else is done.
             """
         ),
@@ -1792,8 +1777,8 @@ def parse_args(custom_args=None, exit_on_error=True):
         epilog=dedent(
             f"""
             During startup at stage of "graphical-session-pre.target" environment is
-            sourced from shell profile and from files "{self_name()}-env" and
-            "{self_name()}-env-${{compositor}}" in XDG config hierarchy
+            sourced from shell profile and from files "{BIN_NAME}-env" and
+            "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
             (in order of increasing importance). Delta will be exported to systemd and
             dbus activation environments, and cleaned up when services are stopped.
             """
@@ -1955,7 +1940,7 @@ def parse_args(custom_args=None, exit_on_error=True):
             dedent(
                 f"""
                 Use may-start checker to integrate startup into shell profile
-                See "{self_name()} check may-start -h"
+                See "{BIN_NAME} check may-start -h"
 
                 """
             )
@@ -1998,12 +1983,12 @@ def parse_args(custom_args=None, exit_on_error=True):
 
                 To integrate startup into shell profile, add:
 
-                  if {self_name()} check may-start && {self_name()} select
+                  if {BIN_NAME} check may-start && {BIN_NAME} select
                   then
-                  	exec {self_name()} start select
+                  	exec {BIN_NAME} start select
                   fi
 
-                Condition is essential, since {self_name()}'s environment preloader sources
+                Condition is essential, since {BIN_NAME}'s environment preloader sources
                 profile and can cause loops without protection.
 
                 Separate select action allows droping to normal shell.
@@ -2082,7 +2067,7 @@ def parse_args(custom_args=None, exit_on_error=True):
 
                 The first argument determines the behavior:
 
-                  app	the rest is processed the same as in "{self_name()} app"
+                  app	the rest is processed the same as in "{BIN_NAME} app"
                   ping	just "pong" is returned
                   stop	daemon is stopped
 
@@ -2093,7 +2078,7 @@ def parse_args(custom_args=None, exit_on_error=True):
                 followed by "wait"
 
                 The purpose of all this is to skip all the expensive python startup and import routines that slow things
-                down every time "{self_name()} app" is called. Instead the daemon does it once and then listens for requests,
+                down every time "{BIN_NAME} app" is called. Instead the daemon does it once and then listens for requests,
                 while a simple shell script may dump arguments to one pipe and run the code received from another via eval,
                 which is much faster
 
@@ -2104,7 +2089,7 @@ def parse_args(custom_args=None, exit_on_error=True):
                   IFS='' read -r cmd < ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out
                   eval "$cmd"
 
-                Provided "{self_name()}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
+                Provided "{BIN_NAME}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
                 and supports newlines in returned args.
                 """
             )
@@ -2311,7 +2296,7 @@ def prepare_env_gen_sh(random_mark):
     # vars for use in plugins
     shell_definitions = dedent(
         f"""
-        __SELF_NAME__={shlex.quote(self_name())}
+        __SELF_NAME__={shlex.quote(BIN_NAME)}
         __WM_ID__={shlex.quote(wm_id)}
         __WM_ID_UNIT_STRING__={shlex.quote(wm_id_unit_string)}
         __WM_BIN_ID__={shlex.quote(wm_bin_id)}
@@ -2323,7 +2308,7 @@ def prepare_env_gen_sh(random_mark):
     )
 
     # bake plugin loading into shell code
-    shell_plugins = load_lib_paths(f"{self_name()}-plugins/{wm_bin_id}.sh.in")
+    shell_plugins = BaseDirectory.load_data_paths(f"uwsm/plugins/{wm_bin_id}.sh")
     shell_plugins_load = []
     for plugin in shell_plugins:
         shell_plugins_load.append(
@@ -2991,8 +2976,8 @@ def find_terminal_entry():
 
 
 def read_neg_cache(name: str) -> dict:
-    "Reads path;mtime from cache file {self_name()}-{name}"
-    neg_cache_path = os.path.join(BaseDirectory.xdg_cache_home, f"{self_name()}-{name}")
+    "Reads path;mtime from cache file {BIN_NAME}-{name}"
+    neg_cache_path = os.path.join(BaseDirectory.xdg_cache_home, f"{BIN_NAME}-{name}")
     out = {}
     if os.path.isfile(neg_cache_path):
         print_debug(f"reading cache {neg_cache_path}")
@@ -3014,8 +2999,8 @@ def read_neg_cache(name: str) -> dict:
 
 
 def write_neg_cache(name: str, data: dict):
-    "Writes path;mtime to cache file f{self_name()}-{name}"
-    neg_cache_path = os.path.join(BaseDirectory.xdg_cache_home, f"{self_name()}-{name}")
+    "Writes path;mtime to cache file {BIN_NAME}-{name}"
+    neg_cache_path = os.path.join(BaseDirectory.xdg_cache_home, f"{BIN_NAME}-{name}")
     print_debug(f"writing cache {neg_cache_path} ({len(data)} items)")
     try:
         if not os.path.isdir(BaseDirectory.xdg_cache_home):
@@ -3206,7 +3191,7 @@ def app(
         unit_description = (
             app_name or os.path.basename(cmdline[0])
             if cmdline
-            else f"App launched by {self_name()}"
+            else f"App launched by {BIN_NAME}"
         )
 
     if cmdline and not which(cmdline[0]):
@@ -3556,20 +3541,20 @@ def fill_wm_globals():
         wm_cmdline = shlex.split(entry_dict["Exec"])
 
         print_debug(
-            f"self_name: {self_name()}\nwm_cmdline[0]: {os.path.basename(wm_cmdline[0])}"
+            f"self_name: {BIN_NAME}\nwm_cmdline[0]: {os.path.basename(wm_cmdline[0])}"
         )
         # if desktop entry uses us, deal with the other self.
         entry_uwsm_args = None
-        if os.path.basename(wm_cmdline[0]) == self_name():
+        if os.path.basename(wm_cmdline[0]) == BIN_NAME:
             try:
                 if "start" not in wm_cmdline or wm_cmdline[1] != "start":
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {self_name()}, but the second argument "{wm_cmdline[1]}" is not "start"!'
+                        f'Entry "{wm_id}" uses {BIN_NAME}, but the second argument "{wm_cmdline[1]}" is not "start"!'
                     )
                 # cut ourselves from cmdline
                 wm_cmdline = wm_cmdline[1:]
 
-                print_normal(f'Entry "{wm_id}" uses {self_name()}, reparsing args...')
+                print_normal(f'Entry "{wm_id}" uses {BIN_NAME}, reparsing args...')
                 # reparse args from entry into separate namespace
                 entry_uwsm_args, _ = parse_args(wm_cmdline)
                 print_debug("entry_uwsm_args", entry_uwsm_args)
@@ -3580,21 +3565,21 @@ def fill_wm_globals():
                     None,
                 ):
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {self_name()} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
+                        f'Entry "{wm_id}" uses {BIN_NAME} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
                     )
                 if entry_uwsm_args.dry_run:
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {self_name()} in "dry run" mode!'
+                        f'Entry "{wm_id}" uses {BIN_NAME} in "dry run" mode!'
                     )
                 if entry_uwsm_args.only_generate:
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {self_name()} in "only generate" mode!'
+                        f'Entry "{wm_id}" uses {BIN_NAME} in "only generate" mode!'
                     )
                 if entry_uwsm_args.desktop_names and not Val.dn_colon.search(
                     entry_uwsm_args.desktop_names
                 ):
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {self_name()} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
+                        f'Entry "{wm_id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
                     )
 
                 # replace wm_cmdline with args.wm_cmdline from entry
@@ -3635,7 +3620,7 @@ def fill_wm_globals():
             elif entry_uwsm_args and entry_uwsm_args.desktop_names_exclusive:
                 if not entry_uwsm_args.desktop_names:
                     print_error(
-                        f'{self_name()} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
+                        f'{BIN_NAME} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
                     )
                     sys.exit(1)
                 else:
@@ -3837,29 +3822,49 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     sys.exit(stop_rc if systemctl_rc is None else systemctl_rc)
 
 
-if __name__ == "__main__":
-    # define globals
-    units_changed: bool = False
-    wm_cmdline: List[str] = []
-    wm_cli_args: List[str] = []
-    wm_id: str = ""
-    wm_id_unit_string: str = ""
-    wm_bin_id: str = ""
-    wm_desktop_names: List[str] = []
-    wm_cli_desktop_names: List[str] = []
-    wm_cli_desktop_names_exclusive: bool = False
-    wm_name: str = ""
-    wm_cli_name: str = ""
-    wm_description: str = ""
-    wm_cli_description: str = ""
+def main():
+    global units_changed
+    global wm_cmdline
+    global wm_cli_args
+    global wm_id
+    global wm_id_unit_string
+    global wm_bin_id
+    global wm_desktop_names
+    global wm_cli_desktop_names
+    global wm_cli_desktop_names_exclusive
+    global wm_name
+    global wm_cli_name
+    global wm_description
+    global wm_cli_description
+    global terminal_entry
+    global terminal_entry_action
+    global terminal_entry_id
+    global terminal_neg_cache
+    global stopper_initiated
+    global dbus_objects
+
+    units_changed = False
+    wm_cmdline = []
+    wm_cli_args = []
+    wm_id = ""
+    wm_id_unit_string = ""
+    wm_bin_id = ""
+    wm_desktop_names = []
+    wm_cli_desktop_names = []
+    wm_cli_desktop_names_exclusive = False
+    wm_name = ""
+    wm_cli_name = ""
+    wm_description = ""
+    wm_cli_description = ""
     terminal_entry = None
-    terminal_entry_action: str = ""
-    terminal_entry_id: str = ""
-    terminal_neg_cache: dict = {}
+    terminal_entry_action = ""
+    terminal_entry_id = ""
+    terminal_neg_cache = {}
     stopper_initiated = False
-    dbus_objects: dict = {}
+    dbus_objects = {}
 
     # get args and parsers (for help)
+    global args, parsers
     args, parsers = parse_args()
 
     print_debug("args", args)

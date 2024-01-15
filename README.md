@@ -3,20 +3,21 @@
 Provides graphical session with environment management, XDG autostart support, and clean shutdown by
 wrapping standalone Wayland compositors into a set of systemd units.
 
-WIP(ish). The main structure of subcommands and features is more or less settled and will likely
-not receive any drastic changes unless some illuminative idea comes by.
-Nonetheless, keep an eye for commits with `[Breaking]` messages.
+> [!IMPORTANT]
+> This project is a work-in-progress!
+> The main structure of subcommands and features is more or less settled and will likely
+> not receive any drastic changes unless some illuminative idea comes by.
+> Nonetheless, keep an eye for commits with breaking changes, indicated by an exclamation point
+> (e.g. `fix!: ...`, `chore!: ...`, `feat!: ...`, etc.).
 
-Python dependencies:
-
-- xdg
-- dbus
-
-Also dbus-broker is highly recomended as dbus daemon implementation. Among other benefits, it reuses
-systemd activation environment instead of having its own separate one. This simplifies environment management
-and allows proper cleanup.
-Separate activation environment of classic dbus daemon does not allow unsetting vars, so they are
-set empty instead as best effort cleanup. The only way of proper cleanup in this case is `loginctl terminate-user ""`.
+> [!NOTE]
+> It is highly recommended to use [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
+> implementation.
+> Among other benefits, it reuses the systemd activation environment instead of having its own separate one.
+> This simplifies environment management and allows proper cleanup.
+> The separate activation environment of the reference D-Bus implementation doesn't allow unsetting vars, so they're
+> set to an empty string instead, as a best effort cleanup. The only way to properly clean up in this case is
+> to run `loginctl terminate-user ""`.
 
 ## Concepts and features
 
@@ -112,23 +113,14 @@ Provides helpers for various operations.
 
 ## Installation
 
-### 1. Executables and plugins
+### 1. Building the project
 
-Try `install.sh` (see `--help`).
 
-Or to do it manually:
+    meson setup --prefix=/usr/local build
+    meson install -C build
 
-Put `uwsm` executable somewhere in `$PATH` (should also be searchable by systemd user manager).
-
-- The executable can be renamed, and **it affects plugin dir and config file names (!)**, also log identifiers.
-- Executable name does **not** affect unit names, since `wayland-`, `wayland-session-` are valid systemd drop-in globs.
-
-Put `uwsm-plugins` dir somewhere in `${HOME}/.local/lib:/usr/local/lib:/usr/lib:/lib` (`UWSM_PLUGIN_PREFIX_PATH`)
-as `${executable}-plugins` (corresponding to the executable above).
-
-The rest of the manual will refer to default `uwsm` name.
-
-Optional `uuctl` tool for managing user units (services and scopes) with dmenu-style menus can also be put in `$PATH`.
+If you wish to install `uuctl`, a graphical tool for managing user units, you can pass `-Duuctl=enabled` to `meson setup`.
+Likewise, you can use `-Duwsm-app=enabled` to install `uwsm-app`.
 
 ### 2. Vars set by compositor and startup notification
 
@@ -464,7 +456,7 @@ unconditionally. Other conditions are a recommendation:
 
 Shell plugins provide compositor-specific functions during environment preparation.
 
-Named `${__WM_BIN_ID__}.sh.in`, they should only contain specifically named functions.
+Named `${__WM_BIN_ID__}.sh`, they should only contain specifically named functions.
 
 `${__WM_BIN_ID__}` is derived from the item 0 of compositor command line by applying `s/(^[^a-zA-Z]|[^a-zA-Z0-9_])+/_/`
 

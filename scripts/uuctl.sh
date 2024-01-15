@@ -31,7 +31,7 @@ showhelp() {
 		If just a single tool name is given, it is interpreted as a preferred selection.
 		If more arguments are given, they are used as full menu command line, so
 		are not limited to the predefined list.
-		Tthe last argument is expected to be a prompt option (-p or analogous)
+		The last argument is expected to be a prompt option (-p or analogous)
 	EOH
 }
 
