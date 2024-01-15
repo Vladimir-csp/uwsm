@@ -3,14 +3,21 @@
 Provides graphical session with environment management, XDG autostart support, and clean shutdown by
 wrapping standalone Wayland compositors into a set of systemd units.
 
-WIP(ish). The main structure of subcommands and features is more or less settled and will likely
-not receive any drastic changes unless some illuminative idea comes by.
-Nonetheless, keep an eye for commits with `[Breaking]` messages.
-Also dbus-broker is highly recomended as dbus daemon implementation. Among other benefits, it reuses
-systemd activation environment instead of having its own separate one. This simplifies environment management
-and allows proper cleanup.
-Separate activation environment of classic dbus daemon does not allow unsetting vars, so they are
-set empty instead as best effort cleanup. The only way of proper cleanup in this case is `loginctl terminate-user ""`.
+> [!IMPORTANT]
+> This project is a work-in-progress!
+> The main structure of subcommands and features is more or less settled and will likely
+> not receive any drastic changes unless some illuminative idea comes by.
+> Nonetheless, keep an eye for commits with breaking changes, indicated by an exclamation point
+> (e.g. `fix!: ...`, `chore!: ...`, `feat!: ...`, etc.).
+
+> [!NOTE]
+> It is highly recommended to use [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
+> implementation.
+> Among other benefits, it reuses the systemd activation environment instead of having its own separate one.
+> This simplifies environment management and allows proper cleanup.
+> The separate activation environment of the reference D-Bus implementation doesn't allow unsetting vars, so they're
+> set to an empty string instead, as a best effort cleanup. The only way to properly clean up in this case is
+> to run `loginctl terminate-user ""`.
 
 ## Concepts and features
 
