@@ -71,6 +71,9 @@ if [ "$#" -le "1" ]; then
 	bemenu)
 		set -- bemenu -p
 		;;
+	wmenu)
+		set -- wmenu -p
+		;;
 	dmenu)
 		set -- dmenu -p
 		;;
