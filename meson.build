@@ -6,6 +6,10 @@ project(
 
 PYTHON = import('python')
 PYTHON_PROG = PYTHON.find_installation('python3')
+PYTHON_VERSION = PYTHON_PROG.language_version()
+if not PYTHON_VERSION.version_compare('>=3.10')
+  error('python version >=3.10 required, found: @0@'.format(PYTHON_VERSION))
+endif
 
 PKG_DATA_DIR = join_paths(
   get_option('prefix'),
