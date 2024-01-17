@@ -1,0 +1,5 @@
+version=4
+
+opts="filenamemangle=s%(?:.*?)?v?(@ANY_VERSION@@ARCHIVE_EXT@)%@PACKAGE@-$1%" \
+    https://github.com/<user>/<project>/tags \
+    (?:.*?/)v?@ANY_VERSION@@ARCHIVE_EXT@

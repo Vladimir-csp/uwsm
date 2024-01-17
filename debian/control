@@ -1,0 +1,21 @@
+Source: uwsm
+Section: x11
+Priority: optional
+Maintainer: Vladimir-csp
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-python,
+Standards-Version: 4.6.2
+Homepage: https://github.com/Vladimir-csp/uwsm
+Vcs-Browser: https://github.com/Vladimir-csp/uwsm
+Vcs-Git: https://github.com/Vladimir-csp/uwsm.git
+
+Package: uwsm
+Architecture: any
+Depends:
+ ${python3:Depends},
+ ${misc:Depends},
+Description: Universal Wayland Session Manager
+ Provides graphical session with environment management, XDG autostart support, and clean shutdown by
+ wrapping standalone Wayland compositors into a set of systemd units.

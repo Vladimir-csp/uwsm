@@ -1,0 +1,16 @@
+#!/usr/bin/make -f
+
+PREFIX = /usr
+
+%:
+	dh $@ --with=python3
+
+override_dh_auto_configure:
+	dh_auto_configure -- \
+		--prefix=$(PREFIX) \
+		-Dlicensedir=$(PREFIX)/share/doc/uwsm \
+		-Duuctl=enabled \
+		-Duwsm-app=enabled
+
+override_dh_python3:
+	dh_python3 --depends=pyxdg --depends=dbus-python $(PREFIX)/share/uwsm/modules

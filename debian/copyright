@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: UWSM
+Upstream-Source: http://github.com/Vladimir-csp/uwsm
+
+Files: *
+Copyright: 2022-2024 Vladimir-csp
+License: MIT

@@ -1,0 +1,7 @@
+debhelper-build-stamp
+files
+uwsm.debhelper.log
+uwsm.postinst.debhelper
+uwsm.prerm.debhelper
+uwsm.substvars
+uwsm/
