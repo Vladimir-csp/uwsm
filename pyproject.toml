@@ -1,4 +1,4 @@
 [tool.pyright]
-pythonVersion = "3.7"
+pythonVersion = "3.10"
 pythonPlatform = "Linux"
 extraPaths = [ "build/uwsm-generated" ]
