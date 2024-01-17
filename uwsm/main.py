@@ -28,7 +28,7 @@ import time
 import signal
 import traceback
 import stat
-from typing import Union, List, IO, Any, Callable
+from typing import List, Callable
 from urllib import parse as urlparse
 
 import dbus
@@ -38,8 +38,6 @@ from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
 from uwsm.params import *
-
-stdStream = Union[None, int, IO[Any]]
 
 units_changed: bool
 wm_cmdline: List[str]
@@ -441,7 +439,7 @@ def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action
     return ("return", entry)
 
 
-def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
+def entry_parser_terminal(entry_id: str, entry_path: str, explicit_terminals: List = None):
     """
     Takes entry_id, entry_path,
     optionally takes entry_action and explicit_terminals list of tuples [(entry_id, entry_action)]
@@ -454,6 +452,9 @@ def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
       ('return', (entry, entry_id, None)) or ('drop', (None, None, None))
     """
     global terminal_neg_cache
+    if explicit_terminals is None:
+        explicit_terminals = []
+
     # drop if not among explicitly listed IDs
     if explicit_terminals and entry_id not in (i[0] for i in explicit_terminals):
         print_debug("not an entry we are looking for")
@@ -509,7 +510,7 @@ def entry_parser_terminal(entry_id, entry_path, explicit_terminals=[]):
 def find_entries(
     subpath: str,
     parser: Callable = None,
-    parser_args: dict = {},
+    parser_args: dict = None,
     reject_pmt: dict = None,
 ):
     """
@@ -522,6 +523,8 @@ def find_entries(
     """
     seen_ids = set()
     results = []
+    if parser_args is None:
+        parser_args = {}
 
     print_debug(f"searching entries in {subpath}")
     # iterate over data paths
@@ -3346,7 +3349,6 @@ def app_daemon():
 
     while True:
         fifo_in_path = create_fifo("uwsm-app-daemon-in")
-        fifo_out_path = create_fifo("uwsm-app-daemon-out")
 
         # argparse exit workaround: read previous wrong args and send error message
         if os.path.isfile(error_flag_path):
