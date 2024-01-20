@@ -336,6 +336,7 @@ def check_entry_basic(entry, entry_action=None):
             # New keys in spec not yet known by pyxdg
             "Invalid key: DBusActivatable",
             "Invalid key: SingleMainWindow",
+            "Invalid key: PrefersNonDefaultGPU",
         ]:
             continue
         errors.add(error)
