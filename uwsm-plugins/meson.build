@@ -2,6 +2,7 @@ uwsm_plugins = [
   'labwc.sh',
   'wayfire.sh',
   'sway.sh',
+  'hyprland.sh',
   'Hyprland.sh',
 ]
 
