@@ -12,7 +12,7 @@ Vcs-Browser: https://github.com/Vladimir-csp/uwsm
 Vcs-Git: https://github.com/Vladimir-csp/uwsm.git
 
 Package: uwsm
-Architecture: any
+Architecture: all
 Depends:
  ${python3:Depends},
  ${misc:Depends},
