@@ -2683,6 +2683,7 @@ def cleanup_env():
     intersect actual systemd user manager varnames,
     and remove them from systemd user manager.
     Remove found cleanup files
+    Returns bool if cleaned up anything
     """
 
     print_normal("Cleaning up...")
@@ -2699,7 +2700,7 @@ def cleanup_env():
 
     if not cleanup_files:
         print_warning("No cleanup files found.")
-        sys.exit(0)
+        return False
 
     current_cleanup_varnames = set()
     for cleanup_file in cleanup_files:
@@ -2730,6 +2731,7 @@ def cleanup_env():
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
         print_ok(f'Removed "{os.path.basename(cleanup_file)}".')
+    return True
 
 
 def path2url(arg):
