@@ -8,5 +8,6 @@ uwsm_plugins = [
 
 install_data(
   uwsm_plugins,
+  follow_symlinks: false,
   install_dir: PKG_DATA_DIR / 'plugins',
 )
