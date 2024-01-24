@@ -2263,8 +2263,11 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
 
     # iterate over sessions
     for line in sprc.stdout.splitlines():
-        # id is the first number in line, can be space-padded, so strip
+        # id is the first alphanumeric in line, can be space-padded, so strip
         session_id = line.strip().split(" ")[0]
+        print_debug("session_id", session_id)
+        if not session_id:
+            continue
 
         # get session user and VTNr
         sprc2 = subprocess.run(
