@@ -2234,10 +2234,6 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
     for line in sprc.stdout.splitlines():
         # id is the first number in line, can be space-padded, so strip
         session_id = line.strip().split(" ")[0]
-        if not session_id.isnumeric():
-            if verbose:
-                print_error(f'Encountered malformed session ID "{session_id}"!')
-            continue
 
         # get session user and VTNr
         sprc2 = subprocess.run(
@@ -2285,7 +2281,6 @@ def get_session_by_vt(v_term: int, verbose: bool = False):
             continue
 
         if int(vtnr) == v_term and user == os.getlogin():
-            session_id = int(session_id)
             return session_id
 
     return None
@@ -2542,7 +2537,7 @@ def prepare_env():
     session_id = get_session_by_vt(v_term)
     if session_id is None:
         raise RuntimeError("Could not determine session of foreground VT")
-    env_pre.update({"XDG_VTNR": str(v_term), "XDG_SESSION_ID": str(session_id)})
+    env_pre.update({"XDG_VTNR": str(v_term), "XDG_SESSION_ID": session_id})
 
     # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
