@@ -1,7 +1,7 @@
 #!/bin/false
 # sourced by uwsm environment preloader
 
-quirks_Hyprland() {
+quirks_hyprland() {
 	# append "wlroots" to XDG_CURRENT_DESKTOP if not already there
 	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]
 	then

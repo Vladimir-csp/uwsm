@@ -3,7 +3,6 @@ uwsm_plugins = [
   'wayfire.sh',
   'sway.sh',
   'hyprland.sh',
-  'Hyprland.sh',
 ]
 
 install_data(

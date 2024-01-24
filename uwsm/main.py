@@ -3750,7 +3750,7 @@ def fill_wm_globals():
         wm_desktop_names = ddn
 
     # id for functions and env loading
-    wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_cmdline[0])
+    wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_cmdline[0]).lower()
 
     return True
 
