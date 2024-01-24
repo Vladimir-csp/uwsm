@@ -327,9 +327,9 @@ def check_entry_basic(entry, entry_action=None):
         if " is not a registered " in error:
             continue
         if error in [
-            # for proposed xdg-terminal-exec
+            # For proposed xdg-terminal-exec
             "Invalid key: ExecArg",
-            # accompanies unregistered categories
+            # Accompanies unregistered categories
             "Missing main category",
             # Used in wayland-sessions
             "Invalid key: DesktopNames",
@@ -742,71 +742,119 @@ def select_comp_entry(default="", just_confirm=False):
     return sprc.stderr.strip() if sprc.returncode == 0 and sprc.stderr else ""
 
 
-def get_systemd_system_manager():
-    "returns org.freedesktop.systemd1.Manager method interface from dbus.SystemBus()"
+# These functions rely on global dbus_objects dict,
+# populating it with various dbus objects and iterfaces.
+# Calling each other as prerequisites.
+
+
+def add_bus_system():
+    "Adds dbus.SystemBus interface"
     global dbus_objects
     if "bus_system" not in dbus_objects:
         dbus_objects["bus_system"] = dbus.SystemBus()
+
+
+def add_systemd_system():
+    "Adds /org/freedesktop/systemd1 object"
+    global dbus_objects
+    add_bus_system()
     if "systemd_system" not in dbus_objects:
         dbus_objects["systemd_system"] = dbus_objects["bus_system"].get_object(
             "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
         )
-    return dbus.Interface(
-        dbus_objects["systemd_system"], "org.freedesktop.systemd1.Manager"
-    )
 
 
-def get_systemd_user_manager():
-    "returns org.freedesktop.systemd1.Manager method interface from dbus.SessionBus()"
+def add_systemd_system_manager():
+    "Adds org.freedesktop.systemd1.Manager method interface from dbus.SystemBus()"
+    global dbus_objects
+    add_systemd_system()
+    if "systemd_system_manager" not in dbus_objects:
+        dbus_objects["systemd_system_manager"] = dbus.Interface(
+            dbus_objects["systemd_system"], "org.freedesktop.systemd1.Manager"
+        )
+
+
+def add_bus_session():
+    "Adds dbus.SessionBus interface"
     global dbus_objects
     if "bus_session" not in dbus_objects:
         dbus_objects["bus_session"] = dbus.SessionBus()
+
+
+def add_systemd_user():
+    "Adds /org/freedesktop/systemd1 object"
+    global dbus_objects
+    add_bus_session()
     if "systemd_user" not in dbus_objects:
         dbus_objects["systemd_user"] = dbus_objects["bus_session"].get_object(
             "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
         )
-    return dbus.Interface(
-        dbus_objects["systemd_user"], "org.freedesktop.systemd1.Manager"
-    )
 
 
-def get_systemd_user_properties():
-    "returns org.freedesktop.systemd1.Manager properties interface from dbus.SessionBus()"
+def add_systemd_user_manager():
+    "Adds org.freedesktop.systemd1.Manager method interface from dbus.SessionBus()"
     global dbus_objects
-    if "bus_session" not in dbus_objects:
-        dbus_objects["bus_session"] = dbus.SessionBus()
-    if "systemd_user" not in dbus_objects:
-        dbus_objects["systemd_user"] = dbus_objects["bus_session"].get_object(
-            "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
-        )
-    return dbus.Interface(
-        dbus_objects["systemd_user"], "org.freedesktop.DBus.Properties"
-    )
-
-
-def get_systemd_user_unit_properties(unit_id):
-    "Returns user unit properties interface by unit_id"
-    global dbus_objects
+    add_systemd_user()
     if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+        dbus_objects["systemd_user_manager"] = dbus.Interface(
+            dbus_objects["systemd_user"], "org.freedesktop.systemd1.Manager"
+        )
+
+
+def add_systemd_user_properties():
+    "Adds org.freedesktop.systemd1.Manager properties interface from dbus.SessionBus()"
+    global dbus_objects
+    add_systemd_user()
+    if "systemd_user_properties" not in dbus_objects:
+        dbus_objects["systemd_user_properties"] = dbus.Interface(
+            dbus_objects["systemd_user"], "org.freedesktop.DBus.Properties"
+        )
+
+
+def add_systemd_user_unit_properties(unit_id):
+    "Adds user unit properties interface of unit_id into nested user_unit_properties dict"
+    global dbus_objects
+    add_systemd_user_manager()
     # bus_session is also set by get_systemd_user_manager
     unit_path = dbus_objects["bus_session"].get_object(
         "org.freedesktop.systemd1",
         dbus_objects["systemd_user_manager"].GetUnit(unit_id),
     )
-    return dbus.Interface(unit_path, "org.freedesktop.DBus.Properties")
+    if "user_unit_properties" not in dbus_objects:
+        dbus_objects["user_unit_properties"] = {}
+    if unit_id not in dbus_objects["user_unit_properties"]:
+        dbus_objects["user_unit_properties"][unit_id] = dbus.Interface(
+            unit_path, "org.freedesktop.DBus.Properties"
+        )
 
 
-def get_dbus_user_interface():
-    "Returns user dbus interface"
+def add_dbus_user():
+    "Adds /org/freedesktop/DBus object from session bus"
     global dbus_objects
-    if "bus_session" not in dbus_objects:
-        dbus_objects["bus_session"] = dbus.SessionBus()
+    add_bus_session()
     if "dbus_user" not in dbus_objects:
         dbus_objects["dbus_user"] = dbus_objects["bus_session"].get_object(
             "org.freedesktop.DBus", "/org/freedesktop/DBus"
         )
-    return dbus.Interface(dbus_objects["dbus_user"], "org.freedesktop.DBus")
+
+
+def add_dbus_user_interface():
+    "Adds org.freedesktop.DBus interface from session bus"
+    global dbus_objects
+    add_dbus_user()
+    if "dbus_user_interface" not in dbus_objects:
+        dbus_objects["dbus_user_interface"] = dbus.Interface(
+            dbus_objects["dbus_user"], "org.freedesktop.DBus"
+        )
+
+
+def get_user_unit_property(unit_id, unit_property):
+    "Returns value of user unit property"
+    global dbus_objects
+    add_systemd_user_unit_properties(unit_id)
+    return dbus_objects["user_unit_properties"][unit_id].Get(
+        "org.freedesktop.systemd1.Unit", unit_property
+    )
 
 
 def reload_systemd():
@@ -820,8 +868,7 @@ def reload_systemd():
         units_changed = False
         return True
 
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    add_systemd_user_manager()
 
     # query systemd dbus for matching units
     print_normal("Reloading systemd user manager.")
@@ -843,18 +890,36 @@ def reload_systemd():
 def set_dbus_vars(vars_dict: dict):
     "Sets vars in dbus activation environment"
     global dbus_objects
-    if "dbus_user_interface" not in dbus_objects:
-        dbus_objects["dbus_user_interface"] = get_dbus_user_interface()
+    add_dbus_user_interface()
 
     print_debug("sending to .UpdateActivationEnvironment", vars_dict)
     dbus_objects["dbus_user_interface"].UpdateActivationEnvironment(vars_dict)
 
 
+def set_systemd_vars(vars_dict: dict):
+    "Exports vars from given dict to systemd user manager"
+
+    global dbus_objects
+    # check what dbus service is running
+    # if it is not dbus-broker, also set dbus environmetn vars
+    dbus_unit = get_user_unit_property("dbus.service", "Id")
+    print_debug("dbus.service Id", dbus_unit)
+    if dbus_unit != "dbus-broker.service":
+        print_debug(
+            "dbus unit", dbus_unit, "managing separate dbus activation environment"
+        )
+        set_dbus_vars(vars_dict)
+
+    add_systemd_user_manager()
+    assignments = [f"{var}={value}" for var, value in vars_dict.items()]
+    print_debug("assignments", assignments)
+    dbus_objects["systemd_user_manager"].SetEnvironment(assignments)
+
+
 def blank_dbus_vars(vars_list: list):
     "Sets empty vars in dbus activation environment as best effort cleanup"
     global dbus_objects
-    if "dbus_user_interface" not in dbus_objects:
-        dbus_objects["dbus_user_interface"] = get_dbus_user_interface()
+    add_dbus_user_interface()
 
     vars_dict = {}
     for var in vars_list:
@@ -864,50 +929,19 @@ def blank_dbus_vars(vars_list: list):
     dbus_objects["dbus_user_interface"].UpdateActivationEnvironment(vars_dict)
 
 
-def set_systemd_vars(vars_dict: dict):
-    "Exports vars from given dict to systemd user manager"
-    global dbus_objects
-
-    # check what dbus service is running
-    # if it is not dbus-broker, also set dbus environmetn vars
-    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
-        dbus_objects[
-            "systemd_user_unit_properties_dbus_service"
-        ] = get_systemd_user_unit_properties("dbus.service")
-    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
-        "org.freedesktop.systemd1.Unit", "Id"
-    )
-    if dbus_unit != "dbus-broker.service":
-        print_debug(
-            "dbus unit", dbus_unit, "managing separate dbus activation environment"
-        )
-        set_dbus_vars(vars_dict)
-
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
-    assignments = [f"{var}={value}" for var, value in vars_dict.items()]
-    print_debug("assignments", assignments)
-    dbus_objects["systemd_user_manager"].SetEnvironment(assignments)
-
-
 def unset_systemd_vars(vars_list):
     "Unsets vars from given list from systemd user manager"
+
     global dbus_objects
-    if "systemd_user_unit_properties_dbus_service" not in dbus_objects:
-        dbus_objects[
-            "systemd_user_unit_properties_dbus_service"
-        ] = get_systemd_user_unit_properties("dbus.service")
-    dbus_unit = dbus_objects["systemd_user_unit_properties_dbus_service"].Get(
-        "org.freedesktop.systemd1.Unit", "Id"
-    )
+    dbus_unit = get_user_unit_property("dbus.service", "Id")
+    print_debug("dbus.service Id", dbus_unit)
     if dbus_unit != "dbus-broker.service":
         print_debug(
             "dbus unit", dbus_unit, "managing separate dbus activation environment"
         )
         blank_dbus_vars(vars_list)
 
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    add_systemd_user_manager()
     print_debug("unassignments", vars_list)
     dbus_objects["systemd_user_manager"].UnsetEnvironment(vars_list)
 
@@ -915,8 +949,7 @@ def unset_systemd_vars(vars_list):
 def get_systemd_vars():
     "Returns dict of env from systemd user manager"
     global dbus_objects
-    if "systemd_user_properties" not in dbus_objects:
-        dbus_objects["systemd_user_properties"] = get_systemd_user_properties()
+    add_systemd_user_properties()
     assignments = dbus_objects["systemd_user_properties"].Get(
         "org.freedesktop.systemd1.Manager", "Environment"
     )
@@ -989,8 +1022,7 @@ def get_active_wm_unit(active=True, activating=True):
     Bool strict_active to match only active state.
     """
     global dbus_objects
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    add_systemd_user_manager()
 
     # query systemd dbus for matching units
     units = dbus_objects["systemd_user_manager"].ListUnitsByPatterns(
@@ -1028,8 +1060,7 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
     verbose_active=True prints matched active units
     """
     global dbus_objects
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    add_systemd_user_manager()
 
     check_units_generic = [
         "graphical-session-pre.target",
@@ -3727,8 +3758,7 @@ def stop_wm():
     print_normal("Stopping compositor...")
 
     global dbus_objects
-    if "systemd_user_manager" not in dbus_objects:
-        dbus_objects["systemd_user_manager"] = get_systemd_user_manager()
+    add_systemd_user_manager()
 
     # query systemd dbus for matching compositor units
     units = dbus_objects["systemd_user_manager"].ListUnitsByPatterns(
@@ -3941,8 +3971,7 @@ def main():
             print_warning("Only unit creation was requested. Will not go further.")
             sys.exit(0)
 
-        if "systemd_system_manager" not in dbus_objects:
-            dbus_objects["systemd_system_manager"] = get_systemd_system_manager()
+        add_systemd_system_manager()
 
         # query systemd dbus for active matching units
         units = dbus_objects["systemd_system_manager"].ListUnitsByPatterns(
@@ -4072,8 +4101,7 @@ def main():
                 )
 
         # check for graphical target
-        if "systemd_system_manager" not in dbus_objects:
-            dbus_objects["systemd_system_manager"] = get_systemd_system_manager()
+        add_systemd_system_manager()
         units = dbus_objects["systemd_system_manager"].ListUnitsByPatterns(
             ["active", "activating"], ["graphical.target"]
         )
