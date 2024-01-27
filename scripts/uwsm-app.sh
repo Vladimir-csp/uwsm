@@ -63,7 +63,7 @@ trap 'error "Timed out waiting for pipes!" 141' PIPE
 if [ ! -p "$PIPE_IN" ] || [ ! -p "$PIPE_OUT" ]; then
 	systemctl --user restart "$DAEMON_UNIT"
 	# wait for pipes to become pipes
-	while [ ! -p "$PIPE_IN" ] && [ ! -p "$PIPE_OUT" ]; do
+	while [ ! -p "$PIPE_IN" ] || [ ! -p "$PIPE_OUT" ]; do
 		sleep 1
 	done
 else

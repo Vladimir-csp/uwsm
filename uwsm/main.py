@@ -3380,7 +3380,9 @@ def app_daemon():
             fifo_out.write(f"{args_out}\n")
 
     while True:
+        # create both pipes right away and make sure they always exist
         fifo_in_path = create_fifo("uwsm-app-daemon-in")
+        fifo_out_path = create_fifo("uwsm-app-daemon-out")
 
         # argparse exit workaround: read previous wrong args and send error message
         if os.path.isfile(error_flag_path):
