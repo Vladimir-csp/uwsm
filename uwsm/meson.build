@@ -93,6 +93,7 @@ run_command(
 uwsm_sources = [
   '__init__.py',
   'main.py',
+  'dbus.py',
   params_file,
 ]
 
