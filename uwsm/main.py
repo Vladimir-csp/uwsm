@@ -39,24 +39,52 @@ from xdg.Exceptions import ValidationError
 from uwsm.params import *
 from uwsm.dbus import *
 
-units_changed: bool
-wm_cmdline: List[str]
-wm_cli_args: List[str]
-wm_id: str
-wm_id_unit_string: str
-wm_bin_id: str
-wm_desktop_names: List[str]
-wm_cli_desktop_names: List[str]
-wm_cli_desktop_names_exclusive: bool
-wm_name: str
-wm_cli_name: str
-wm_description: str
-wm_cli_description: str
-terminal_entry: any
-terminal_entry_action: str
-terminal_entry_id: str
-terminal_neg_cache: dict
-stopper_initiated: bool
+
+class CompGlobals:
+    "Compositor global vars"
+    # Full final compositor cmdline (list)
+    cmdline: List[str] = []
+    # Compositor arguments that were given on CLI
+    cli_args: List[str] = []
+    # Internal compositor ID (first of cli args)
+    id: str = None
+    # escaped string for unit specifier
+    id_unit_string: str = None
+    # processed function-friendly cmdline[0]
+    bin_id: str = None
+    # XDG_CURRENT_DESKTOP list
+    desktop_names: List[str] = []
+    # list of -D value
+    cli_desktop_names: List[str] = []
+    # -e flag bool
+    cli_desktop_names_exclusive: bool = None
+    # Final compositor Name
+    name: str = None
+    # value of -N
+    cli_name: str = None
+    # Final compositor Description
+    description: str = None
+    # value of -C
+    cli_description: str = None
+
+
+class Terminal:
+    "XDG Terminal selector"
+    entry: any = None
+    entry_id: str = ""
+    entry_action_id: str = ""
+    neg_cache: dict = {}
+
+
+class Stopper:
+    "For use in signal trap"
+    initiated: bool = False
+    signals: list = []
+
+
+class UnitsState:
+    "Holds flag to mark changes in systemd units"
+    changed: bool = False
 
 
 class Varnames:
@@ -454,7 +482,6 @@ def entry_parser_terminal(
     (for first applicable entry)
       ('return', (entry, entry_id, None)) or ('drop', (None, None, None))
     """
-    global terminal_neg_cache
     if explicit_terminals is None:
         explicit_terminals = []
 
@@ -466,18 +493,18 @@ def entry_parser_terminal(
         entry = DesktopEntry(entry_path)
     except:
         print_debug("failed to parse entry")
-        terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
+        Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
 
     # quick fail
     try:
         if "TerminalEmulator" not in entry.getCategories():
             print_debug("not a TerminalEmulator")
-            terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
+            Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
             return ("drop", (None, None, None))
     except:
         print_debug("failed to get Categories")
-        terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
+        Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
 
     # get requested actions for this entry ID
@@ -500,7 +527,7 @@ def entry_parser_terminal(
     # not explicit_terminals
     if not check_entry_basic(entry, None):
         print_debug("failed basic checks")
-        terminal_neg_cache.update({entry_path: os.path.getmtime(entry_path)})
+        Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
     if not check_entry_showin(entry):
         print_debug("failed ShowIn checks")
@@ -745,11 +772,9 @@ def select_comp_entry(default="", just_confirm=False):
 def reload_systemd():
     "Reloads systemd user manager"
 
-    global units_changed
-
     if args.dry_run:
         print_normal("Will reload systemd user manager.")
-        units_changed = False
+        UnitsState.changed = False
         return True
 
     # query systemd dbus for matching units
@@ -767,7 +792,7 @@ def reload_systemd():
 
     print_debug(f"reload systemd job {job} finished")
 
-    units_changed = False
+    UnitsState.changed = False
     return True
 
 
@@ -996,8 +1021,6 @@ def update_unit(unit, data):
     Returns change in boolean
     """
 
-    global units_changed
-
     if not Val.unit_ext.search(unit):
         raise ValueError(
             f"Trying to update unit with unsupported extension {unit.split('.')[-1]}: {unit}"
@@ -1019,7 +1042,7 @@ def update_unit(unit, data):
         if not args.dry_run:
             os.mkdir(check_dir)
             print_ok(f'Created dir "{check_dir}/"')
-        elif not units_changed:
+        elif not UnitsState.changed:
             print_ok(f'Will create dir "{check_dir}/"')
     for path_element in [d for d in os.path.dirname(unit).split(os.path.sep) if d]:
         check_dir = os.path.join(check_dir, path_element)
@@ -1047,14 +1070,12 @@ def update_unit(unit, data):
 
     print_debug(data)
 
-    units_changed = True
+    UnitsState.changed = True
     return True
 
 
 def remove_unit(unit):
     "Removes unit and subdir if empty"
-
-    global units_changed
 
     if not Val.unit_ext.search(unit):
         raise ValueError(
@@ -1079,7 +1100,7 @@ def remove_unit(unit):
             print_ok(f"Removed unit {unit}.")
         else:
             print_ok(f"Will remove unit {unit}.")
-        units_changed = True
+        UnitsState.changed = True
         change = True
 
     # deal with subdir
@@ -1109,8 +1130,7 @@ def generate_units():
     else:
         wayland_wm_slice = "app.slice"
 
-    global units_changed
-    units_changed = False
+    UnitsState.changed = False
 
     # targets
     update_unit(
@@ -1326,15 +1346,15 @@ def generate_units():
 
     # compositor-specific additions from cli or desktop entry via drop-ins
     wm_specific_preloader = (
-        f"wayland-wm-env@{wm_id_unit_string}.service.d/50_custom.conf"
+        f"wayland-wm-env@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
     )
-    wm_specific_service = f"wayland-wm@{wm_id_unit_string}.service.d/50_custom.conf"
+    wm_specific_service = f"wayland-wm@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
     wm_specific_preloader_data = [
         dedent(
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID={wm_id}
+            X-UWSM-ID={CompGlobals.id}
             """
         )
     ]
@@ -1343,42 +1363,42 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID={wm_id}
+            X-UWSM-ID={CompGlobals.id}
             """
         )
     ]
 
     # name is given
-    if wm_name:
+    if CompGlobals.name:
         wm_specific_preloader_data.append(
             dedent(
                 f"""
-                Description=Environment preloader for {wm_name}
+                Description=Environment preloader for {CompGlobals.name}
                 """
             )
         )
 
     # name or description is given
-    if wm_name or wm_description:
+    if CompGlobals.name or CompGlobals.description:
         wm_specific_service_data.append(
             dedent(
                 f"""
-                Description=Main service for {', '.join((s for s in (wm_name or wm_cmdline[0], wm_description) if s))}
+                Description=Main service for {', '.join((s for s in (CompGlobals.name or CompGlobals.cmdline[0], CompGlobals.description) if s))}
                 """
             )
         )
 
     # exclusive desktop names were given on command line
-    if wm_cli_desktop_names_exclusive:
-        prepend: str = f" -eD \"{':'.join(wm_cli_desktop_names)}\""
+    if CompGlobals.cli_desktop_names_exclusive:
+        prepend: str = f" -eD \"{':'.join(CompGlobals.cli_desktop_names)}\""
     # desktop names differ from just executable name
-    elif wm_desktop_names != [wm_cmdline[0]]:
-        prepend: str = f" -D \"{':'.join(wm_desktop_names)}\""
+    elif CompGlobals.desktop_names != [CompGlobals.cmdline[0]]:
+        prepend: str = f" -D \"{':'.join(CompGlobals.desktop_names)}\""
     else:
         prepend: str = ""
 
     # additional args were given on cli
-    append: str = f" {shlex.join(wm_cli_args)}" if wm_cli_args else ""
+    append: str = f" {shlex.join(CompGlobals.cli_args)}" if CompGlobals.cli_args else ""
 
     if prepend or append:
         wm_specific_preloader_data.append(
@@ -2183,18 +2203,18 @@ def prepare_env_gen_sh(random_mark):
     shell_definitions = dedent(
         f"""
         __SELF_NAME__={shlex.quote(BIN_NAME)}
-        __WM_ID__={shlex.quote(wm_id)}
-        __WM_ID_UNIT_STRING__={shlex.quote(wm_id_unit_string)}
-        __WM_BIN_ID__={shlex.quote(wm_bin_id)}
-        __WM_DESKTOP_NAMES__={shlex.quote(':'.join(wm_desktop_names))}
-        __WM_FIRST_DESKTOP_NAME__={shlex.quote(wm_desktop_names[0])}
-        __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if wm_cli_desktop_names_exclusive else 'false'}
+        __WM_ID__={shlex.quote(CompGlobals.id)}
+        __WM_ID_UNIT_STRING__={shlex.quote(CompGlobals.id_unit_string)}
+        __WM_BIN_ID__={shlex.quote(CompGlobals.bin_id)}
+        __WM_DESKTOP_NAMES__={shlex.quote(':'.join(CompGlobals.desktop_names))}
+        __WM_FIRST_DESKTOP_NAME__={shlex.quote(CompGlobals.desktop_names[0])}
+        __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if CompGlobals.cli_desktop_names_exclusive else 'false'}
         __OIFS__=" \t\n"
         """
     )
 
     # bake plugin loading into shell code
-    shell_plugins = BaseDirectory.load_data_paths(f"uwsm/plugins/{wm_bin_id}.sh")
+    shell_plugins = BaseDirectory.load_data_paths(f"uwsm/plugins/{CompGlobals.bin_id}.sh")
     shell_plugins_load = []
     for plugin in shell_plugins:
         shell_plugins_load.append(
@@ -2410,7 +2430,7 @@ def prepare_env():
     Saves list for later cleanup.
     """
 
-    print_normal(f"Preparing environment for {wm_name or wm_cmdline[0]}...")
+    print_normal(f"Preparing environment for {CompGlobals.name or CompGlobals.cmdline[0]}...")
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
 
@@ -2517,7 +2537,7 @@ def prepare_env():
     # write cleanup file
     # first get exitsing vars if cleanup file already exists
     cleanup_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True), f"env_names_for_cleanup_{wm_id}"
+        BaseDirectory.get_runtime_dir(strict=True), f"env_names_for_cleanup_{CompGlobals.id}"
     )
     if os.path.isfile(cleanup_file):
         with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
@@ -2849,19 +2869,18 @@ def find_terminal_entry():
 
     print_debug("no explicit terminals matched, starting terminal entry search")
 
-    global terminal_neg_cache
-    terminal_neg_cache = read_neg_cache("not-terminals")
-    terminal_neg_cache_initial = terminal_neg_cache.copy()
+    Terminal.neg_cache = read_neg_cache("not-terminals")
+    terminal_neg_cache_initial = Terminal.neg_cache.copy()
 
     # process all apps, find applicable terminal
     found_terminal_entries = find_entries(
-        "applications", parser=entry_parser_terminal, reject_pmt=terminal_neg_cache
+        "applications", parser=entry_parser_terminal, reject_pmt=Terminal.neg_cache
     )
     if found_terminal_entries:
         terminal_entry, terminal_entry_id, _ = found_terminal_entries[0]
         print_debug(f"found terminal {terminal_entry_id}")
-        if terminal_neg_cache != terminal_neg_cache_initial:
-            write_neg_cache("not-terminals", terminal_neg_cache)
+        if Terminal.neg_cache != terminal_neg_cache_initial:
+            write_neg_cache("not-terminals", Terminal.neg_cache)
         return (terminal_entry, terminal_entry_id, None)
 
     raise RuntimeError("Could not find a Terminal Emulator application")
@@ -2922,10 +2941,6 @@ def app(
     If return_cmdline: return cmdline as list
     If fork: return subprocess object.
     """
-
-    global terminal_entry
-    global terminal_entry_action
-    global terminal_entry_id
 
     # detect desktop entry, update cmdline, app_name
     # cmdline can be empty if terminal is requested with -T
@@ -3035,22 +3050,22 @@ def app(
     print_debug("cmdline", cmdline)
 
     if args.terminal:
-        # terminal_entry, terminal_entry_action are global, so generate only once
+        # Terminal.entry, Terminal.entry_action_id are global, so generate only once
         # no matter how many times app() is called for forks
-        if not terminal_entry:
+        if not Terminal.entry:
             (
-                terminal_entry,
-                terminal_entry_id,
-                terminal_entry_action,
+                Terminal.entry,
+                Terminal.entry_id,
+                Terminal.entry_action_id,
             ) = find_terminal_entry()
 
         terminal_cmdline = shlex.split(
-            entry_action_keys(terminal_entry, terminal_entry_action)["Exec"]
+            entry_action_keys(Terminal.entry, Terminal.entry_action_id)["Exec"]
         )
-        if terminal_entry.hasKey("ExecArg"):
-            terminal_execarg = terminal_entry.get("ExecArg")
-        elif terminal_entry.hasKey("X-ExecArg"):
-            terminal_execarg = terminal_entry.get("X-ExecArg")
+        if Terminal.entry.hasKey("ExecArg"):
+            terminal_execarg = Terminal.entry.get("ExecArg")
+        elif Terminal.entry.hasKey("X-ExecArg"):
+            terminal_execarg = Terminal.entry.get("X-ExecArg")
         else:
             terminal_execarg = "-e"
         terminal_execarg = [terminal_execarg] if terminal_execarg else []
@@ -3064,11 +3079,11 @@ def app(
         # if -T is given and cmdline is empty or double terminated
         if cmdline in ([], ["--"]):
             if not app_name:
-                app_name = os.path.splitext(terminal_entry_id)[0]
+                app_name = os.path.splitext(Terminal.entry_id)[0]
             if not unit_description:
                 unit_description = " - ".join(
                     n
-                    for n in (terminal_entry.getName(), terminal_entry.getGenericName())
+                    for n in (Terminal.entry.getName(), Terminal.entry.getGenericName())
                     if n
                 )
             # cmdline contents should not be referenced until the end of this function,
@@ -3077,7 +3092,7 @@ def app(
             # remove exec arg
             terminal_execarg = []
     else:
-        terminal_cmdline, terminal_execarg, terminal_entry_id = ([], [], "")
+        terminal_cmdline, terminal_execarg, Terminal.entry_id = ([], [], "")
 
     if not unit_description:
         unit_description = (
@@ -3219,9 +3234,6 @@ def app_daemon():
 
     # these will be reset with every call
     global args
-    global terminal_entry
-    global terminal_entry_action
-    global terminal_entry_id
 
     # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
     # crudely work around it
@@ -3302,9 +3314,9 @@ def app_daemon():
         os.remove(error_flag_path)
 
         # reset terminal entry
-        terminal_entry = None
-        terminal_entry_action = ""
-        terminal_entry_id = ""
+        Terminal.entry = None
+        Terminal.entry_action_id = ""
+        Terminal.entry_id = ""
 
         # call app with return_cmdline=True
         try:
@@ -3352,65 +3364,40 @@ def create_fifo(path):
 
 def fill_wm_globals():
     """
-    Fills global vars:
-      wm_cmdline
-      wm_cli_args
-      wm_id
-      wm_id_unit_string
-      wm_bin_id
-      wm_desktop_names
-      wm_cli_desktop_names
-      wm_cli_desktop_names_exclusive
-      wm_name
-      wm_cli_name
-      wm_description
-      wm_cli_description
+    Fills vars in CompGlobals:
+      cmdline
+      cli_args
+      id
+      id_unit_string
+      bin_id
+      desktop_names
+      cli_desktop_names
+      cli_desktop_names_exclusive
+      name
+      cli_name
+      description
+      cli_description
     based on args or desktop entry
     """
 
-    # Full final compositor cmdline (list)
-    global wm_cmdline
-    # Compositor arguments that were given on CLI
-    global wm_cli_args
-    # Internal compositor ID (first of cli args)
-    global wm_id
-    # escaped string for unit specifier
-    global wm_id_unit_string
-    # processed function-friendly wm_cmdline[0]
-    global wm_bin_id
-    # XDG_CURRENT_DESKTOP list
-    global wm_desktop_names
-    # list of -D value
-    global wm_cli_desktop_names
-    # -e flag bool
-    global wm_cli_desktop_names_exclusive
-    # Final compositor Name
-    global wm_name
-    # value of -N
-    global wm_cli_name
-    # Fina compositor Description
-    global wm_description
-    # value of -C
-    global wm_cli_description
+    CompGlobals.id = args.wm_cmdline[0]
 
-    wm_id = args.wm_cmdline[0]
-
-    if not wm_id:
+    if not CompGlobals.id:
         print_error("Compositor is not provided!")
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
-    if not Val.wm_id.search(wm_id):
-        print_error(f'"{wm_id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!')
+    if not Val.wm_id.search(CompGlobals.id):
+        print_error(f'"{CompGlobals.id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!')
         sys.exit(1)
 
-    # escape wm_id for systemd
-    wm_id_unit_string = simple_systemd_escape(wm_id, start=False)
+    # escape CompGlobals.id for systemd
+    CompGlobals.id_unit_string = simple_systemd_escape(CompGlobals.id, start=False)
 
     # detect and parse desktop entry
-    entry_id, entry_action = arg_entry_or_executable(wm_id)
+    entry_id, entry_action = arg_entry_or_executable(CompGlobals.id)
     if entry_id:
-        print_debug(f"Compositor ID is a desktop entry: {wm_id}")
+        print_debug(f"Compositor ID is a desktop entry: {CompGlobals.id}")
 
         # find and parse entry
         entries = find_entries(
@@ -3422,7 +3409,7 @@ def fill_wm_globals():
             },
         )
         if not entries:
-            raise FileNotFoundError(f'Could not find entry "{wm_id}"')
+            raise FileNotFoundError(f'Could not find entry "{CompGlobals.id}"')
 
         entry = entries[0]
 
@@ -3430,26 +3417,26 @@ def fill_wm_globals():
 
         entry_dict = entry_action_keys(entry, entry_action=entry_action or None)
 
-        # get Exec from entry as wm_cmdline
-        wm_cmdline = shlex.split(entry_dict["Exec"])
+        # get Exec from entry as CompGlobals.cmdline
+        CompGlobals.cmdline = shlex.split(entry_dict["Exec"])
 
         print_debug(
-            f"self_name: {BIN_NAME}\nwm_cmdline[0]: {os.path.basename(wm_cmdline[0])}"
+            f"self_name: {BIN_NAME}\nwm_cmdline[0]: {os.path.basename(CompGlobals.cmdline[0])}"
         )
         # if desktop entry uses us, deal with the other self.
         entry_uwsm_args = None
-        if os.path.basename(wm_cmdline[0]) == BIN_NAME:
+        if os.path.basename(CompGlobals.cmdline[0]) == BIN_NAME:
             try:
-                if "start" not in wm_cmdline or wm_cmdline[1] != "start":
+                if "start" not in CompGlobals.cmdline or CompGlobals.cmdline[1] != "start":
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {BIN_NAME}, but the second argument "{wm_cmdline[1]}" is not "start"!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME}, but the second argument "{CompGlobals.cmdline[1]}" is not "start"!'
                     )
                 # cut ourselves from cmdline
-                wm_cmdline = wm_cmdline[1:]
+                CompGlobals.cmdline = CompGlobals.cmdline[1:]
 
-                print_normal(f'Entry "{wm_id}" uses {BIN_NAME}, reparsing args...')
+                print_normal(f'Entry "{CompGlobals.id}" uses {BIN_NAME}, reparsing args...')
                 # reparse args from entry into separate namespace
-                entry_uwsm_args, _ = parse_args(wm_cmdline)
+                entry_uwsm_args, _ = parse_args(CompGlobals.cmdline)
                 print_debug("entry_uwsm_args", entry_uwsm_args)
 
                 # check for various incompatibilities
@@ -3458,25 +3445,25 @@ def fill_wm_globals():
                     None,
                 ):
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {BIN_NAME} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
                     )
                 if entry_uwsm_args.dry_run:
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {BIN_NAME} in "dry run" mode!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} in "dry run" mode!'
                     )
                 if entry_uwsm_args.only_generate:
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {BIN_NAME} in "only generate" mode!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} in "only generate" mode!'
                     )
                 if entry_uwsm_args.desktop_names and not Val.dn_colon.search(
                     entry_uwsm_args.desktop_names
                 ):
                     raise ValueError(
-                        f'Entry "{wm_id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
                     )
 
-                # replace wm_cmdline with args.wm_cmdline from entry
-                wm_cmdline = entry_uwsm_args.wm_cmdline
+                # replace CompGlobals.cmdline with args.wm_cmdline from entry
+                CompGlobals.cmdline = entry_uwsm_args.wm_cmdline
 
             except Exception as caught_exception:
                 print_error_or_traceback(caught_exception)
@@ -3485,9 +3472,9 @@ def fill_wm_globals():
         # combine Exec from entry and arguments
         # TODO: either drop this behavior, or add support for % fields
         # not that wayland session entries will ever use them
-        wm_cmdline = wm_cmdline + args.wm_cmdline[1:]
+        CompGlobals.cmdline = CompGlobals.cmdline + args.wm_cmdline[1:]
 
-        print_debug("wm_cmdline", wm_cmdline)
+        print_debug("CompGlobals.cmdline", CompGlobals.cmdline)
 
         # use existence of args.desktop_names as a condition
         # because this does not happen in aux exec mode
@@ -3507,31 +3494,31 @@ def fill_wm_globals():
                     sys.exit(1)
                 else:
                     # set exclusive desktop names
-                    wm_desktop_names = sane_split(args.desktop_names, ":")
+                    CompGlobals.desktop_names = sane_split(args.desktop_names, ":")
 
             # exclusive nested CLI desktop names from entry
             elif entry_uwsm_args and entry_uwsm_args.desktop_names_exclusive:
                 if not entry_uwsm_args.desktop_names:
                     print_error(
-                        f'{BIN_NAME} in entry "{wm_id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
+                        f'{BIN_NAME} in entry "{CompGlobals.id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
                     )
                     sys.exit(1)
                 else:
                     # set exclusive desktop names
-                    wm_desktop_names = sane_split(entry_uwsm_args.desktop_names, ":")
+                    CompGlobals.desktop_names = sane_split(entry_uwsm_args.desktop_names, ":")
             # prepend desktop names from entry (and existing environment if there is no active session)
             # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP
             # set by it from DesktopNames
-            # basically just throw stuff into wm_desktop_names, deduplication comes later
+            # basically just throw stuff into CompGlobals.desktop_names, deduplication comes later
             else:
-                wm_desktop_names = (
+                CompGlobals.desktop_names = (
                     (
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
                         if not is_active()
                         else []
                     )
                     + entry.get("DesktopNames", list=True)
-                    + [wm_cmdline[0]]
+                    + [CompGlobals.cmdline[0]]
                     + (
                         sane_split(entry_uwsm_args.desktop_names, ":")
                         if entry_uwsm_args
@@ -3539,77 +3526,77 @@ def fill_wm_globals():
                     )
                     + sane_split(args.desktop_names, ":")
                 )
-            print_debug("wm_desktop_names", wm_desktop_names)
+            print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
             # fill name and description with fallbacks from: CLI, nested CLI, Entry
             if args.wm_name:
-                wm_name = args.wm_name
+                CompGlobals.name = args.wm_name
             elif entry_uwsm_args and entry_uwsm_args.wm_name:
-                wm_name = entry_uwsm_args.wm_name
+                CompGlobals.name = entry_uwsm_args.wm_name
             else:
-                wm_name = " - ".join(
+                CompGlobals.name = " - ".join(
                     n for n in (entry_dict["Name"], entry.getGenericName()) if n
                 )
 
             if args.wm_comment:
-                wm_description = args.wm_comment
+                CompGlobals.description = args.wm_comment
             elif entry_uwsm_args and entry_uwsm_args.wm_comment:
-                wm_description = entry_uwsm_args.wm_comment
+                CompGlobals.description = entry_uwsm_args.wm_comment
             elif entry.getComment():
-                wm_description = entry.getComment()
+                CompGlobals.description = entry.getComment()
 
     else:
-        print_debug(f"Compositor ID is an executable: {wm_id}")
+        print_debug(f"Compositor ID is an executable: {CompGlobals.id}")
 
         # check exec
-        if not which(wm_id):
-            print_error(f'"{wm_id}" is not in PATH!')
+        if not which(CompGlobals.id):
+            print_error(f'"{CompGlobals.id}" is not in PATH!')
             sys.exit(1)
 
-        wm_cmdline = args.wm_cmdline
+        CompGlobals.cmdline = args.wm_cmdline
 
         # this does not happen in aux exec mode
         if "desktop_names" in args:
             # fill other data
             if args.desktop_names_exclusive:
-                wm_desktop_names = sane_split(args.desktop_names, ":")
+                CompGlobals.desktop_names = sane_split(args.desktop_names, ":")
             else:
-                wm_desktop_names = (
+                CompGlobals.desktop_names = (
                     (
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
                         if not is_active()
                         else []
                     )
-                    + [wm_cmdline[0]]
+                    + [CompGlobals.cmdline[0]]
                     + sane_split(args.desktop_names, ":")
                 )
-            wm_name = args.wm_name
-            wm_description = args.wm_comment
-            print_debug("wm_desktop_names", wm_desktop_names)
+            CompGlobals.name = args.wm_name
+            CompGlobals.description = args.wm_comment
+            print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
-    wm_cli_args = args.wm_cmdline[1:]
+    CompGlobals.cli_args = args.wm_cmdline[1:]
     # this does not happen in aux exec mode
     if "desktop_names" in args:
-        wm_cli_desktop_names = sane_split(args.desktop_names, ":")
-        wm_cli_desktop_names_exclusive = args.desktop_names_exclusive
-        wm_cli_name = args.wm_name
-        wm_cli_description = args.wm_comment
+        CompGlobals.cli_desktop_names = sane_split(args.desktop_names, ":")
+        CompGlobals.cli_desktop_names_exclusive = args.desktop_names_exclusive
+        CompGlobals.cli_name = args.wm_name
+        CompGlobals.cli_description = args.wm_comment
 
         # deduplicate desktop names preserving order
         ddn = []
-        for desktop_name in wm_cli_desktop_names:
+        for desktop_name in CompGlobals.cli_desktop_names:
             if desktop_name not in ddn:
                 ddn.append(desktop_name)
-        wm_cli_desktop_names = ddn
+        CompGlobals.cli_desktop_names = ddn
         ddn = []
-        for desktop_name in wm_desktop_names:
+        for desktop_name in CompGlobals.desktop_names:
             if desktop_name not in ddn:
                 ddn.append(desktop_name)
-        wm_desktop_names = ddn
+        CompGlobals.desktop_names = ddn
 
     # id for functions and env loading
-    wm_bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", wm_cmdline[0]).lower()
+    CompGlobals.bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", CompGlobals.cmdline[0]).lower()
 
     return True
 
@@ -3663,13 +3650,12 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
     """
 
     # initiate only once
-    global stopper_initiated
-    if stopper_initiated:
+    if Stopper.initiated:
         print_debug(
             f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc})"
         )
         return
-    stopper_initiated = True
+    Stopper.initiated = True
 
     if systemctl_rc is not None:
         if systemctl_rc == 0:
@@ -3715,43 +3701,6 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
 
 
 def main():
-    global units_changed
-    global wm_cmdline
-    global wm_cli_args
-    global wm_id
-    global wm_id_unit_string
-    global wm_bin_id
-    global wm_desktop_names
-    global wm_cli_desktop_names
-    global wm_cli_desktop_names_exclusive
-    global wm_name
-    global wm_cli_name
-    global wm_description
-    global wm_cli_description
-    global terminal_entry
-    global terminal_entry_action
-    global terminal_entry_id
-    global terminal_neg_cache
-    global stopper_initiated
-
-    units_changed = False
-    wm_cmdline = []
-    wm_cli_args = []
-    wm_id = ""
-    wm_id_unit_string = ""
-    wm_bin_id = ""
-    wm_desktop_names = []
-    wm_cli_desktop_names = []
-    wm_cli_desktop_names_exclusive = False
-    wm_name = ""
-    wm_cli_name = ""
-    wm_description = ""
-    wm_cli_description = ""
-    terminal_entry = None
-    terminal_entry_action = ""
-    terminal_entry_id = ""
-    terminal_neg_cache = {}
-    stopper_initiated = False
 
     # get args and parsers (for help)
     global args, parsers
@@ -3803,12 +3752,12 @@ def main():
         print_normal(
             dedent(
                 f"""
-                 Selected compositor ID: {wm_id}
-                           Command Line: {shlex.join(wm_cmdline)}
-                       Plugin/binary ID: {wm_bin_id}
-                  Initial Desktop Names: {':'.join(wm_desktop_names)}
-                                   Name: {wm_name}
-                            Description: {wm_description}
+                 Selected compositor ID: {CompGlobals.id}
+                           Command Line: {shlex.join(CompGlobals.cmdline)}
+                       Plugin/binary ID: {CompGlobals.bin_id}
+                  Initial Desktop Names: {':'.join(CompGlobals.desktop_names)}
+                                   Name: {CompGlobals.name}
+                            Description: {CompGlobals.description}
                 """
             )
         )
@@ -3822,7 +3771,7 @@ def main():
 
         generate_units()
 
-        if units_changed:
+        if UnitsState.changed:
             reload_systemd()
         else:
             print_normal("Units unchanged.")
@@ -3851,11 +3800,11 @@ def main():
             time.sleep(5)
 
         if args.dry_run:
-            print_normal(f"Will start {wm_id}...")
+            print_normal(f"Will start {CompGlobals.id}...")
             print_warning("Dry Run Mode. Will not go further.")
             sys.exit(0)
         else:
-            print_normal(f"Starting {wm_id} and waiting while it is running...")
+            print_normal(f"Starting {CompGlobals.id} and waiting while it is running...")
 
         # trap exit on INT TERM HUP
         signal.signal(signal.SIGINT, trap_stopper)
@@ -3870,7 +3819,7 @@ def main():
                 "--user",
                 "start",
                 "--wait",
-                f"wayland-wm@{wm_id_unit_string}.service",
+                f"wayland-wm@{CompGlobals.id_unit_string}.service",
             ],
             check=False,
         )
@@ -3892,7 +3841,7 @@ def main():
         # args.remove_units is False when not given, None if given without argument
         if args.remove_units is not False:
             remove_units(args.remove_units)
-            if units_changed:
+            if UnitsState.changed:
                 reload_systemd()
             else:
                 print_normal("Units unchanged.")
@@ -4019,9 +3968,9 @@ def main():
                     sys.exit(1)
         elif args.aux_action == "exec":
             fill_wm_globals()
-            print_debug(wm_cmdline)
-            print_normal(f"Starting: {shlex.join(wm_cmdline)}...")
-            os.execlp(wm_cmdline[0], *(wm_cmdline))
+            print_debug(CompGlobals.cmdline)
+            print_normal(f"Starting: {shlex.join(CompGlobals.cmdline)}...")
+            os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
 
         elif args.aux_action == "app-daemon":
             print_normal("Launching app daemon", file=sys.stderr)
