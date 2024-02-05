@@ -885,7 +885,9 @@ def get_active_wm_unit(active=True, activating=True):
     if len(units) == 1:
         return str(units[0][0])
     if len(units) > 1:
-        print_warning(f"Got more than 1 active wayland-wm@*.service: {', '.join(units)}")
+        print_warning(
+            f"Got more than 1 active wayland-wm@*.service: {', '.join(units)}"
+        )
         return str(units[0][0])
 
 
