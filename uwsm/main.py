@@ -3189,7 +3189,7 @@ def app(
     final_args = (
         "systemd-run",
         "--user",
-        *(["--scope"] if app_unit_type == "scope" else []),
+        *(["--scope"] if app_unit_type == "scope" else ["--property=ExitType=cgroup"]),
         f"--slice={slice_name}",
         f"--unit={unit_name}",
         f"--description={unit_description}",
