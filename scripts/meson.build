@@ -11,6 +11,15 @@ configure_file(
 )
 
 configure_file(
+  input: 'uuctl.desktop',
+  output: 'uuctl.desktop',
+  copy: true,
+  install: want_uuctl,
+  install_dir: join_paths(get_option('datadir'), 'applications'),
+  install_mode: 'rw-r--r--',
+)
+
+configure_file(
   input: 'uwsm-app.sh',
   output: 'uwsm-app',
   copy: true,

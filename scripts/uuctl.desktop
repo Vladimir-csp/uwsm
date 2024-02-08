@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=uuctl
+GenericName=User unit manager
+Comment=Select and perform actions on user systemd units
+Exec=uuctl
+Icon=applications-system
+Terminal=false
+Type=Application
+Categories=Utility;Settings;
+Keywords=units;services;systemd;session;
