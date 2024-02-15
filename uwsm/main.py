@@ -337,7 +337,7 @@ def entry_action_keys(entry, entry_action=None):
 
 
 def check_entry_basic(entry, entry_action=None):
-    "Takes entry, performs basic checks, returns bool"
+    "Takes entry, performs basic checks, raises RuntimeError on failure"
     try:
         entry.validate()
     except ValidationError:
@@ -365,67 +365,54 @@ def check_entry_basic(entry, entry_action=None):
             "Invalid key: DBusActivatable",
             "Invalid key: SingleMainWindow",
             "Invalid key: PrefersNonDefaultGPU",
+            # Used in X-tended sections, but triggers errors anyway
+            "Invalid key: TargetEnvironment",
         ]:
             continue
         errors.add(error)
     if errors:
-        print_debug(
-            f"entry {entry.getFileName()} failed validation:",
-            *(f"  err: {error}" for error in errors),
-            sep="\n",
-        )
-        return False
+        raise RuntimeError("\n".join([f"Entry {entry.getFileName()} failed validation:"] + [f"  err: {error}" for error in errors]))
     if entry.getHidden():
-        print_debug(f"entry {entry.getFileName()} is hidden")
-        return False
+        raise RuntimeError(f"Entry {entry.getFileName()} is hidden")
     if entry.hasKey("TryExec") and not entry.findTryExec():
-        print_debug(f"entry {entry.getFileName()} discarded by TryExec")
-        return False
+        raise RuntimeError(f"Entry {entry.getFileName()} discarded by TryExec")
     if entry_action:
         if entry_action not in entry.getActions():
-            print_debug(f"entry {entry.getFileName()} has no action {entry_action}")
-            return False
+            raise RuntimeError(f"Entry {entry.getFileName()} has no action {entry_action}")
         entry_action_group = f"Desktop Action {entry_action}"
         if entry_action_group not in entry.groups():
-            print_debug(
-                f"entry {entry.getFileName()} has no action group {entry_action_group}"
+            raise RuntimeError(
+                f"Entry {entry.getFileName()} has no action group {entry_action_group}"
             )
-            return False
         entry_dict = entry_action_keys(entry, entry_action)
         if "Name" not in entry_dict or not entry_dict["Name"]:
-            print_debug(
-                f"entry {entry.getFileName()} action {entry_action} does not have Name"
+            raise RuntimeError(
+                f"Entry {entry.getFileName()} action {entry_action} does not have Name"
             )
         if "Exec" not in entry_dict or not entry_dict["Exec"]:
-            print_debug(
-                f"entry {entry.getFileName()} action {entry_action} does not have Exec"
+            raise RuntimeError(
+                f"Entry {entry.getFileName()} action {entry_action} does not have Exec"
             )
         entry_exec = entry_dict["Exec"]
     else:
         if not entry.hasKey("Exec") or not entry.getExec():
-            print_debug(f"entry {entry.getFileName()} does not have Exec")
-            return False
+            raise RuntimeError(f"Entry {entry.getFileName()} does not have Exec")
         entry_exec = entry.getExec()
     if not which(shlex.split(entry_exec)[0]):
-        print_debug(
-            f"entry {entry.getFileName()} Exec {entry_exec} executable not found"
+        raise RuntimeError(
+            f"Entry {entry.getFileName()} Exec {entry_exec} executable not found"
         )
-        return False
-
-    return True
 
 
 def check_entry_showin(entry):
-    "Takes entry, checks OnlyShowIn/NotShowIn against XDG_CURRENT_DESKTOP, returns bool"
+    "Takes entry, checks OnlyShowIn/NotShowIn against XDG_CURRENT_DESKTOP, raises RuntimeError on failure"
     xcd = set(sane_split(os.getenv("XDG_CURRENT_DESKTOP", ""), ":"))
     osi = set(entry.getOnlyShowIn())
     nsi = set(entry.getNotShowIn())
     if osi and osi.isdisjoint(xcd):
-        print_debug(f"entry {entry.getFileName()} discarded by OnlyShowIn")
-        return False
+        raise RuntimeError(f"Entry {entry.getFileName()} discarded by OnlyShowIn")
     if nsi and not nsi.isdisjoint(xcd):
-        print_debug(f"entry {entry.getFileName()} discarded by NotShowIn")
-        return False
+        raise RuntimeError(f"Entry {entry.getFileName()} discarded by NotShowIn")
     return True
 
 
@@ -436,9 +423,11 @@ def entry_parser_session(entry_id, entry_path):
     except:
         print_debug(f"failed parsing {entry_path}, skipping")
         return ("drop", None)
-    if check_entry_basic(entry):
+    try:
+        check_entry_basic(entry)
         return ("append", (entry_id, entry))
-    return ("drop", None)
+    except RuntimeError:
+        return ("drop", None)
 
 
 def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action):
@@ -459,10 +448,7 @@ def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action
             f'Failed to parse entry "{match_entry_id}" from "{entry_path}"'
         )
 
-    if not check_entry_basic(entry, match_entry_action):
-        raise RuntimeError(
-            f'Entry "{match_entry_id}" from "{entry_path}" failed basic checks'
-        )
+    check_entry_basic(entry, match_entry_action)
 
     print_debug("matched and checked")
     return ("return", entry)
@@ -511,25 +497,30 @@ def entry_parser_terminal(
     if explicit_terminals:
         results = []
         for entry_action in {i[1] for i in explicit_terminals if i[0] == entry_id}:
-            if check_entry_basic(entry, entry_action):
+            try:
+                check_entry_basic(entry, entry_action)
                 # if this is the top choice, return right away
                 if (entry_id, entry_action) == explicit_terminals[0]:
                     print_debug("bingo")
                     return ("return", (entry, entry_id, entry_action))
                 # otherwise, add to cart
                 results.append((entry, entry_id, entry_action))
-            else:
+            except RuntimeError:
                 print_debug(f"action {entry_action} failed basic checks")
         if results:
             return ("extend", results)
         return ("drop", (None, None, None))
 
     # not explicit_terminals
-    if not check_entry_basic(entry, None):
+    try:
+        check_entry_basic(entry, None)
+    except RuntimeError:
         print_debug("failed basic checks")
         Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
-    if not check_entry_showin(entry):
+    try:
+        check_entry_showin(entry)
+    except RuntimeError:
         print_debug("failed ShowIn checks")
         # not adding to neg cache here
         return ("drop", (None, None, None))
