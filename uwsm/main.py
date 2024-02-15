@@ -371,14 +371,21 @@ def check_entry_basic(entry, entry_action=None):
             continue
         errors.add(error)
     if errors:
-        raise RuntimeError("\n".join([f"Entry {entry.getFileName()} failed validation:"] + [f"  err: {error}" for error in errors]))
+        raise RuntimeError(
+            "\n".join(
+                [f"Entry {entry.getFileName()} failed validation:"]
+                + [f"  err: {error}" for error in errors]
+            )
+        )
     if entry.getHidden():
         raise RuntimeError(f"Entry {entry.getFileName()} is hidden")
     if entry.hasKey("TryExec") and not entry.findTryExec():
         raise RuntimeError(f"Entry {entry.getFileName()} discarded by TryExec")
     if entry_action:
         if entry_action not in entry.getActions():
-            raise RuntimeError(f"Entry {entry.getFileName()} has no action {entry_action}")
+            raise RuntimeError(
+                f"Entry {entry.getFileName()} has no action {entry_action}"
+            )
         entry_action_group = f"Desktop Action {entry_action}"
         if entry_action_group not in entry.groups():
             raise RuntimeError(
@@ -1339,7 +1346,9 @@ def generate_units():
     wm_specific_preloader = (
         f"wayland-wm-env@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
     )
-    wm_specific_service = f"wayland-wm@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
+    wm_specific_service = (
+        f"wayland-wm@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
+    )
     wm_specific_preloader_data = [
         dedent(
             f"""
@@ -1771,9 +1780,9 @@ def parse_args(custom_args=None, exit_on_error=True):
         "cmdline",
         metavar="args",
         # allow empty cmdline if '-T' is given and comes before '--'
-        nargs="*"
-        if [arg for arg in argv if arg in ("-T", "--")][0:1] == ["-T"]
-        else "+",
+        nargs=(
+            "*" if [arg for arg in argv if arg in ("-T", "--")][0:1] == ["-T"] else "+"
+        ),
         help="executable or desktop entry, can be followed by arguments",
     )
     parsers["app"].add_argument(
@@ -2205,7 +2214,9 @@ def prepare_env_gen_sh(random_mark):
     )
 
     # bake plugin loading into shell code
-    shell_plugins = BaseDirectory.load_data_paths(f"uwsm/plugins/{CompGlobals.bin_id}.sh")
+    shell_plugins = BaseDirectory.load_data_paths(
+        f"uwsm/plugins/{CompGlobals.bin_id}.sh"
+    )
     shell_plugins_load = []
     for plugin in shell_plugins:
         shell_plugins_load.append(
@@ -2421,7 +2432,9 @@ def prepare_env():
     Saves list for later cleanup.
     """
 
-    print_normal(f"Preparing environment for {CompGlobals.name or CompGlobals.cmdline[0]}...")
+    print_normal(
+        f"Preparing environment for {CompGlobals.name or CompGlobals.cmdline[0]}..."
+    )
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
 
@@ -2528,7 +2541,8 @@ def prepare_env():
     # write cleanup file
     # first get exitsing vars if cleanup file already exists
     cleanup_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True), f"env_names_for_cleanup_{CompGlobals.id}"
+        BaseDirectory.get_runtime_dir(strict=True),
+        f"env_names_for_cleanup_{CompGlobals.id}",
     )
     if os.path.isfile(cleanup_file):
         with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
@@ -3379,7 +3393,9 @@ def fill_wm_globals():
         sys.exit(1)
 
     if not Val.wm_id.search(CompGlobals.id):
-        print_error(f'"{CompGlobals.id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!')
+        print_error(
+            f'"{CompGlobals.id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!'
+        )
         sys.exit(1)
 
     # escape CompGlobals.id for systemd
@@ -3418,14 +3434,19 @@ def fill_wm_globals():
         entry_uwsm_args = None
         if os.path.basename(CompGlobals.cmdline[0]) == BIN_NAME:
             try:
-                if "start" not in CompGlobals.cmdline or CompGlobals.cmdline[1] != "start":
+                if (
+                    "start" not in CompGlobals.cmdline
+                    or CompGlobals.cmdline[1] != "start"
+                ):
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME}, but the second argument "{CompGlobals.cmdline[1]}" is not "start"!'
                     )
                 # cut ourselves from cmdline
                 CompGlobals.cmdline = CompGlobals.cmdline[1:]
 
-                print_normal(f'Entry "{CompGlobals.id}" uses {BIN_NAME}, reparsing args...')
+                print_normal(
+                    f'Entry "{CompGlobals.id}" uses {BIN_NAME}, reparsing args...'
+                )
                 # reparse args from entry into separate namespace
                 entry_uwsm_args, _ = parse_args(CompGlobals.cmdline)
                 print_debug("entry_uwsm_args", entry_uwsm_args)
@@ -3496,7 +3517,9 @@ def fill_wm_globals():
                     sys.exit(1)
                 else:
                     # set exclusive desktop names
-                    CompGlobals.desktop_names = sane_split(entry_uwsm_args.desktop_names, ":")
+                    CompGlobals.desktop_names = sane_split(
+                        entry_uwsm_args.desktop_names, ":"
+                    )
             # prepend desktop names from entry (and existing environment if there is no active session)
             # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP
             # set by it from DesktopNames
@@ -3587,7 +3610,9 @@ def fill_wm_globals():
         CompGlobals.desktop_names = ddn
 
     # id for functions and env loading
-    CompGlobals.bin_id = re.sub("(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", CompGlobals.cmdline[0]).lower()
+    CompGlobals.bin_id = re.sub(
+        "(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", CompGlobals.cmdline[0]
+    ).lower()
 
     return True
 
@@ -3795,7 +3820,9 @@ def main():
             print_warning("Dry Run Mode. Will not go further.")
             sys.exit(0)
         else:
-            print_normal(f"Starting {CompGlobals.id} and waiting while it is running...")
+            print_normal(
+                f"Starting {CompGlobals.id} and waiting while it is running..."
+            )
 
         # trap exit on INT TERM HUP
         signal.signal(signal.SIGINT, trap_stopper)

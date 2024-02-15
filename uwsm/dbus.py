@@ -62,9 +62,9 @@ class DbusInteractions:
         if "unit_properties" not in self.dbus_objects[self.dbus_level]:
             self.dbus_objects[self.dbus_level]["unit_properties"] = {}
         if unit_id not in self.dbus_objects[self.dbus_level]["unit_properties"]:
-            self.dbus_objects[self.dbus_level]["unit_properties"][
-                unit_id
-            ] = dbus.Interface(unit_path, "org.freedesktop.DBus.Properties")
+            self.dbus_objects[self.dbus_level]["unit_properties"][unit_id] = (
+                dbus.Interface(unit_path, "org.freedesktop.DBus.Properties")
+            )
 
     def add_dbus(self):
         "Adds /org/freedesktop/DBus object"
