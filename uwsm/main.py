@@ -154,31 +154,32 @@ def dedent(data: str) -> str:
     return data.rstrip() + "\n" if data.endswith("\n") else data.rstrip()
 
 
-def wrap_pgs(data: str, maxwidth: int = None) -> str:
-    """
-    Splits paragrpaphs by "\n\n", applies wrap of no more than maxwidth to each non-indented one
-    If maxwidth == 0, just rejoins each non-indented paragraph into single line
-    """
-    try:
-        width = os.get_terminal_size().columns
-    except:
-        # default for not being in interactive terminal
-        width = 80
-    if maxwidth is not None and maxwidth < width:
-        width = maxwidth
-    paragraphs = data.split("\n\n")
-    for idx, paragraph in enumerate(paragraphs):
-        # do not touch indented paragraphs
-        indented = False
-        for line in paragraph.splitlines():
-            if line.startswith(" ") or line.startswith("\t"):
-                indented = True
-        if not indented:
-            if width == 0:
-                paragraphs[idx] = " ".join(paragraph.splitlines())
-            else:
-                paragraphs[idx] = "\n".join(textwrap.wrap(paragraph, width=width))
-    return "\n\n".join(paragraphs)
+class HelpFormatterNewlines(argparse.HelpFormatter):
+    "Treats double newlines as line breaks, preserves indents after them"
+
+    def _fill_text(self, text, width, indent):
+        "For parser descriptions and epilogs"
+        lines = []
+        for line in text.split("\n\n"):
+            p_indent = line[0 : len(line) - len(line.lstrip())]
+            lines.append(
+                argparse.HelpFormatter._fill_text(self, line, width, indent + p_indent)
+            )
+        return "\n".join(lines)
+
+    def _split_lines(self, text, width):
+        "For argument descriptions"
+        lines = []
+        for line in text.split("\n\n"):
+            p_indent = line[0 : len(line) - len(line.lstrip())]
+            p_indent_width = len(p_indent)
+            lines.extend(
+                p_indent + l
+                for l in argparse.HelpFormatter._split_lines(
+                    self, line, width - p_indent_width
+                )
+            )
+        return lines
 
 
 def random_hex(length: int = 16) -> str:
@@ -1607,63 +1608,59 @@ def parse_args(custom_args=None, exit_on_error=True):
 
     # main parser with subcommands
     parsers["main"] = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=wrap_pgs(
-            dedent(
-                """
-                Universal Wayland Session Manager.
-
-                Launches arbitrary wayland compositor via a set of systemd user units
-                to provide graphical user session with environment management,
-                XDG autostart support, scoped application launch helpers,
-                clean shutdown.
-                """
-            )
+        formatter_class=HelpFormatterNewlines,
+        description=dedent(
+            """
+            Universal Wayland Session Manager.\n
+            \n
+            Launches arbitrary wayland compositor via a set of systemd user units
+            to provide graphical user session with environment management,
+            XDG autostart support, scoped application launch helpers,
+            clean shutdown.
+            """
         ),
         # usage='%(prog)s [-h] action ...',
-        epilog=wrap_pgs(
-            dedent(
-                f"""
-                Also see "{BIN_NAME} {{subcommand}} -h" for further info.
-
-                Compositor should be configured to run this on startup:
-
-                  {BIN_NAME} finalize [[VAR] ANOTHER_VAR]
-
-                (See "{BIN_NAME} finalize --help")
-
-                Startup can be integrated conditionally into shell profile
-                (See "{BIN_NAME} check --help").
-
-                During startup at stage of "graphical-session-pre.target" environment is
-                sourced from shell profile and from files "{BIN_NAME}-env" and
-                "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
-                (in order of increasing importance). Delta will be exported to systemd and
-                dbus activation environments, and cleaned up when services are stopped.
-
-                It is highly recommended to configure your compositor to launch apps explicitly scoped
-                in special user session slices (app.slice, background.slice, session.slice).
-                {BIN_NAME} provides custom nested slices for apps to live in and be
-                terminated on session end:
-
-                  app-graphical.slice
-                  background-graphical.slice
-                  session-graphical.slice
-
-                And a helper command to handle all the systemd-run invocations for you:
-                (See "{BIN_NAME} app --help", "man systemd.special", "man systemd-run"
-
-                If app launching is configured as recommended, you can put compositor itself in
-                session.slice (as recommended by man systemd.special) by adding "-S" to "start"
-                subcommand, or setting:
-
-                  UWSM_USE_SESSION_SLICE=true
-
-                This var affects unit generation phase during start, Slice= parameter
-                of compositor services (best to export it in shell profile before "{BIN_NAME}",
-                or add to environment.d (see "man environment.d")).
-                """
-            )
+        epilog=dedent(
+            f"""
+            Also see "{BIN_NAME} {{subcommand}} -h" for further info.\n
+            \n
+            Compositor should finalize its startup by running this:\n
+            \n
+              {BIN_NAME} finalize [[VAR] ANOTHER_VAR]\n
+            \n
+            (See "{BIN_NAME} finalize --help")\n
+            \n
+            Startup can be integrated conditionally into shell profile
+            (See "{BIN_NAME} check --help").\n
+            \n
+            During startup at stage of "graphical-session-pre.target" environment is
+            sourced from shell profile and from files "{BIN_NAME}-env" and
+            "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
+            (in order of increasing importance). Delta will be exported to systemd and
+            dbus activation environments, and cleaned up when services are stopped.\n
+            \n
+            It is highly recommended to configure your compositor to launch apps explicitly scoped
+            in special user session slices (app.slice, background.slice, session.slice).
+            {BIN_NAME} provides custom nested slices for apps to live in and be
+            terminated on session end:\n
+            \n
+              app-graphical.slice\n
+              background-graphical.slice\n
+              session-graphical.slice\n
+            \n
+            And a helper command to handle all the systemd-run invocations for you:
+            (See "{BIN_NAME} app --help", "man systemd.special", "man systemd-run"\n
+            \n
+            If app launching is configured as recommended, you can put compositor itself in
+            session.slice (as recommended by man systemd.special) by adding "-S" to "start"
+            subcommand, or setting:\n
+            \n
+              UWSM_USE_SESSION_SLICE=true\n
+            \n
+            This var affects unit generation phase during start, Slice= parameter
+            of compositor services (best to export it in shell profile before "{BIN_NAME}",
+            or add to environment.d (see "man environment.d")).
+            """
         ),
         exit_on_error=exit_on_error,
     )
@@ -1677,20 +1674,29 @@ def parse_args(custom_args=None, exit_on_error=True):
 
     # compositor arguments for potential reuse via parents
     parsers["wm_args"] = argparse.ArgumentParser(
-        add_help=False, exit_on_error=exit_on_error
+        add_help=False,
+        formatter_class=HelpFormatterNewlines,
+        exit_on_error=exit_on_error,
     )
     parsers["wm_args"].add_argument(
         "wm_cmdline",
         metavar="args",
         nargs="+",
-        help='Compositor command line. The first argument acts as an ID and should be either executable name, or desktop entry ID (optionally with ":"-delimited action ID), or one of special values "select", "default".',
+        help=dedent(
+            """
+            Compositor command line. The first argument acts as an ID and should be either one of:\n
+              - executable name\n
+              - desktop entry ID (optionally with ":"-delimited action ID)\n
+              - special value "select" or "default"\n
+            """
+        ),
     )
     parsers["wm_args"].add_argument(
         "-D",
         metavar="name[:name...]",
         dest="desktop_names",
         default="",
-        help="Names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point if no active session is running.",
+        help="Names to fill XDG_CURRENT_DESKTOP with (:-separated).\n\nExisting var content is a starting point if no active session is running.",
     )
     parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
     parsers["wm_args_dn_exclusive"].add_argument(
@@ -1725,6 +1731,7 @@ def parse_args(custom_args=None, exit_on_error=True):
     # select subcommand
     parsers["select"] = parsers["main_subparsers"].add_parser(
         "select",
+        formatter_class=HelpFormatterNewlines,
         help="Select default compositor entry",
         description="Invokes whiptail menu for selecting wayland-sessions desktop entries.",
         epilog=dedent(
@@ -1739,16 +1746,19 @@ def parse_args(custom_args=None, exit_on_error=True):
     # start subcommand
     parsers["start"] = parsers["main_subparsers"].add_parser(
         "start",
+        formatter_class=HelpFormatterNewlines,
         help="Start compositor",
         description="Generates units for given compositor command line or desktop entry and starts compositor.",
         parents=[parsers["wm_args"]],
         epilog=dedent(
             f"""
-            During startup at stage of "graphical-session-pre.target" environment is
-            sourced from shell profile and from files "{BIN_NAME}-env" and
-            "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
-            (in order of increasing importance). Delta will be exported to systemd and
-            dbus activation environments, and cleaned up when services are stopped.
+            During "graphical-session-pre.target" activation the environment is
+            sourced from:\n
+              - shell profile\n
+              - "{BIN_NAME}-env", "{BIN_NAME}-env-${{compositor}}" files
+              in XDG config hierarchy (in order of increasing importance).\n
+            Delta is exported to systemd and dbus activation environments,
+            and cleaned up when "graphical-session-pre.target" is deactivated.
             """
         ),
     )
@@ -1780,17 +1790,21 @@ def parse_args(custom_args=None, exit_on_error=True):
         help="Only generate units, but do not start.",
     )
     parsers["start"].add_argument(
-        "-n", action="store_true", dest="dry_run", help="Do not write or start anything."
+        "-n",
+        action="store_true",
+        dest="dry_run",
+        help="Do not write or start anything.",
     )
 
     # stop subcommand
     parsers["stop"] = parsers["main_subparsers"].add_parser(
         "stop",
+        formatter_class=HelpFormatterNewlines,
         help="Stop compositor",
         description="Stops compositor and optionally removes generated units.",
         epilog=dedent(
             """
-            During shutdown at stage of stopping "graphical-session-pre.target"
+            During "graphical-session-pre.target" deactivation
             environment is cleaned up from systemd activation environment according
             to a list saved in ${XDG_RUNTIME_DIR}/env_names_for_cleanup_* files.
             """
@@ -1805,21 +1819,27 @@ def parse_args(custom_args=None, exit_on_error=True):
         help="Also remove units (all or only compositor-specific).",
     )
     parsers["stop"].add_argument(
-        "-n", action="store_true", dest="dry_run", help="Do not write or start anything."
+        "-n",
+        action="store_true",
+        dest="dry_run",
+        help="Do not write or start anything.",
     )
 
     # finalize subcommand
     parsers["finalize"] = parsers["main_subparsers"].add_parser(
         "finalize",
+        formatter_class=HelpFormatterNewlines,
         help="Signal successful compositor startup, export essential and optional variables",
         description="For use inside compositor to export variables and signal successful startup.",
         epilog=dedent(
             """
-            Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables (mentioned by name as arguments) to systemd user manager.
-
-            Variables are also added to cleanup list for stop phase.
-
-            If all is well, sends startup notification to systemd user manager, so compositor unit is considered started and graphical-session.target can be declared reached.
+            Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables
+            (mentioned by name as arguments) to systemd user manager.\n
+            \n
+            Variables are also added to cleanup list for stop phase.\n
+            \n
+            If all is well, sends startup notification to systemd user manager,
+            so compositor unit is considered started and graphical-session.target can be declared reached.
             """
         ),
     )
@@ -1833,6 +1853,7 @@ def parse_args(custom_args=None, exit_on_error=True):
     # app subcommand
     parsers["app"] = parsers["main_subparsers"].add_parser(
         "app",
+        formatter_class=HelpFormatterNewlines,
         help="Scoped app launcher",
         description="Launches application as a scope or service in specific slice.",
     )
@@ -1843,13 +1864,29 @@ def parse_args(custom_args=None, exit_on_error=True):
         nargs=(
             "*" if [arg for arg in argv if arg in ("-T", "--")][0:1] == ["-T"] else "+"
         ),
-        help="Executable name or path, or desktop entry ID or path. Can be followed by arguments.",
+        help=dedent(
+            """
+            Applicatoin command line. The first argument can be either one of:\n
+              - executable name or path\n
+              - desktop entry ID (with optional ":"-delimited action ID)\n
+              - path to desktop entry file (with optional ":"-delimited action ID)\n
+            """
+        ),
     )
     parsers["app"].add_argument(
         "-s",
         dest="slice_name",
         metavar="{a,b,s,custom.slice}",
-        help=f"{{{Styles.under}a{Styles.reset}pp,{Styles.under}b{Styles.reset}ackground,{Styles.under}s{Styles.reset}ession}}-graphical.slice, or any other (default: %(default)s).",
+        help=dedent(
+            f"""
+            Slice selector:\n
+              - {Styles.under}a{Styles.reset}pp-graphical.slice\n
+              - {Styles.under}b{Styles.reset}ackground-graphical.slice\n
+              - {Styles.under}s{Styles.reset}ession-graphical.slice\n
+              - custom by full name\n
+            (default: %(default)s)
+            """
+        ),
         default="a",
     )
     app_unit_type_preset = False
@@ -1901,17 +1938,14 @@ def parse_args(custom_args=None, exit_on_error=True):
     # check subcommand
     parsers["check"] = parsers["main_subparsers"].add_parser(
         "check",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=HelpFormatterNewlines,
         help="Checkers of states",
         description="Performs a check, returns 0 if true, 1 if false.",
-        epilog=wrap_pgs(
-            dedent(
-                f"""
-                Use may-start checker to integrate startup into shell profile
-                See "{BIN_NAME} check may-start -h"
-
-                """
-            )
+        epilog=dedent(
+            f"""
+            Use may-start checker to integrate startup into shell profile
+            See "{BIN_NAME} check may-start -h"
+            """
         ),
     )
     parsers["check_subparsers"] = parsers["check"].add_subparsers(
@@ -1923,6 +1957,7 @@ def parse_args(custom_args=None, exit_on_error=True):
     )
     parsers["is_active"] = parsers["check_subparsers"].add_parser(
         "is-active",
+        formatter_class=HelpFormatterNewlines,
         help="checks for active compositor",
         description="Checks for specific compositor or graphical-session*.target in general in active or activating state",
     )
@@ -1937,45 +1972,42 @@ def parse_args(custom_args=None, exit_on_error=True):
 
     parsers["may_start"] = parsers["check_subparsers"].add_parser(
         "may-start",
+        formatter_class=HelpFormatterNewlines,
         help="Checks for start conditions",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Checks whether it is OK to launch a wayland session.",
-        epilog=wrap_pgs(
-            dedent(
-                f"""
-                Conditions:
-                  Running from login shell
-                  System is at graphical.target
-                  User graphical-session*.target are not yet active
-                  Foreground VT is among allowed (default: 1)
-
-                To integrate startup into shell profile, add:
-
-                  if {BIN_NAME} check may-start && {BIN_NAME} select
-                  then
-                  	exec {BIN_NAME} start select
-                  fi
-
-                Condition is essential, since {BIN_NAME}'s environment preloader sources
-                profile and can cause loops without protection.
-
-                Separate select action allows droping to normal shell.
-
-                If the only failed condition is already active user graphical-session*.target,
-                it will be printed unless -q is given
-
-                """
-            )
+        epilog=dedent(
+            f"""
+            Conditions:\n
+              - Running from login shell\n
+              - System is at graphical.target\n
+              - User graphical-session*.target are not yet active\n
+              - Foreground VT is among allowed (default: 1)\n
+            \n
+            To integrate startup into shell profile, add:\n
+            \n
+              if {BIN_NAME} check may-start && {BIN_NAME} select\n
+              then\n
+              	exec {BIN_NAME} start select\n
+              fi\n
+            \n
+            Condition is essential, since {BIN_NAME}'s environment preloader sources
+            profile and can cause loops without protection.\n
+            \n
+            Separate select action allows droping to normal shell.\n
+            \n
+            If the only failed condition is already active user graphical-session*.target,
+            it will be printed unless -q is given
+            """
         ),
     )
     parsers["may_start"].add_argument(
         "vtnr",
-        metavar="[N [N] ...]",
+        metavar="N",
         type=int,
         # default does not work here
         default=[1],
         nargs="*",
-        help="VT numbers allowed for start (default: %(default)s).",
+        help="VT numbers allowed for startup (default: 1).",
     )
     parsers["may_start_verbosity"] = parsers["may_start"].add_mutually_exclusive_group()
     parsers["may_start_verbosity"].add_argument(
@@ -1988,6 +2020,7 @@ def parse_args(custom_args=None, exit_on_error=True):
     # aux subcommand
     parsers["aux"] = parsers["main_subparsers"].add_parser(
         "aux",
+        formatter_class=HelpFormatterNewlines,
         help="Auxillary functions",
         description="Can only be called by systemd user manager, used in units Exec*= keys",
     )
@@ -2000,17 +2033,20 @@ def parse_args(custom_args=None, exit_on_error=True):
     )
     parsers["prepare_env"] = parsers["aux_subparsers"].add_parser(
         "prepare-env",
+        formatter_class=HelpFormatterNewlines,
         help="Prepares environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
         description="Used in ExecStart of wayland-wm-env@.service.",
         parents=[parsers["wm_args"]],
     )
     parsers["cleanup_env"] = parsers["aux_subparsers"].add_parser(
         "cleanup-env",
+        formatter_class=HelpFormatterNewlines,
         help="Cleans up environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
         description="Used in ExecStop of wayland-wm-env@.service.",
     )
     parsers["exec"] = parsers["aux_subparsers"].add_parser(
         "exec",
+        formatter_class=HelpFormatterNewlines,
         help="Executes binary with arguments or desktop entry (for use in wayland-wm@.service in wayland-session@.target).",
         description="Used in ExecStart of wayland-wm@.service.",
     )
@@ -2022,45 +2058,43 @@ def parse_args(custom_args=None, exit_on_error=True):
     )
     parsers["app_daemon"] = parsers["aux_subparsers"].add_parser(
         "app-daemon",
+        formatter_class=HelpFormatterNewlines,
         help="Daemon for fast app argument generation",
         description="Receives app arguments from a named pipe, returns shell code",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=wrap_pgs(
-            dedent(
-                f"""
-                Receives app arguments via "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in" pipe.
-
-                Arguments are expected to be "\\0"-delimited, leading "\\0" are stripped.
-                One command is received per write+close.
-
-                The first argument determines the behavior:
-
-                  app	the rest is processed the same as in "{BIN_NAME} app"
-                  ping	just "pong" is returned
-                  stop	daemon is stopped
-
-                Resulting arguments are formatted as shell code and written to
-                "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out" pipe.
-
-                Single commands are prepended with "exec", iterated commands are assembled with trailing "&" each,
-                followed by "wait"
-
-                The purpose of all this is to skip all the expensive python startup and import routines that slow things
-                down every time "{BIN_NAME} app" is called. Instead the daemon does it once and then listens for requests,
-                while a simple shell script may dump arguments to one pipe and run the code received from another via eval,
-                which is much faster
-
-                The simplest script is:
-
-                  #!/bin/sh
-                  printf '\\0%s' app "$@" > ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in
-                  IFS='' read -r cmd < ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out
-                  eval "$cmd"
-
-                Provided "{BIN_NAME}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
-                and supports newlines in returned args.
-                """
-            )
+        epilog=dedent(
+            f"""
+            Receives app arguments via "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in" pipe.\n
+            \n
+            Arguments are expected to be "\\0"-delimited, leading "\\0" are stripped.
+            One command is received per write+close.\n
+            \n
+            The first argument determines the behavior:\n
+            \n
+              app	the rest is processed the same as in "{BIN_NAME} app"\n
+              ping	just "pong" is returned\n
+              stop	daemon is stopped\n
+            \n
+            Resulting arguments are formatted as shell code and written to
+            "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out" pipe.\n
+            \n
+            Single commands are prepended with "exec", iterated commands are assembled with trailing "&" each,
+            followed by "wait"\n
+            \n
+            The purpose of all this is to skip all the expensive python startup and import routines that slow things
+            down every time "{BIN_NAME} app" is called. Instead the daemon does it once and then listens for requests,
+            while a simple shell script may dump arguments to one pipe and run the code received from another via eval,
+            which is much faster\n
+            \n
+            The simplest script is:\n
+            \n
+              #!/bin/sh\n
+              printf '\\0%s' app "$@" > ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in\n
+              IFS='' read -r cmd < ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out\n
+              eval "$cmd"\n
+            \n
+            Provided "{BIN_NAME}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
+            and supports newlines in returned args.
+            """
         ),
     )
 
