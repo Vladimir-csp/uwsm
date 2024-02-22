@@ -287,26 +287,86 @@ def print_error_or_traceback(exception, warning=False) -> None:
             print_error(exception)
 
 
-def arg_entry_or_executable(arg):
+class MainArg:
     """
-    check if argument is entry_id or entry_id:action_id (and validate) or nothing like.
-    return tuple (entry_id, action_id) or False
+    Evaluates main argument string.
+    Checks if it is entry_id or entry_id:action_id (and validate strings), or nothing like (executable), and if given as a path.
+    Fills attributes: entry_id, entry_action, executable, path
     """
-    if arg.endswith(".desktop") or ".desktop:" in arg:
-        # separate action
-        if ":" in arg:
-            entry_id, entry_action = arg.split(":", maxsplit=1)
-            if not entry_action:
-                entry_action = None
-            if entry_action and not Val.action_id.search(entry_action):
-                raise ValueError(f'Invalid desktop entry action "{entry_action}"')
-        else:
-            entry_id, entry_action = arg, None
-        if not Val.entry_id.search(entry_id):
-            raise ValueError(f'Invalid desktop entry ID "{entry_id}"')
-        return (entry_id, entry_action)
 
-    return (None, None)
+    def __init__(self, arg: str):
+        "Takes argument string"
+
+        self.entry_id, self.entry_action, self.path, self.executable = (
+            None,
+            None,
+            None,
+            None,
+        )
+
+        if arg is None:
+            pass
+
+        elif not isinstance(arg, str):
+            raise ValueError(f"Expected str or None, got {type(arg)}: {arg}")
+
+        # Desktop entry
+        elif arg.endswith(".desktop") or ".desktop:" in arg:
+            # separate action
+            if ":" in arg:
+                self.entry_id, entry_action = arg.split(":", maxsplit=1)
+                if entry_action:
+                    if not Val.action_id.search(entry_action):
+                        raise ValueError(
+                            f'Invalid desktop entry action "{entry_action}"'
+                        )
+                    self.entry_action = entry_action
+            else:
+                self.entry_id = arg
+
+            # path to entry
+            if "/" in self.entry_id:
+                self.path = self.entry_id
+                # currently no way to know where ID starts, so just basename
+                self.entry_id = os.path.basename(self.entry_id)
+
+            # validate id
+            if not Val.entry_id.search(self.entry_id):
+                raise ValueError(f'Invalid desktop entry ID "{self.entry_id}"')
+
+        # Executable
+        else:
+            # executable is stored as is, with or without path
+            self.executable = arg
+            # mark path
+            if "/" in arg:
+                self.path = arg
+
+    def __str__(self):
+        "String representation for debug purposes"
+        if self.entry_id:
+            msgs = [f"Entry: {self.entry_id}"]
+            if self.entry_action:
+                msgs.append(f"Action: {self.entry_action}")
+            if self.path:
+                msgs.append(f"Path: {self.path}")
+        elif self.executable:
+            msgs = [f"Executable: {self.executable}"]
+        else:
+            return "Invalid arg"
+        return ", ".join(msgs)
+
+    def check_path(self):
+        "Checks if exists and has appropriate permissions. No path is OK."
+        if self.path is None:
+            return
+        if not os.path.isfile(self.path):
+            raise FileNotFoundError(f'Path "{self.path}" does not exist!')
+        if not os.access(self.path, os.R_OK):
+            raise PermissionError(f'Path "{self.path}" is not readable!')
+        if self.executable and not os.access(self.path, os.X_OK):
+            raise PermissionError(f'Path "{self.path}" is not executable!')
+        print_debug(f"Path {self.path} OK")
 
 
 def entry_action_keys(entry, entry_action=None):
@@ -1623,14 +1683,14 @@ def parse_args(custom_args=None, exit_on_error=True):
         "wm_cmdline",
         metavar="args",
         nargs="+",
-        help='executable or desktop entry (used as compositor ID). Special values "select" and "default" in start mode invoke whiptail menu for selecting wayland-sessions desktop entries. Can be followed by arbitrary arguments.',
+        help='Compositor command line. The first argument acts as an ID and should be either executable name, or desktop entry ID (optionally with ":"-delimited action ID), or one of special values "select", "default".',
     )
     parsers["wm_args"].add_argument(
         "-D",
         metavar="name[:name...]",
         dest="desktop_names",
         default="",
-        help="names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point if no active session is running.",
+        help="Names to fill XDG_CURRENT_DESKTOP with (:-separated). Existing var content is a starting point if no active session is running.",
     )
     parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
     parsers["wm_args_dn_exclusive"].add_argument(
@@ -1638,28 +1698,28 @@ def parse_args(custom_args=None, exit_on_error=True):
         dest="desktop_names_exclusive",
         action="store_false",
         default=False,
-        help="append desktop names set by -D to other sources (default)",
+        help="Append desktop names set by -D to other sources (default).",
     )
     parsers["wm_args_dn_exclusive"].add_argument(
         "-e",
         dest="desktop_names_exclusive",
         action="store_true",
         default=False,
-        help="use desktop names set by -D exclusively, discard other sources",
+        help="Use desktop names set by -D exclusively, discard other sources.",
     )
     parsers["wm_args"].add_argument(
         "-N",
         metavar="Name",
         dest="wm_name",
         default="",
-        help="Fancy name for compositor (filled from desktop entry by default)",
+        help="Fancy name for compositor (filled from desktop entry by default).",
     )
     parsers["wm_args"].add_argument(
         "-C",
         metavar="Comment",
         dest="wm_comment",
         default="",
-        help="Fancy description for compositor (filled from desktop entry by default)",
+        help="Fancy description for compositor (filled from desktop entry by default).",
     )
 
     # select subcommand
@@ -1704,23 +1764,23 @@ def parse_args(custom_args=None, exit_on_error=True):
         action="store_true",
         dest="use_session_slice",
         default=use_session_slice == "true",
-        help=f"launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}",
+        help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}.",
     )
     parsers["start_slice"].add_argument(
         "-A",
         action="store_false",
         dest="use_session_slice",
         default=use_session_slice == "true",
-        help=f"launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}",
+        help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}.",
     )
     parsers["start"].add_argument(
         "-o",
         action="store_true",
         dest="only_generate",
-        help="only generate units, but do not start",
+        help="Only generate units, but do not start.",
     )
     parsers["start"].add_argument(
-        "-n", action="store_true", dest="dry_run", help="do not write or start anything"
+        "-n", action="store_true", dest="dry_run", help="Do not write or start anything."
     )
 
     # stop subcommand
@@ -1742,10 +1802,10 @@ def parse_args(custom_args=None, exit_on_error=True):
         metavar="wm,wm.desktop[:action]",
         default=False,
         dest="remove_units",
-        help="also remove units (all or only compositor-specific)",
+        help="Also remove units (all or only compositor-specific).",
     )
     parsers["stop"].add_argument(
-        "-n", action="store_true", dest="dry_run", help="do not write or start anything"
+        "-n", action="store_true", dest="dry_run", help="Do not write or start anything."
     )
 
     # finalize subcommand
@@ -1767,7 +1827,7 @@ def parse_args(custom_args=None, exit_on_error=True):
         "env_names",
         metavar="[ENV_NAME [ENV2_NAME ...]]",
         nargs="*",
-        help="additional vars to export",
+        help="Additional vars to export.",
     )
 
     # app subcommand
@@ -1783,13 +1843,13 @@ def parse_args(custom_args=None, exit_on_error=True):
         nargs=(
             "*" if [arg for arg in argv if arg in ("-T", "--")][0:1] == ["-T"] else "+"
         ),
-        help="executable or desktop entry, can be followed by arguments",
+        help="Executable name or path, or desktop entry ID or path. Can be followed by arguments.",
     )
     parsers["app"].add_argument(
         "-s",
         dest="slice_name",
         metavar="{a,b,s,custom.slice}",
-        help=f"{{{Styles.under}a{Styles.reset}pp,{Styles.under}b{Styles.reset}ackground,{Styles.under}s{Styles.reset}ession}}-graphical.slice, or any other. (default: %(default)s)",
+        help=f"{{{Styles.under}a{Styles.reset}pp,{Styles.under}b{Styles.reset}ackground,{Styles.under}s{Styles.reset}ession}}-graphical.slice, or any other (default: %(default)s).",
         default="a",
     )
     app_unit_type_preset = False
@@ -1808,34 +1868,34 @@ def parse_args(custom_args=None, exit_on_error=True):
         dest="app_unit_type",
         choices=("scope", "service"),
         default=app_unit_type_default,
-        help=f"type of unit to launch (default: %(default)s, {'was' if app_unit_type_preset else 'can be'} preset by UWSM_APP_UNIT_TYPE env var)",
+        help=f"Type of unit to launch (default: %(default)s, {'was' if app_unit_type_preset else 'can be'} preset by UWSM_APP_UNIT_TYPE env var).",
     )
     parsers["app"].add_argument(
         "-a",
         dest="app_name",
         metavar="app_name",
-        help="override app name (a substring in unit name)",
+        help="Override app name (a substring in unit name).",
         default="",
     )
     parsers["app"].add_argument(
         "-u",
         dest="unit_name",
         metavar="unit_name",
-        help="override the whole autogenerated unit name",
+        help="Override the whole autogenerated unit name.",
         default="",
     )
     parsers["app"].add_argument(
         "-d",
         dest="unit_description",
         metavar="unit_description",
-        help="unit Description",
+        help="Unit Description.",
         default="",
     )
     parsers["app"].add_argument(
         "-T",
         dest="terminal",
         action="store_true",
-        help="launch app in a terminal, or just a terminal if command is empty",
+        help="Launch app in a terminal, or just a terminal if command is empty.",
     )
 
     # check subcommand
@@ -1869,15 +1929,15 @@ def parse_args(custom_args=None, exit_on_error=True):
     parsers["is_active"].add_argument(
         "wm",
         nargs="?",
-        help="specify compositor by executable or desktop entry (without arguments)",
+        help="Specify compositor by executable or desktop entry (without arguments).",
     )
     parsers["is_active"].add_argument(
-        "-v", action="store_true", dest="verbose", help="show additional info"
+        "-v", action="store_true", dest="verbose", help="Show additional info."
     )
 
     parsers["may_start"] = parsers["check_subparsers"].add_parser(
         "may-start",
-        help="checks for start conditions",
+        help="Checks for start conditions",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Checks whether it is OK to launch a wayland session.",
         epilog=wrap_pgs(
@@ -1915,14 +1975,14 @@ def parse_args(custom_args=None, exit_on_error=True):
         # default does not work here
         default=[1],
         nargs="*",
-        help="VT numbers allowed for start (default: %(default)s)",
+        help="VT numbers allowed for start (default: %(default)s).",
     )
     parsers["may_start_verbosity"] = parsers["may_start"].add_mutually_exclusive_group()
     parsers["may_start_verbosity"].add_argument(
-        "-v", action="store_true", dest="verbose", help="show all failed tests"
+        "-v", action="store_true", dest="verbose", help="Show all failed tests."
     )
     parsers["may_start_verbosity"].add_argument(
-        "-q", action="store_true", dest="quiet", help="do not show anything"
+        "-q", action="store_true", dest="quiet", help="Do not show anything."
     )
 
     # aux subcommand
@@ -1940,25 +2000,25 @@ def parse_args(custom_args=None, exit_on_error=True):
     )
     parsers["prepare_env"] = parsers["aux_subparsers"].add_parser(
         "prepare-env",
-        help="prepares environment (for use in wayland-wm-env@.service in wayland-session-pre@.target)",
+        help="Prepares environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
         description="Used in ExecStart of wayland-wm-env@.service.",
         parents=[parsers["wm_args"]],
     )
     parsers["cleanup_env"] = parsers["aux_subparsers"].add_parser(
         "cleanup-env",
-        help="Cleans up environment (for use in wayland-wm-env@.service in wayland-session-pre@.target)",
+        help="Cleans up environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
         description="Used in ExecStop of wayland-wm-env@.service.",
     )
     parsers["exec"] = parsers["aux_subparsers"].add_parser(
         "exec",
-        help="Executes binary with arguments or desktop entry (for use in wayland-wm@.service in wayland-session@.target)",
+        help="Executes binary with arguments or desktop entry (for use in wayland-wm@.service in wayland-session@.target).",
         description="Used in ExecStart of wayland-wm@.service.",
     )
     parsers["exec"].add_argument(
         "wm_cmdline",
         nargs="+",
         metavar="wm",
-        help="executable or desktop entry (used as compositor ID), may be followed by arbitrary arguments",
+        help="Executable or desktop entry (used as compositor ID), may be followed by arbitrary arguments.",
     )
     parsers["app_daemon"] = parsers["aux_subparsers"].add_parser(
         "app-daemon",
@@ -2836,13 +2896,14 @@ def find_terminal_entry():
                     for line in [line.strip() for line in terminal_list.readlines()]:
                         if not line or line.startswith("#"):
                             continue
-                        entry_id, entry_action = arg_entry_or_executable(line)
+                        arg = MainArg(line)
                         if (
-                            entry_id
-                            and (entry_id, entry_action) not in terminal_entries
+                            arg.entry_id
+                            and not arg.path
+                            and (arg.entry_id, arg.entry_action) not in terminal_entries
                         ):
                             print_debug(f"got terminal entry {line}")
-                            terminal_entries.append((entry_id, entry_action))
+                            terminal_entries.append((arg.entry_id, arg.entry_action))
             except FileNotFoundError:
                 pass
             except Exception as caught_exception:
@@ -2949,26 +3010,42 @@ def app(
 
     # detect desktop entry, update cmdline, app_name
     # cmdline can be empty if terminal is requested with -T
-    entry_id, entry_action = (
-        arg_entry_or_executable(cmdline[0]) if cmdline else (None, None)
-    )
-    if entry_id:
-        print_debug("entry_id, entry_action:", entry_id, entry_action)
+    main_arg = MainArg(cmdline[0] if cmdline else None)
 
-        entries = find_entries(
-            "applications",
-            parser=entry_parser_by_ids,
-            parser_args={
-                "match_entry_id": entry_id,
-                "match_entry_action": entry_action,
-            },
-        )
+    print_debug("main_arg", main_arg)
 
-        print_debug("got entrires", entries)
-        if not entries:
-            raise FileNotFoundError(f'Could not find deskop entry "{cmdline[0]}"')
+    if main_arg.path:
+        main_arg.check_path()
 
-        entry = entries[0]
+    if main_arg.entry_id:
+        print_debug("main_arg:", main_arg)
+
+        # if given as a path, try parsing and checking entry directly
+        if main_arg.path:
+            try:
+                entry = DesktopEntry(main_arg.path)
+            except:
+                raise RuntimeError(
+                    f'Failed to parse entry "{main_arg.entry_id}" from "{main_arg.path}"!'
+                )
+            check_entry_basic(entry, main_arg.entry_action)
+
+        # find entry by id
+        else:
+            entries = find_entries(
+                "applications",
+                parser=entry_parser_by_ids,
+                parser_args={
+                    "match_entry_id": main_arg.entry_id,
+                    "match_entry_action": main_arg.entry_action,
+                },
+            )
+
+            print_debug("got entrires", entries)
+            if not entries:
+                raise FileNotFoundError(f'Deskop entry not found: "{cmdline[0]}"')
+
+            entry = entries[0]
 
         # request terminal
         if entry.getTerminal():
@@ -2977,7 +3054,7 @@ def app(
 
         # set app name to entry id without extension if no override
         if not app_name:
-            app_name = os.path.splitext(entry_id)[0]
+            app_name = os.path.splitext(main_arg.entry_id)[0]
 
         # get localized entry name for description if no override
         if not unit_description:
@@ -2987,7 +3064,7 @@ def app(
 
         # generate command and args according to entry
         cmd, cmd_args = gen_entry_args(
-            entry, cmdline[1:], entry_action=entry_action or None
+            entry, cmdline[1:], entry_action=main_arg.entry_action
         )
 
         # if cmd_args is a list of lists, iterative execution is required
@@ -3052,6 +3129,8 @@ def app(
         else:
             cmdline = [cmd] + cmd_args
 
+    # end of Desktop entry parsing
+
     print_debug("cmdline", cmdline)
 
     if args.terminal:
@@ -3107,7 +3186,7 @@ def app(
         )
 
     if cmdline and not which(cmdline[0]):
-        raise RuntimeError(f"Command not found: {cmdline[0]}")
+        raise RuntimeError(f'Command not found: "{cmdline[0]}"')
 
     if slice_name == "a":
         slice_name = "app-graphical.slice"
@@ -3392,6 +3471,15 @@ def fill_wm_globals():
         parsers["start"].print_help(file=sys.stderr)
         sys.exit(1)
 
+    # detect and parse desktop entry
+    main_arg = MainArg(CompGlobals.id)
+    if main_arg.path:
+        print_error(
+            f'Paths are not supported, only names or IDs, got: "{CompGlobals.id}"!'
+        )
+        parsers["start"].print_help(file=sys.stderr)
+        sys.exit(1)
+
     if not Val.wm_id.search(CompGlobals.id):
         print_error(
             f'"{CompGlobals.id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!'
@@ -3401,9 +3489,7 @@ def fill_wm_globals():
     # escape CompGlobals.id for systemd
     CompGlobals.id_unit_string = simple_systemd_escape(CompGlobals.id, start=False)
 
-    # detect and parse desktop entry
-    entry_id, entry_action = arg_entry_or_executable(CompGlobals.id)
-    if entry_id:
+    if main_arg.entry_id:
         print_debug(f"Compositor ID is a desktop entry: {CompGlobals.id}")
 
         # find and parse entry
@@ -3411,8 +3497,8 @@ def fill_wm_globals():
             "wayland-sessions",
             parser=entry_parser_by_ids,
             parser_args={
-                "match_entry_id": entry_id,
-                "match_entry_action": entry_action,
+                "match_entry_id": main_arg.entry_id,
+                "match_entry_action": main_arg.entry_action,
             },
         )
         if not entries:
@@ -3422,7 +3508,7 @@ def fill_wm_globals():
 
         print_debug("entry", entry)
 
-        entry_dict = entry_action_keys(entry, entry_action=entry_action or None)
+        entry_dict = entry_action_keys(entry, entry_action=main_arg.entry_action)
 
         # get Exec from entry as CompGlobals.cmdline
         CompGlobals.cmdline = shlex.split(entry_dict["Exec"])
@@ -3452,10 +3538,7 @@ def fill_wm_globals():
                 print_debug("entry_uwsm_args", entry_uwsm_args)
 
                 # check for various incompatibilities
-                if arg_entry_or_executable(entry_uwsm_args.wm_cmdline[0]) != (
-                    None,
-                    None,
-                ):
+                if MainArg(entry_uwsm_args.wm_cmdline[0]).entry_id is not None:
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
                     )
