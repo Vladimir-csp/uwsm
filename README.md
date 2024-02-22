@@ -186,7 +186,9 @@ is also supported, (optionally with an [action ID](https://specifications.freede
 In this case args must be supported by the entry or its selected action according to
 [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
 
-Always use `--` to disambiguate command line if any dashed arguments are intended for launched app.
+Specifying paths to executables or desktop entry files is also supported.
+
+Always use `--` to disambiguate command line if any dashed arguments are intended for the app being launched.
 
 Example snippets for sway config for launching apps:
 
