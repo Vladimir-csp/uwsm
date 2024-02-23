@@ -327,9 +327,18 @@ class MainArg:
 
             # path to entry
             if "/" in self.entry_id:
-                self.path = self.entry_id
-                # currently no way to know where ID starts, so just basename
+                self.path = os.path.normpath(os.path.expanduser(self.entry_id))
+
+                # start with an assumption that entry ID is basename
                 self.entry_id = os.path.basename(self.entry_id)
+
+                # only makes sense for applications
+                # check if path is in 'applications' and extract proper entry ID
+                for data_dir in BaseDirectory.load_data_paths("applications"):
+                    relpath = os.path.relpath(self.path, data_dir)
+                    if not relpath.startswith("../"):
+                        self.entry_id = relpath.replace("/", "-")
+                        break
 
             # validate id
             if not Val.entry_id.search(self.entry_id):
@@ -341,21 +350,19 @@ class MainArg:
             self.executable = arg
             # mark path
             if "/" in arg:
-                self.path = arg
+                self.path = os.path.normpath(os.path.expanduser(arg))
 
     def __str__(self):
         "String representation for debug purposes"
-        if self.entry_id:
-            msgs = [f"Entry: {self.entry_id}"]
-            if self.entry_action:
-                msgs.append(f"Action: {self.entry_action}")
-            if self.path:
-                msgs.append(f"Path: {self.path}")
-        elif self.executable:
-            msgs = [f"Executable: {self.executable}"]
-        else:
-            return "Invalid arg"
-        return ", ".join(msgs)
+        return (
+            f"{self.__class__.__name__}("
+            + ", ".join(
+                f"{attr}={getattr(self, attr, None)}"
+                for attr in ("entry_id", "entry_action", "executable", "path")
+                if getattr(self, attr, None) is not None
+            )
+            + ")"
+        )
 
     def check_path(self):
         "Checks if exists and has appropriate permissions. No path is OK."
