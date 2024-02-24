@@ -26,6 +26,7 @@ showhelp() {
 		  rofi
 		  tofi
 		  bemenu
+		  wmenu
 		  dmenu
 
 		If just a single tool name is given, it is interpreted as a preferred selection.
