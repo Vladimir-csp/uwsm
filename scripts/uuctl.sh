@@ -15,8 +15,8 @@ showhelp() {
 		  menu       select menu tool (if without arguments)
 		             or provide full menu command line
 		             (must end with a prompt option: -p or analogous)
-		  -h|--help show this help
-		  -a|--all  do not filter units
+		  -h|--help  show this help
+		  -a|--all   do not filter units
 
 		Control user services and scopes with dmenu-like menu.
 		Menu tool and options are selected from predefined profiles for:
