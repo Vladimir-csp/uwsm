@@ -34,30 +34,30 @@ class DbusInteractions:
                 self.dbus_level
             ]["bus"].get_object("org.freedesktop.systemd1", "/org/freedesktop/systemd1")
 
-    def add_systemd_manager(self):
+    def add_systemd_manager_interface(self):
         "Adds org.freedesktop.systemd1.Manager method interface"
         self.add_systemd()
-        if "systemd_manager" not in self.dbus_objects[self.dbus_level]:
-            self.dbus_objects[self.dbus_level]["systemd_manager"] = dbus.Interface(
+        if "systemd_manager_interface" not in self.dbus_objects[self.dbus_level]:
+            self.dbus_objects[self.dbus_level]["systemd_manager_interface"] = dbus.Interface(
                 self.dbus_objects[self.dbus_level]["systemd"],
                 "org.freedesktop.systemd1.Manager",
             )
 
-    def add_systemd_properties(self):
+    def add_systemd_properties_interface(self):
         "Adds org.freedesktop.systemd1.Manager properties interface"
         self.add_systemd()
-        if "systemd_properties" not in self.dbus_objects[self.dbus_level]:
-            self.dbus_objects[self.dbus_level]["systemd_properties"] = dbus.Interface(
+        if "systemd_properties_interface" not in self.dbus_objects[self.dbus_level]:
+            self.dbus_objects[self.dbus_level]["systemd_properties_interface"] = dbus.Interface(
                 self.dbus_objects[self.dbus_level]["systemd"],
                 "org.freedesktop.DBus.Properties",
             )
 
     def add_systemd_unit_properties(self, unit_id):
         "Adds unit properties interface of unit_id into nested unit_properties dict"
-        self.add_systemd_manager()
+        self.add_systemd_manager_interface()
         unit_path = self.dbus_objects[self.dbus_level]["bus"].get_object(
             "org.freedesktop.systemd1",
-            self.dbus_objects[self.dbus_level]["systemd_manager"].GetUnit(unit_id),
+            self.dbus_objects[self.dbus_level]["systemd_manager_interface"].GetUnit(unit_id),
         )
         if "unit_properties" not in self.dbus_objects[self.dbus_level]:
             self.dbus_objects[self.dbus_level]["unit_properties"] = {}
@@ -82,7 +82,7 @@ class DbusInteractions:
             )
 
     def add_notifications(self):
-        "Adds org.freedesktop.Notifications interface"
+        "Adds org.freedesktop.Notifications object"
         if "notifications" not in self.dbus_objects[self.dbus_level]:
             self.dbus_objects[self.dbus_level]["notifications"] = self.dbus_objects[
                 self.dbus_level
@@ -112,13 +112,13 @@ class DbusInteractions:
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"
-        self.add_systemd_manager()
-        return self.dbus_objects[self.dbus_level]["systemd_manager"].Reload()
+        self.add_systemd_manager_interface()
+        return self.dbus_objects[self.dbus_level]["systemd_manager_interface"].Reload()
 
     def list_systemd_jobs(self):
         "Lists systemd jobs"
-        self.add_systemd_manager()
-        return self.dbus_objects[self.dbus_level]["systemd_manager"].ListJobs()
+        self.add_systemd_manager_interface()
+        return self.dbus_objects[self.dbus_level]["systemd_manager_interface"].ListJobs()
 
     def set_dbus_vars(self, vars_dict: dict):
         "Takes dict of ENV vars, puts them to dbus activation environment"
@@ -129,23 +129,23 @@ class DbusInteractions:
 
     def set_systemd_vars(self, vars_dict: dict):
         "Takes dict of ENV vars, puts them to systemd activation environment"
-        self.add_systemd_manager()
+        self.add_systemd_manager_interface()
         assignments = [f"{var}={value}" for var, value in vars_dict.items()]
-        self.dbus_objects[self.dbus_level]["systemd_manager"].SetEnvironment(
+        self.dbus_objects[self.dbus_level]["systemd_manager_interface"].SetEnvironment(
             assignments
         )
 
     def unset_systemd_vars(self, vars_list: list):
         "Takes list of ENV var names, unsets them from systemd activation environment"
-        self.add_systemd_manager()
-        self.dbus_objects[self.dbus_level]["systemd_manager"].UnsetEnvironment(
+        self.add_systemd_manager_interface()
+        self.dbus_objects[self.dbus_level]["systemd_manager_interface"].UnsetEnvironment(
             vars_list
         )
 
     def get_systemd_vars(self):
         "Returns dict of ENV vars from systemd activation environment"
-        self.add_systemd_properties()
-        assignments = self.dbus_objects[self.dbus_level]["systemd_properties"].Get(
+        self.add_systemd_properties_interface()
+        assignments = self.dbus_objects[self.dbus_level]["systemd_properties_interface"].Get(
             "org.freedesktop.systemd1.Manager", "Environment"
         )
         # Environment is returned as array of assignment strings
@@ -158,14 +158,14 @@ class DbusInteractions:
 
     def list_units_by_patterns(self, states: list, patterns: list):
         "Takes a list of unit states and a list of unit patterns, returns list of dbus structs"
-        self.add_systemd_manager()
+        self.add_systemd_manager_interface()
         return self.dbus_objects[self.dbus_level][
-            "systemd_manager"
+            "systemd_manager_interface"
         ].ListUnitsByPatterns(states, patterns)
 
     def stop_unit(self, unit: str, job_mode: str = "fail"):
-        self.add_systemd_manager()
-        return self.dbus_objects[self.dbus_level]["systemd_manager"].StopUnit(
+        self.add_systemd_manager_interface()
+        return self.dbus_objects[self.dbus_level]["systemd_manager_interface"].StopUnit(
             unit, job_mode
         )
 
