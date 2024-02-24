@@ -205,33 +205,97 @@ def print_normal(*what, **how):
 
 
 def print_ok(*what, **how):
-    "Prints in green (if interactive) to stdout"
+    """
+    Prints to stdout ('file') with flush.
+    In green if 'file' is a tty.
+    'notify': 0: no, 1: if 'file' is not a tty, 2: always
+    'notify_urgency': 0
+    """
     file = how.pop("file", sys.stdout)
+    notify = how.pop("notify", 0)
+    notify_urgency = how.pop("notify_urgency", 0)
+
     if file.isatty():
         print(Styles.green, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
     if file.isatty():
         print(Styles.reset, end="", file=file, flush=True)
 
+    if notify and (not file.isatty() or notify == 2):
+        try:
+            bus_session = DbusInteractions("session")
+            msg = str(*what)
+            bus_session.notify(summary="Message", body=msg, urgency=notify_urgency)
+        except Exception as caught_exception:
+            print_warning(caught_exception, notify=0)
+
 
 def print_warning(*what, **how):
-    "Prints in yellow (if interactive) to stdout"
+    """
+    Prints to stdout ('file') with flush.
+    In yellow if 'file' is a tty.
+    'notify': 0: no, 1: if 'file' is a tty, 2: always
+    'notify_urgency': 1
+    """
     file = how.pop("file", sys.stdout)
+    notify = how.pop("notify", 0)
+    notify_urgency = how.pop("notify_urgency", 1)
+
     if file.isatty():
         print(Styles.yellow, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
     if file.isatty():
         print(Styles.reset, end="", file=file, flush=True)
 
+    # in debug mode find and print exceptions to stderr
+    if int(os.getenv("DEBUG", "0")) > 0:
+        for item in what:
+            if isinstance(item, Exception):
+                traceback.print_exception(item, file=sys.stderr)
+
+    if notify and (not file.isatty() or notify == 2):
+        try:
+            bus_session = DbusInteractions("session")
+            msg = str(*what)
+            bus_session.notify(
+                summary="Warning", body=msg, app_icon="warning", urgency=notify_urgency
+            )
+        except Exception as caught_exception:
+            print_warning(caught_exception, notify=0)
+
 
 def print_error(*what, **how):
-    "Prints in red (if interactive) to stderr"
+    """
+    Prints to stderr ('file') with flush.
+    In red if 'file' is a tty.
+    'notify': 0: no, 1: if 'file' is a tty, 2: always
+    'notify_urgency': 1
+    """
     file = how.pop("file", sys.stderr)
+    notify = how.pop("notify", 0)
+    notify_urgency = how.pop("notify_urgency", 2)
+
     if file.isatty():
         print(Styles.red, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
     if file.isatty():
         print(Styles.reset, end="", file=file, flush=True)
+
+    # in debug mode find and print exceptions to stderr
+    if int(os.getenv("DEBUG", "0")) > 0:
+        for item in what:
+            if isinstance(item, Exception):
+                traceback.print_exception(item, file=sys.stderr)
+
+    if notify and (not file.isatty() or notify == 2):
+        try:
+            bus_session = DbusInteractions("session")
+            msg = str(*what)
+            bus_session.notify(
+                summary="Error", body=msg, app_icon="error", urgency=notify_urgency
+            )
+        except Exception as caught_exception:
+            print_warning(caught_exception, notify=0)
 
 
 if int(os.getenv("DEBUG", "0")) > 0:
@@ -266,27 +330,6 @@ def print_style(stls, *what, **how):
         print(style, end="", flush=True)
     print(*what, **how, flush=True)
     print(Styles.reset, end="", file=sys.stderr, flush=True)
-
-
-def print_error_or_traceback(exception, warning=False) -> None:
-    "Depending on DEBUG, print nice error/warning or entire exception traceback"
-    if int(os.getenv("DEBUG", "0")) > 0:
-        file = sys.stdout if warning else sys.stderr
-        if file.isatty():
-            print(
-                Styles.yellow if warning else Styles.red,
-                end="",
-                file=file,
-                flush=True,
-            )
-        traceback.print_exception(exception, file=file)
-        if file.isatty():
-            print(Styles.reset, end="", file=file, flush=True)
-    else:
-        if warning:
-            print_warning(exception)
-        else:
-            print_error(exception)
 
 
 class MainArg:
@@ -684,7 +727,7 @@ def get_default_comp_entry():
                             wmid = line.strip()
                             return wmid
             except Exception as caught_exception:
-                print_error_or_traceback(caught_exception)
+                print_error(caught_exception)
                 continue
     return ""
 
@@ -764,7 +807,7 @@ def select_comp_entry(default="", just_confirm=False):
         print_warning("Could not get terminal width, assuming 128")
         col = 128
     except Exception as caught_exception:
-        print_error_or_traceback(caught_exception)
+        print_error(caught_exception)
         print_warning("Could not get terminal width, assuming 128")
         col = 128
 
@@ -2201,7 +2244,7 @@ def finalize(additional_vars=None):
     try:
         set_systemd_vars(export_vars)
     except Exception as caught_exception:
-        print_error_or_traceback(caught_exception)
+        print_error(caught_exception)
         sys.exit(1)
 
     # if no prior failures and unit is in activating state, exec systemd-notify
@@ -2238,7 +2281,7 @@ def get_fg_vt():
             return None
         return int(fgvt_num)
     except Exception as caught_exception:
-        print_error_or_traceback(caught_exception)
+        print_error(caught_exception)
         return None
 
 
@@ -2973,7 +3016,7 @@ def find_terminal_entry():
             except FileNotFoundError:
                 pass
             except Exception as caught_exception:
-                print_error_or_traceback(caught_exception)
+                print_warning(caught_exception, notify=1)
 
     print_debug("explicit terminal_entries", terminal_entries)
 
@@ -3185,7 +3228,7 @@ def app(
                             if sub_apps_rc[idx] == 0:
                                 print_normal(proc_exit_msg)
                             else:
-                                print_error(proc_exit_msg)
+                                print_error(proc_exit_msg, notify=1)
                 time.sleep(0.1)
 
             # if there is any non-zero rc
@@ -3266,8 +3309,7 @@ def app(
         # slice_name = slice_name
         pass
     else:
-        print_error(f"Invalid slice name: {slice_name}!")
-        sys.exit(1)
+        raise ValueError(f"Invalid slice name: {slice_name}!")
 
     if not unit_name:
         # use first XDG_CURRENT_DESKTOP as part of scope name
@@ -3631,7 +3673,7 @@ def fill_wm_globals():
                 CompGlobals.cmdline = entry_uwsm_args.parsed.wm_cmdline
 
             except Exception as caught_exception:
-                print_error_or_traceback(caught_exception)
+                print_error(caught_exception)
                 sys.exit(1)
 
         # combine Exec from entry and arguments
@@ -3852,7 +3894,7 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
         stop_wm()
         stop_rc = 0
     except Exception as caught_exception:
-        print_error_or_traceback(caught_exception)
+        print_error(caught_exception)
         stop_rc = 1
 
     if (stop_rc or systemctl_rc) and (sys.stdout.isatty() or sys.stderr.isatty()):
@@ -3901,7 +3943,7 @@ def main():
                 print_warning("No compositor was selected.")
                 sys.exit(1)
         except Exception as caught_exception:
-            print_error_or_traceback(caught_exception)
+            print_error(caught_exception)
             sys.exit(1)
 
     #### START
@@ -3922,13 +3964,13 @@ def main():
                     print_error("No compositor was selected!")
                     sys.exit(1)
             except Exception as caught_exception:
-                print_error_or_traceback(caught_exception)
+                print_error(caught_exception)
                 sys.exit(1)
 
         try:
             fill_wm_globals()
         except Exception as caught_exception:
-            print_error_or_traceback(caught_exception)
+            print_error(caught_exception)
             sys.exit(1)
 
         print_normal(
@@ -4018,7 +4060,7 @@ def main():
             stop_result = stop_wm()
             stop_rc = 0
         except Exception as caught_exception:
-            print_error_or_traceback(caught_exception)
+            print_error(caught_exception)
             stop_result = False
             stop_rc = 1
 
@@ -4049,7 +4091,7 @@ def main():
                 unit_description=Args.parsed.unit_description,
             )
         except Exception as caught_exception:
-            print_error_or_traceback(caught_exception)
+            print_error(caught_exception, notify=1)
             sys.exit(1)
 
     #### CHECK
@@ -4078,7 +4120,7 @@ def main():
             print_debug(f"parent_cmdline: {parent_cmdline}")
         except Exception as caught_exception:
             print_error("Could not determine parent process command!")
-            print_error_or_traceback(caught_exception)
+            print_error(caught_exception)
             sys.exit(1)
         if not parent_cmdline.startswith("-"):
             dealbreakers.append("Not in login shell")
@@ -4134,11 +4176,11 @@ def main():
                 prepare_env()
                 sys.exit(0)
             except Exception as caught_exception:
-                print_error_or_traceback(caught_exception)
+                print_error(caught_exception)
                 try:
                     cleanup_env()
                 except Exception as caught_exception:
-                    print_error_or_traceback(caught_exception)
+                    print_error(caught_exception)
                 sys.exit(1)
         elif Args.parsed.aux_action == "cleanup-env":
             if is_active("compositor-only", verbose_active=True):
@@ -4149,7 +4191,7 @@ def main():
                     cleanup_env()
                     sys.exit(0)
                 except Exception as caught_exception:
-                    print_error_or_traceback(caught_exception)
+                    print_error(caught_exception)
                     sys.exit(1)
         elif Args.parsed.aux_action == "exec":
             fill_wm_globals()
@@ -4162,5 +4204,5 @@ def main():
             try:
                 app_daemon()
             except Exception as caught_exception:
-                print_error_or_traceback(caught_exception)
+                print_error(caught_exception)
                 sys.exit(1)

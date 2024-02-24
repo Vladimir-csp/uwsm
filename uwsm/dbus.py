@@ -81,6 +81,26 @@ class DbusInteractions:
                 self.dbus_objects[self.dbus_level]["dbus"], "org.freedesktop.DBus"
             )
 
+    def add_notifications(self):
+        "Adds org.freedesktop.Notifications interface"
+        if "notifications" not in self.dbus_objects[self.dbus_level]:
+            self.dbus_objects[self.dbus_level]["notifications"] = self.dbus_objects[
+                self.dbus_level
+            ]["bus"].get_object(
+                "org.freedesktop.Notifications", "/org/freedesktop/Notifications"
+            )
+
+    def add_notifications_interface(self):
+        "Adds org.freedesktop.Notifications interface"
+        self.add_notifications()
+        if "notifications_interface" not in self.dbus_objects[self.dbus_level]:
+            self.dbus_objects[self.dbus_level]["notifications_interface"] = (
+                dbus.Interface(
+                    self.dbus_objects[self.dbus_level]["notifications"],
+                    "org.freedesktop.Notifications",
+                )
+            )
+
     # External functions (doing stuff via objects)
 
     def get_unit_property(self, unit_id, unit_property):
@@ -147,4 +167,41 @@ class DbusInteractions:
         self.add_systemd_manager()
         return self.dbus_objects[self.dbus_level]["systemd_manager"].StopUnit(
             unit, job_mode
+        )
+
+    def notify(
+        self,
+        summary: str,
+        body: str,
+        app_name: str = "UWSM",
+        replaces_id: int = 0,
+        app_icon: str = "desktop",
+        actions: list = None,
+        hints: dict = None,
+        expire_timeout: int = -1,
+        # custom helpers
+        urgency: int = 1,
+    ):
+        "Sends notification via Dbus"
+        if actions is None:
+            # actions = dbus.Array([], signature='as')
+            actions = []
+        # else:
+        #    actions = dbus.Array(actions, signature='as')
+        if hints is None:
+            hints = {}
+        if not 0 <= urgency <= 2:
+            raise ValueError(f"Urgency range is 0-2, got {urgency}")
+        # plain integer does not work
+        hints.update({"urgency": dbus.Byte(urgency)})
+        self.add_notifications_interface()
+        self.dbus_objects[self.dbus_level]["notifications_interface"].Notify(
+            app_name,
+            replaces_id,
+            app_icon,
+            summary,
+            body,
+            actions,
+            hints,
+            expire_timeout,
         )
