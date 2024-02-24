@@ -240,8 +240,9 @@ if int(os.getenv("DEBUG", "0")) > 0:
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
         dsep = "\n" if "sep" not in how or "\n" not in how["sep"] else ""
+        my_stack = stack()
         print(
-            f"DEBUG {stack()[1].function}{dsep}",
+            f"DEBUG {my_stack[1].filename}:{my_stack[1].lineno} {my_stack[1].function}{dsep}",
             *what,
             f"{dsep}END_DEBUG",
             **how,
@@ -475,7 +476,7 @@ def check_entry_basic(entry, entry_action=None):
         entry_exec = entry.getExec()
     if not which(shlex.split(entry_exec)[0]):
         raise RuntimeError(
-            f'Entry {entry.getFileName()} points to missing executable {shlex.split(entry_exec)[0]}'
+            f"Entry {entry.getFileName()} points to missing executable {shlex.split(entry_exec)[0]}"
         )
 
 
@@ -1599,6 +1600,7 @@ class Args:
     """
     Parses args. Stores attributes 'parsers' and 'parsed'. Globally for main args, instanced for custom args.
     """
+
     parsers = argparse.Namespace()
     parsed = argparse.Namespace()
 
@@ -1706,7 +1708,9 @@ class Args:
             default="",
             help="Names to fill XDG_CURRENT_DESKTOP with (:-separated).\n\nExisting var content is a starting point if no active session is running.",
         )
-        parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
+        parsers["wm_args_dn_exclusive"] = parsers[
+            "wm_args"
+        ].add_mutually_exclusive_group()
         parsers["wm_args_dn_exclusive"].add_argument(
             "-a",
             dest="desktop_names_exclusive",
@@ -1870,7 +1874,14 @@ class Args:
             metavar="args",
             # allow empty cmdline if '-T' is given and comes before '--'
             nargs=(
-                "*" if [arg for arg in (sys.argv[1:] if custom_args is None else custom_args) if arg in ("-T", "--")][0:1] == ["-T"] else "+"
+                "*"
+                if [
+                    arg
+                    for arg in (sys.argv[1:] if custom_args is None else custom_args)
+                    if arg in ("-T", "--")
+                ][0:1]
+                == ["-T"]
+                else "+"
             ),
             help=dedent(
                 """
@@ -2017,7 +2028,9 @@ class Args:
             nargs="*",
             help="VT numbers allowed for startup (default: 1).",
         )
-        parsers["may_start_verbosity"] = parsers["may_start"].add_mutually_exclusive_group()
+        parsers["may_start_verbosity"] = parsers[
+            "may_start"
+        ].add_mutually_exclusive_group()
         parsers["may_start_verbosity"].add_argument(
             "-v", action="store_true", dest="verbose", help="Show all failed tests."
         )
@@ -2118,7 +2131,7 @@ class Args:
                 self.parsers = argparse.Namespace(**parsers)
 
     def __str__(self):
-        return str({'parsed': self.parsed})
+        return str({"parsed": self.parsed})
 
 
 def finalize(additional_vars=None):
@@ -3628,8 +3641,12 @@ def fill_wm_globals():
         # because this does not happen in aux exec mode
         if "desktop_names" in Args.parsed:
             # check desktop names
-            if Args.parsed.desktop_names and not Val.dn_colon.search(Args.parsed.desktop_names):
-                print_error(f'Got malformed desktop names: "{Args.parsed.desktop_names}"!')
+            if Args.parsed.desktop_names and not Val.dn_colon.search(
+                Args.parsed.desktop_names
+            ):
+                print_error(
+                    f'Got malformed desktop names: "{Args.parsed.desktop_names}"!'
+                )
                 sys.exit(1)
 
             # exclusive CLI desktop names
@@ -3642,10 +3659,15 @@ def fill_wm_globals():
                     sys.exit(1)
                 else:
                     # set exclusive desktop names
-                    CompGlobals.desktop_names = sane_split(Args.parsed.desktop_names, ":")
+                    CompGlobals.desktop_names = sane_split(
+                        Args.parsed.desktop_names, ":"
+                    )
 
             # exclusive nested CLI desktop names from entry
-            elif entry_uwsm_args is not None and entry_uwsm_args.parsed.desktop_names_exclusive:
+            elif (
+                entry_uwsm_args is not None
+                and entry_uwsm_args.parsed.desktop_names_exclusive
+            ):
                 if not entry_uwsm_args.parsed.desktop_names:
                     print_error(
                         f'{BIN_NAME} in entry "{CompGlobals.id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
