@@ -448,7 +448,7 @@ def check_entry_basic(entry, entry_action=None):
     if entry.getHidden():
         raise RuntimeError(f"Entry {entry.getFileName()} is hidden")
     if entry.hasKey("TryExec") and not entry.findTryExec():
-        raise RuntimeError(f"Entry {entry.getFileName()} discarded by TryExec")
+        raise RuntimeError(f"Entry {entry.getFileName()} is discarded by TryExec")
     if entry_action:
         if entry_action not in entry.getActions():
             raise RuntimeError(
@@ -475,7 +475,7 @@ def check_entry_basic(entry, entry_action=None):
         entry_exec = entry.getExec()
     if not which(shlex.split(entry_exec)[0]):
         raise RuntimeError(
-            f"Entry {entry.getFileName()} Exec {entry_exec} executable not found"
+            f'Entry {entry.getFileName()} points to missing executable {shlex.split(entry_exec)[0]}'
         )
 
 
@@ -690,7 +690,7 @@ def get_default_comp_entry():
 
 def save_default_comp_entry(default):
     "Gets saves compositor desktop entry ID from {BIN_NAME}-default-id file in config hierarchy"
-    if "dry_run" not in args or not args.dry_run:
+    if "dry_run" not in Args.parsed or not Args.parsed.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
             os.mkdir(BaseDirectory.xdg_config_home)
         config = os.path.join(BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id")
@@ -838,7 +838,7 @@ def select_comp_entry(default="", just_confirm=False):
 def reload_systemd():
     "Reloads systemd user manager"
 
-    if args.dry_run:
+    if Args.parsed.dry_run:
         print_normal("Will reload systemd user manager.")
         UnitsState.changed = False
         return True
@@ -1105,7 +1105,7 @@ def update_unit(unit, data):
     # create subdirs if missing
     check_dir = unit_dir
     if not os.path.isdir(check_dir):
-        if not args.dry_run:
+        if not Args.parsed.dry_run:
             os.mkdir(check_dir)
             print_ok(f'Created dir "{check_dir}/"')
         elif not UnitsState.changed:
@@ -1113,7 +1113,7 @@ def update_unit(unit, data):
     for path_element in [d for d in os.path.dirname(unit).split(os.path.sep) if d]:
         check_dir = os.path.join(check_dir, path_element)
         if not os.path.isdir(check_dir):
-            if not args.dry_run:
+            if not Args.parsed.dry_run:
                 os.mkdir(check_dir)
                 print_ok(f'Created unit subdir "{path_element}/"')
             else:
@@ -1127,7 +1127,7 @@ def update_unit(unit, data):
     if data == old_data:
         return False
 
-    if not args.dry_run:
+    if not Args.parsed.dry_run:
         with open(unit_path, "w", encoding="UTF-8") as unit_file:
             unit_file.write(data)
         print_ok(f'Updated "{unit}".')
@@ -1161,7 +1161,7 @@ def remove_unit(unit):
     change = False
     # remove unit file
     if os.path.isfile(unit_path):
-        if not args.dry_run:
+        if not Args.parsed.dry_run:
             os.remove(unit_path)
             print_ok(f"Removed unit {unit}.")
         else:
@@ -1178,7 +1178,7 @@ def remove_unit(unit):
             if set(os.listdir(unit_subdir_path)) - {unit_filename}:
                 print_warning(f"Unit subdir {unit_subdir} is not empty.")
             else:
-                if not args.dry_run:
+                if not Args.parsed.dry_run:
                     os.rmdir(unit_subdir_path)
                     print_ok(f"Removed unit subdir {unit_subdir}.")
                 else:
@@ -1191,7 +1191,7 @@ def generate_units():
     # sourcery skip: assign-if-exp, extract-duplicate-method, remove-redundant-if, split-or-ifs
     "Generates basic unit structure"
 
-    if args.use_session_slice:
+    if Args.parsed.use_session_slice:
         wayland_wm_slice = "session.slice"
     else:
         wayland_wm_slice = "app.slice"
@@ -1595,518 +1595,530 @@ def remove_units(only=None) -> None:
         remove_unit(file_path)
 
 
-def parse_args(custom_args=None, exit_on_error=True):
-    "Parses args, returns tuple with args and a dict of parsers, takes optional custom 'args'"
+class Args:
+    """
+    Parses args. Stores attributes 'parsers' and 'parsed'. Globally for main args, instanced for custom args.
+    """
+    parsers = argparse.Namespace()
+    parsed = argparse.Namespace()
 
-    # for direct arg queries
-    if custom_args is None:
-        argv = sys.argv[1:]
-    else:
-        argv = custom_args
+    def __init__(self, custom_args=None, exit_on_error=True, store_parsers=False):
+        "Parses sys.argv[1:] or custom_args"
 
-    print_debug(
-        f"parsing {'argv' if custom_args is None else 'custom args'}",
-        argv,
-        f"exit_on_error: {exit_on_error}",
-    )
-
-    # keep parsers in a dict
-    parsers = {}
-
-    # main parser with subcommands
-    parsers["main"] = argparse.ArgumentParser(
-        formatter_class=HelpFormatterNewlines,
-        description=dedent(
-            """
-            Universal Wayland Session Manager.\n
-            \n
-            Launches arbitrary wayland compositor via a set of systemd user units
-            to provide graphical user session with environment management,
-            XDG autostart support, scoped application launch helpers,
-            clean shutdown.
-            """
-        ),
-        # usage='%(prog)s [-h] action ...',
-        epilog=dedent(
-            f"""
-            Also see "{BIN_NAME} {{subcommand}} -h" for further info.\n
-            \n
-            Compositor should finalize its startup by running this:\n
-            \n
-              {BIN_NAME} finalize [[VAR] ANOTHER_VAR]\n
-            \n
-            (See "{BIN_NAME} finalize --help")\n
-            \n
-            Startup can be integrated conditionally into shell profile
-            (See "{BIN_NAME} check --help").\n
-            \n
-            During startup at stage of "graphical-session-pre.target" environment is
-            sourced from shell profile and from files "{BIN_NAME}-env" and
-            "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
-            (in order of increasing importance). Delta will be exported to systemd and
-            dbus activation environments, and cleaned up when services are stopped.\n
-            \n
-            It is highly recommended to configure your compositor to launch apps explicitly scoped
-            in special user session slices (app.slice, background.slice, session.slice).
-            {BIN_NAME} provides custom nested slices for apps to live in and be
-            terminated on session end:\n
-            \n
-              app-graphical.slice\n
-              background-graphical.slice\n
-              session-graphical.slice\n
-            \n
-            And a helper command to handle all the systemd-run invocations for you:
-            (See "{BIN_NAME} app --help", "man systemd.special", "man systemd-run"\n
-            \n
-            If app launching is configured as recommended, you can put compositor itself in
-            session.slice (as recommended by man systemd.special) by adding "-S" to "start"
-            subcommand, or setting:\n
-            \n
-              UWSM_USE_SESSION_SLICE=true\n
-            \n
-            This var affects unit generation phase during start, Slice= parameter
-            of compositor services (best to export it in shell profile before "{BIN_NAME}",
-            or add to environment.d (see "man environment.d")).
-            """
-        ),
-        exit_on_error=exit_on_error,
-    )
-    parsers["main_subparsers"] = parsers["main"].add_subparsers(
-        title="Action subcommands",
-        description=None,
-        dest="mode",
-        metavar="{subcommand}",
-        required=True,
-    )
-
-    # compositor arguments for potential reuse via parents
-    parsers["wm_args"] = argparse.ArgumentParser(
-        add_help=False,
-        formatter_class=HelpFormatterNewlines,
-        exit_on_error=exit_on_error,
-    )
-    parsers["wm_args"].add_argument(
-        "wm_cmdline",
-        metavar="args",
-        nargs="+",
-        help=dedent(
-            """
-            Compositor command line. The first argument acts as an ID and should be either one of:\n
-              - executable name\n
-              - desktop entry ID (optionally with ":"-delimited action ID)\n
-              - special value "select" or "default"\n
-            """
-        ),
-    )
-    parsers["wm_args"].add_argument(
-        "-D",
-        metavar="name[:name...]",
-        dest="desktop_names",
-        default="",
-        help="Names to fill XDG_CURRENT_DESKTOP with (:-separated).\n\nExisting var content is a starting point if no active session is running.",
-    )
-    parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
-    parsers["wm_args_dn_exclusive"].add_argument(
-        "-a",
-        dest="desktop_names_exclusive",
-        action="store_false",
-        default=False,
-        help="Append desktop names set by -D to other sources (default).",
-    )
-    parsers["wm_args_dn_exclusive"].add_argument(
-        "-e",
-        dest="desktop_names_exclusive",
-        action="store_true",
-        default=False,
-        help="Use desktop names set by -D exclusively, discard other sources.",
-    )
-    parsers["wm_args"].add_argument(
-        "-N",
-        metavar="Name",
-        dest="wm_name",
-        default="",
-        help="Fancy name for compositor (filled from desktop entry by default).",
-    )
-    parsers["wm_args"].add_argument(
-        "-C",
-        metavar="Comment",
-        dest="wm_comment",
-        default="",
-        help="Fancy description for compositor (filled from desktop entry by default).",
-    )
-
-    # select subcommand
-    parsers["select"] = parsers["main_subparsers"].add_parser(
-        "select",
-        formatter_class=HelpFormatterNewlines,
-        help="Select default compositor entry",
-        description="Invokes whiptail menu for selecting wayland-sessions desktop entries.",
-        epilog=dedent(
-            f"""
-            Invokes a whiptail menu to select a default session among desktop entries in
-            wayland-sessions XDG data hierarchy. Writes to ${{XDG_CONFIG_HOME}}/{BIN_NAME}-default-id
-            Nothing else is done.
-            """
-        ),
-    )
-
-    # start subcommand
-    parsers["start"] = parsers["main_subparsers"].add_parser(
-        "start",
-        formatter_class=HelpFormatterNewlines,
-        help="Start compositor",
-        description="Generates units for given compositor command line or desktop entry and starts compositor.",
-        parents=[parsers["wm_args"]],
-        epilog=dedent(
-            f"""
-            During "graphical-session-pre.target" activation the environment is
-            sourced from:\n
-              - shell profile\n
-              - "{BIN_NAME}-env", "{BIN_NAME}-env-${{compositor}}" files
-              in XDG config hierarchy (in order of increasing importance).\n
-            Delta is exported to systemd and dbus activation environments,
-            and cleaned up when "graphical-session-pre.target" is deactivated.
-            """
-        ),
-    )
-    use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", "false")
-    if use_session_slice not in ("true", "false"):
-        print_warning(
-            f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false".'
+        print_debug(
+            f"parsing {'argv' if custom_args is None else 'custom args'}",
+            sys.argv[1:] if custom_args is None else custom_args,
+            f"exit_on_error: {exit_on_error}",
         )
-        use_session_slice = "false"
-    parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
-    parsers["start_slice"].add_argument(
-        "-S",
-        action="store_true",
-        dest="use_session_slice",
-        default=use_session_slice == "true",
-        help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}.",
-    )
-    parsers["start_slice"].add_argument(
-        "-A",
-        action="store_false",
-        dest="use_session_slice",
-        default=use_session_slice == "true",
-        help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}.",
-    )
-    parsers["start"].add_argument(
-        "-o",
-        action="store_true",
-        dest="only_generate",
-        help="Only generate units, but do not start.",
-    )
-    parsers["start"].add_argument(
-        "-n",
-        action="store_true",
-        dest="dry_run",
-        help="Do not write or start anything.",
-    )
 
-    # stop subcommand
-    parsers["stop"] = parsers["main_subparsers"].add_parser(
-        "stop",
-        formatter_class=HelpFormatterNewlines,
-        help="Stop compositor",
-        description="Stops compositor and optionally removes generated units.",
-        epilog=dedent(
-            """
-            During "graphical-session-pre.target" deactivation
-            environment is cleaned up from systemd activation environment according
-            to a list saved in ${XDG_RUNTIME_DIR}/env_names_for_cleanup_* files.
-            """
-        ),
-    )
-    parsers["stop"].add_argument(
-        "-r",
-        nargs="?",
-        metavar="wm,wm.desktop[:action]",
-        default=False,
-        dest="remove_units",
-        help="Also remove units (all or only compositor-specific).",
-    )
-    parsers["stop"].add_argument(
-        "-n",
-        action="store_true",
-        dest="dry_run",
-        help="Do not write or start anything.",
-    )
+        # keep parsers in a dict
+        parsers = {}
 
-    # finalize subcommand
-    parsers["finalize"] = parsers["main_subparsers"].add_parser(
-        "finalize",
-        formatter_class=HelpFormatterNewlines,
-        help="Signal successful compositor startup, export essential and optional variables",
-        description="For use inside compositor to export variables and signal successful startup.",
-        epilog=dedent(
-            """
-            Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables
-            (mentioned by name as arguments) to systemd user manager.\n
-            \n
-            Variables are also added to cleanup list for stop phase.\n
-            \n
-            If all is well, sends startup notification to systemd user manager,
-            so compositor unit is considered started and graphical-session.target can be declared reached.
-            """
-        ),
-    )
-    parsers["finalize"].add_argument(
-        "env_names",
-        metavar="[ENV_NAME [ENV2_NAME ...]]",
-        nargs="*",
-        help="Additional vars to export.",
-    )
-
-    # app subcommand
-    parsers["app"] = parsers["main_subparsers"].add_parser(
-        "app",
-        formatter_class=HelpFormatterNewlines,
-        help="Scoped app launcher",
-        description="Launches application as a scope or service in specific slice.",
-    )
-    parsers["app"].add_argument(
-        "cmdline",
-        metavar="args",
-        # allow empty cmdline if '-T' is given and comes before '--'
-        nargs=(
-            "*" if [arg for arg in argv if arg in ("-T", "--")][0:1] == ["-T"] else "+"
-        ),
-        help=dedent(
-            """
-            Applicatoin command line. The first argument can be either one of:\n
-              - executable name or path\n
-              - desktop entry ID (with optional ":"-delimited action ID)\n
-              - path to desktop entry file (with optional ":"-delimited action ID)\n
-            """
-        ),
-    )
-    parsers["app"].add_argument(
-        "-s",
-        dest="slice_name",
-        metavar="{a,b,s,custom.slice}",
-        help=dedent(
-            f"""
-            Slice selector:\n
-              - {Styles.under}a{Styles.reset}pp-graphical.slice\n
-              - {Styles.under}b{Styles.reset}ackground-graphical.slice\n
-              - {Styles.under}s{Styles.reset}ession-graphical.slice\n
-              - custom by full name\n
-            (default: %(default)s)
-            """
-        ),
-        default="a",
-    )
-    app_unit_type_preset = False
-    app_unit_type_default = os.getenv("UWSM_APP_UNIT_TYPE", None)
-    if app_unit_type_default in ("scope", "service"):
-        app_unit_type_preset = True
-    elif app_unit_type_default is not None:
-        print_warning(
-            f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope".'
+        # main parser with subcommands
+        parsers["main"] = argparse.ArgumentParser(
+            formatter_class=HelpFormatterNewlines,
+            description=dedent(
+                """
+                Universal Wayland Session Manager.\n
+                \n
+                Launches arbitrary wayland compositor via a set of systemd user units
+                to provide graphical user session with environment management,
+                XDG autostart support, scoped application launch helpers,
+                clean shutdown.
+                """
+            ),
+            # usage='%(prog)s [-h] action ...',
+            epilog=dedent(
+                f"""
+                Also see "{BIN_NAME} {{subcommand}} -h" for further info.\n
+                \n
+                Compositor should finalize its startup by running this:\n
+                \n
+                  {BIN_NAME} finalize [[VAR] ANOTHER_VAR]\n
+                \n
+                (See "{BIN_NAME} finalize --help")\n
+                \n
+                Startup can be integrated conditionally into shell profile
+                (See "{BIN_NAME} check --help").\n
+                \n
+                During startup at stage of "graphical-session-pre.target" environment is
+                sourced from shell profile and from files "{BIN_NAME}-env" and
+                "{BIN_NAME}-env-${{compositor}}" in XDG config hierarchy
+                (in order of increasing importance). Delta will be exported to systemd and
+                dbus activation environments, and cleaned up when services are stopped.\n
+                \n
+                It is highly recommended to configure your compositor to launch apps explicitly scoped
+                in special user session slices (app.slice, background.slice, session.slice).
+                {BIN_NAME} provides custom nested slices for apps to live in and be
+                terminated on session end:\n
+                \n
+                  app-graphical.slice\n
+                  background-graphical.slice\n
+                  session-graphical.slice\n
+                \n
+                And a helper command to handle all the systemd-run invocations for you:
+                (See "{BIN_NAME} app --help", "man systemd.special", "man systemd-run"\n
+                \n
+                If app launching is configured as recommended, you can put compositor itself in
+                session.slice (as recommended by man systemd.special) by adding "-S" to "start"
+                subcommand, or setting:\n
+                \n
+                  UWSM_USE_SESSION_SLICE=true\n
+                \n
+                This var affects unit generation phase during start, Slice= parameter
+                of compositor services (best to export it in shell profile before "{BIN_NAME}",
+                or add to environment.d (see "man environment.d")).
+                """
+            ),
+            exit_on_error=exit_on_error,
         )
-        app_unit_type_default = "scope"
-    else:
-        app_unit_type_default = "scope"
-    parsers["app"].add_argument(
-        "-t",
-        dest="app_unit_type",
-        choices=("scope", "service"),
-        default=app_unit_type_default,
-        help=f"Type of unit to launch (default: %(default)s, {'was' if app_unit_type_preset else 'can be'} preset by UWSM_APP_UNIT_TYPE env var).",
-    )
-    parsers["app"].add_argument(
-        "-a",
-        dest="app_name",
-        metavar="app_name",
-        help="Override app name (a substring in unit name).",
-        default="",
-    )
-    parsers["app"].add_argument(
-        "-u",
-        dest="unit_name",
-        metavar="unit_name",
-        help="Override the whole autogenerated unit name.",
-        default="",
-    )
-    parsers["app"].add_argument(
-        "-d",
-        dest="unit_description",
-        metavar="unit_description",
-        help="Unit Description.",
-        default="",
-    )
-    parsers["app"].add_argument(
-        "-T",
-        dest="terminal",
-        action="store_true",
-        help="Launch app in a terminal, or just a terminal if command is empty.",
-    )
+        parsers["main_subparsers"] = parsers["main"].add_subparsers(
+            title="Action subcommands",
+            description=None,
+            dest="mode",
+            metavar="{subcommand}",
+            required=True,
+        )
 
-    # check subcommand
-    parsers["check"] = parsers["main_subparsers"].add_parser(
-        "check",
-        formatter_class=HelpFormatterNewlines,
-        help="Checkers of states",
-        description="Performs a check, returns 0 if true, 1 if false.",
-        epilog=dedent(
-            f"""
-            Use may-start checker to integrate startup into shell profile
-            See "{BIN_NAME} check may-start -h"
-            """
-        ),
-    )
-    parsers["check_subparsers"] = parsers["check"].add_subparsers(
-        title="Subcommands",
-        description=None,
-        dest="checker",
-        metavar="{checker}",
-        required=True,
-    )
-    parsers["is_active"] = parsers["check_subparsers"].add_parser(
-        "is-active",
-        formatter_class=HelpFormatterNewlines,
-        help="checks for active compositor",
-        description="Checks for specific compositor or graphical-session*.target in general in active or activating state",
-    )
-    parsers["is_active"].add_argument(
-        "wm",
-        nargs="?",
-        help="Specify compositor by executable or desktop entry (without arguments).",
-    )
-    parsers["is_active"].add_argument(
-        "-v", action="store_true", dest="verbose", help="Show additional info."
-    )
+        # compositor arguments for potential reuse via parents
+        parsers["wm_args"] = argparse.ArgumentParser(
+            add_help=False,
+            formatter_class=HelpFormatterNewlines,
+            exit_on_error=exit_on_error,
+        )
+        parsers["wm_args"].add_argument(
+            "wm_cmdline",
+            metavar="args",
+            nargs="+",
+            help=dedent(
+                """
+                Compositor command line. The first argument acts as an ID and should be either one of:\n
+                  - executable name\n
+                  - desktop entry ID (optionally with ":"-delimited action ID)\n
+                  - special value "select" or "default"\n
+                """
+            ),
+        )
+        parsers["wm_args"].add_argument(
+            "-D",
+            metavar="name[:name...]",
+            dest="desktop_names",
+            default="",
+            help="Names to fill XDG_CURRENT_DESKTOP with (:-separated).\n\nExisting var content is a starting point if no active session is running.",
+        )
+        parsers["wm_args_dn_exclusive"] = parsers["wm_args"].add_mutually_exclusive_group()
+        parsers["wm_args_dn_exclusive"].add_argument(
+            "-a",
+            dest="desktop_names_exclusive",
+            action="store_false",
+            default=False,
+            help="Append desktop names set by -D to other sources (default).",
+        )
+        parsers["wm_args_dn_exclusive"].add_argument(
+            "-e",
+            dest="desktop_names_exclusive",
+            action="store_true",
+            default=False,
+            help="Use desktop names set by -D exclusively, discard other sources.",
+        )
+        parsers["wm_args"].add_argument(
+            "-N",
+            metavar="Name",
+            dest="wm_name",
+            default="",
+            help="Fancy name for compositor (filled from desktop entry by default).",
+        )
+        parsers["wm_args"].add_argument(
+            "-C",
+            metavar="Comment",
+            dest="wm_comment",
+            default="",
+            help="Fancy description for compositor (filled from desktop entry by default).",
+        )
 
-    parsers["may_start"] = parsers["check_subparsers"].add_parser(
-        "may-start",
-        formatter_class=HelpFormatterNewlines,
-        help="Checks for start conditions",
-        description="Checks whether it is OK to launch a wayland session.",
-        epilog=dedent(
-            f"""
-            Conditions:\n
-              - Running from login shell\n
-              - System is at graphical.target\n
-              - User graphical-session*.target are not yet active\n
-              - Foreground VT is among allowed (default: 1)\n
-            \n
-            To integrate startup into shell profile, add:\n
-            \n
-              if {BIN_NAME} check may-start && {BIN_NAME} select\n
-              then\n
-              	exec {BIN_NAME} start select\n
-              fi\n
-            \n
-            Condition is essential, since {BIN_NAME}'s environment preloader sources
-            profile and can cause loops without protection.\n
-            \n
-            Separate select action allows droping to normal shell.\n
-            \n
-            If the only failed condition is already active user graphical-session*.target,
-            it will be printed unless -q is given
-            """
-        ),
-    )
-    parsers["may_start"].add_argument(
-        "vtnr",
-        metavar="N",
-        type=int,
-        # default does not work here
-        default=[1],
-        nargs="*",
-        help="VT numbers allowed for startup (default: 1).",
-    )
-    parsers["may_start_verbosity"] = parsers["may_start"].add_mutually_exclusive_group()
-    parsers["may_start_verbosity"].add_argument(
-        "-v", action="store_true", dest="verbose", help="Show all failed tests."
-    )
-    parsers["may_start_verbosity"].add_argument(
-        "-q", action="store_true", dest="quiet", help="Do not show anything."
-    )
+        # select subcommand
+        parsers["select"] = parsers["main_subparsers"].add_parser(
+            "select",
+            formatter_class=HelpFormatterNewlines,
+            help="Select default compositor entry",
+            description="Invokes whiptail menu for selecting wayland-sessions desktop entries.",
+            epilog=dedent(
+                f"""
+                Invokes a whiptail menu to select a default session among desktop entries in
+                wayland-sessions XDG data hierarchy. Writes to ${{XDG_CONFIG_HOME}}/{BIN_NAME}-default-id
+                Nothing else is done.
+                """
+            ),
+        )
 
-    # aux subcommand
-    parsers["aux"] = parsers["main_subparsers"].add_parser(
-        "aux",
-        formatter_class=HelpFormatterNewlines,
-        help="Auxillary functions",
-        description="Can only be called by systemd user manager, used in units Exec*= keys",
-    )
-    parsers["aux_subparsers"] = parsers["aux"].add_subparsers(
-        title="Action subcommands",
-        description=None,
-        dest="aux_action",
-        metavar="{subcommand}",
-        required=True,
-    )
-    parsers["prepare_env"] = parsers["aux_subparsers"].add_parser(
-        "prepare-env",
-        formatter_class=HelpFormatterNewlines,
-        help="Prepares environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
-        description="Used in ExecStart of wayland-wm-env@.service.",
-        parents=[parsers["wm_args"]],
-    )
-    parsers["cleanup_env"] = parsers["aux_subparsers"].add_parser(
-        "cleanup-env",
-        formatter_class=HelpFormatterNewlines,
-        help="Cleans up environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
-        description="Used in ExecStop of wayland-wm-env@.service.",
-    )
-    parsers["exec"] = parsers["aux_subparsers"].add_parser(
-        "exec",
-        formatter_class=HelpFormatterNewlines,
-        help="Executes binary with arguments or desktop entry (for use in wayland-wm@.service in wayland-session@.target).",
-        description="Used in ExecStart of wayland-wm@.service.",
-    )
-    parsers["exec"].add_argument(
-        "wm_cmdline",
-        nargs="+",
-        metavar="wm",
-        help="Executable or desktop entry (used as compositor ID), may be followed by arbitrary arguments.",
-    )
-    parsers["app_daemon"] = parsers["aux_subparsers"].add_parser(
-        "app-daemon",
-        formatter_class=HelpFormatterNewlines,
-        help="Daemon for fast app argument generation",
-        description="Receives app arguments from a named pipe, returns shell code",
-        epilog=dedent(
-            f"""
-            Receives app arguments via "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in" pipe.\n
-            \n
-            Arguments are expected to be "\\0"-delimited, leading "\\0" are stripped.
-            One command is received per write+close.\n
-            \n
-            The first argument determines the behavior:\n
-            \n
-              app	the rest is processed the same as in "{BIN_NAME} app"\n
-              ping	just "pong" is returned\n
-              stop	daemon is stopped\n
-            \n
-            Resulting arguments are formatted as shell code and written to
-            "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out" pipe.\n
-            \n
-            Single commands are prepended with "exec", iterated commands are assembled with trailing "&" each,
-            followed by "wait"\n
-            \n
-            The purpose of all this is to skip all the expensive python startup and import routines that slow things
-            down every time "{BIN_NAME} app" is called. Instead the daemon does it once and then listens for requests,
-            while a simple shell script may dump arguments to one pipe and run the code received from another via eval,
-            which is much faster\n
-            \n
-            The simplest script is:\n
-            \n
-              #!/bin/sh\n
-              printf '\\0%s' app "$@" > ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in\n
-              IFS='' read -r cmd < ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out\n
-              eval "$cmd"\n
-            \n
-            Provided "{BIN_NAME}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
-            and supports newlines in returned args.
-            """
-        ),
-    )
+        # start subcommand
+        parsers["start"] = parsers["main_subparsers"].add_parser(
+            "start",
+            formatter_class=HelpFormatterNewlines,
+            help="Start compositor",
+            description="Generates units for given compositor command line or desktop entry and starts compositor.",
+            parents=[parsers["wm_args"]],
+            epilog=dedent(
+                f"""
+                During "graphical-session-pre.target" activation the environment is
+                sourced from:\n
+                  - shell profile\n
+                  - "{BIN_NAME}-env", "{BIN_NAME}-env-${{compositor}}" files
+                  in XDG config hierarchy (in order of increasing importance).\n
+                Delta is exported to systemd and dbus activation environments,
+                and cleaned up when "graphical-session-pre.target" is deactivated.
+                """
+            ),
+        )
+        use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", "false")
+        if use_session_slice not in ("true", "false"):
+            print_warning(
+                f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false".'
+            )
+            use_session_slice = "false"
+        parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
+        parsers["start_slice"].add_argument(
+            "-S",
+            action="store_true",
+            dest="use_session_slice",
+            default=use_session_slice == "true",
+            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}.",
+        )
+        parsers["start_slice"].add_argument(
+            "-A",
+            action="store_false",
+            dest="use_session_slice",
+            default=use_session_slice == "true",
+            help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}.",
+        )
+        parsers["start"].add_argument(
+            "-o",
+            action="store_true",
+            dest="only_generate",
+            help="Only generate units, but do not start.",
+        )
+        parsers["start"].add_argument(
+            "-n",
+            action="store_true",
+            dest="dry_run",
+            help="Do not write or start anything.",
+        )
 
-    args = parsers["main"].parse_args(custom_args)
-    return (args, parsers)
+        # stop subcommand
+        parsers["stop"] = parsers["main_subparsers"].add_parser(
+            "stop",
+            formatter_class=HelpFormatterNewlines,
+            help="Stop compositor",
+            description="Stops compositor and optionally removes generated units.",
+            epilog=dedent(
+                """
+                During "graphical-session-pre.target" deactivation
+                environment is cleaned up from systemd activation environment according
+                to a list saved in ${XDG_RUNTIME_DIR}/env_names_for_cleanup_* files.
+                """
+            ),
+        )
+        parsers["stop"].add_argument(
+            "-r",
+            nargs="?",
+            metavar="wm,wm.desktop[:action]",
+            default=False,
+            dest="remove_units",
+            help="Also remove units (all or only compositor-specific).",
+        )
+        parsers["stop"].add_argument(
+            "-n",
+            action="store_true",
+            dest="dry_run",
+            help="Do not write or start anything.",
+        )
+
+        # finalize subcommand
+        parsers["finalize"] = parsers["main_subparsers"].add_parser(
+            "finalize",
+            formatter_class=HelpFormatterNewlines,
+            help="Signal successful compositor startup, export essential and optional variables",
+            description="For use inside compositor to export variables and signal successful startup.",
+            epilog=dedent(
+                """
+                Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables
+                (mentioned by name as arguments) to systemd user manager.\n
+                \n
+                Variables are also added to cleanup list for stop phase.\n
+                \n
+                If all is well, sends startup notification to systemd user manager,
+                so compositor unit is considered started and graphical-session.target can be declared reached.
+                """
+            ),
+        )
+        parsers["finalize"].add_argument(
+            "env_names",
+            metavar="[ENV_NAME [ENV2_NAME ...]]",
+            nargs="*",
+            help="Additional vars to export.",
+        )
+
+        # app subcommand
+        parsers["app"] = parsers["main_subparsers"].add_parser(
+            "app",
+            formatter_class=HelpFormatterNewlines,
+            help="Scoped app launcher",
+            description="Launches application as a scope or service in specific slice.",
+        )
+        parsers["app"].add_argument(
+            "cmdline",
+            metavar="args",
+            # allow empty cmdline if '-T' is given and comes before '--'
+            nargs=(
+                "*" if [arg for arg in (sys.argv[1:] if custom_args is None else custom_args) if arg in ("-T", "--")][0:1] == ["-T"] else "+"
+            ),
+            help=dedent(
+                """
+                Applicatoin command line. The first argument can be either one of:\n
+                  - executable name or path\n
+                  - desktop entry ID (with optional ":"-delimited action ID)\n
+                  - path to desktop entry file (with optional ":"-delimited action ID)\n
+                """
+            ),
+        )
+        parsers["app"].add_argument(
+            "-s",
+            dest="slice_name",
+            metavar="{a,b,s,custom.slice}",
+            help=dedent(
+                f"""
+                Slice selector:\n
+                  - {Styles.under}a{Styles.reset}pp-graphical.slice\n
+                  - {Styles.under}b{Styles.reset}ackground-graphical.slice\n
+                  - {Styles.under}s{Styles.reset}ession-graphical.slice\n
+                  - custom by full name\n
+                (default: %(default)s)
+                """
+            ),
+            default="a",
+        )
+        app_unit_type_preset = False
+        app_unit_type_default = os.getenv("UWSM_APP_UNIT_TYPE", None)
+        if app_unit_type_default in ("scope", "service"):
+            app_unit_type_preset = True
+        elif app_unit_type_default is not None:
+            print_warning(
+                f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope".'
+            )
+            app_unit_type_default = "scope"
+        else:
+            app_unit_type_default = "scope"
+        parsers["app"].add_argument(
+            "-t",
+            dest="app_unit_type",
+            choices=("scope", "service"),
+            default=app_unit_type_default,
+            help=f"Type of unit to launch (default: %(default)s, {'was' if app_unit_type_preset else 'can be'} preset by UWSM_APP_UNIT_TYPE env var).",
+        )
+        parsers["app"].add_argument(
+            "-a",
+            dest="app_name",
+            metavar="app_name",
+            help="Override app name (a substring in unit name).",
+            default="",
+        )
+        parsers["app"].add_argument(
+            "-u",
+            dest="unit_name",
+            metavar="unit_name",
+            help="Override the whole autogenerated unit name.",
+            default="",
+        )
+        parsers["app"].add_argument(
+            "-d",
+            dest="unit_description",
+            metavar="unit_description",
+            help="Unit Description.",
+            default="",
+        )
+        parsers["app"].add_argument(
+            "-T",
+            dest="terminal",
+            action="store_true",
+            help="Launch app in a terminal, or just a terminal if command is empty.",
+        )
+
+        # check subcommand
+        parsers["check"] = parsers["main_subparsers"].add_parser(
+            "check",
+            formatter_class=HelpFormatterNewlines,
+            help="Checkers of states",
+            description="Performs a check, returns 0 if true, 1 if false.",
+            epilog=dedent(
+                f"""
+                Use may-start checker to integrate startup into shell profile
+                See "{BIN_NAME} check may-start -h"
+                """
+            ),
+        )
+        parsers["check_subparsers"] = parsers["check"].add_subparsers(
+            title="Subcommands",
+            description=None,
+            dest="checker",
+            metavar="{checker}",
+            required=True,
+        )
+        parsers["is_active"] = parsers["check_subparsers"].add_parser(
+            "is-active",
+            formatter_class=HelpFormatterNewlines,
+            help="checks for active compositor",
+            description="Checks for specific compositor or graphical-session*.target in general in active or activating state",
+        )
+        parsers["is_active"].add_argument(
+            "wm",
+            nargs="?",
+            help="Specify compositor by executable or desktop entry (without arguments).",
+        )
+        parsers["is_active"].add_argument(
+            "-v", action="store_true", dest="verbose", help="Show additional info."
+        )
+
+        parsers["may_start"] = parsers["check_subparsers"].add_parser(
+            "may-start",
+            formatter_class=HelpFormatterNewlines,
+            help="Checks for start conditions",
+            description="Checks whether it is OK to launch a wayland session.",
+            epilog=dedent(
+                f"""
+                Conditions:\n
+                  - Running from login shell\n
+                  - System is at graphical.target\n
+                  - User graphical-session*.target are not yet active\n
+                  - Foreground VT is among allowed (default: 1)\n
+                \n
+                To integrate startup into shell profile, add:\n
+                \n
+                  if {BIN_NAME} check may-start && {BIN_NAME} select\n
+                  then\n
+                  	exec {BIN_NAME} start select\n
+                  fi\n
+                \n
+                Condition is essential, since {BIN_NAME}'s environment preloader sources
+                profile and can cause loops without protection.\n
+                \n
+                Separate select action allows droping to normal shell.\n
+                \n
+                If the only failed condition is already active user graphical-session*.target,
+                it will be printed unless -q is given
+                """
+            ),
+        )
+        parsers["may_start"].add_argument(
+            "vtnr",
+            metavar="N",
+            type=int,
+            # default does not work here
+            default=[1],
+            nargs="*",
+            help="VT numbers allowed for startup (default: 1).",
+        )
+        parsers["may_start_verbosity"] = parsers["may_start"].add_mutually_exclusive_group()
+        parsers["may_start_verbosity"].add_argument(
+            "-v", action="store_true", dest="verbose", help="Show all failed tests."
+        )
+        parsers["may_start_verbosity"].add_argument(
+            "-q", action="store_true", dest="quiet", help="Do not show anything."
+        )
+
+        # aux subcommand
+        parsers["aux"] = parsers["main_subparsers"].add_parser(
+            "aux",
+            formatter_class=HelpFormatterNewlines,
+            help="Auxillary functions",
+            description="Can only be called by systemd user manager, used in units Exec*= keys",
+        )
+        parsers["aux_subparsers"] = parsers["aux"].add_subparsers(
+            title="Action subcommands",
+            description=None,
+            dest="aux_action",
+            metavar="{subcommand}",
+            required=True,
+        )
+        parsers["prepare_env"] = parsers["aux_subparsers"].add_parser(
+            "prepare-env",
+            formatter_class=HelpFormatterNewlines,
+            help="Prepares environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
+            description="Used in ExecStart of wayland-wm-env@.service.",
+            parents=[parsers["wm_args"]],
+        )
+        parsers["cleanup_env"] = parsers["aux_subparsers"].add_parser(
+            "cleanup-env",
+            formatter_class=HelpFormatterNewlines,
+            help="Cleans up environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
+            description="Used in ExecStop of wayland-wm-env@.service.",
+        )
+        parsers["exec"] = parsers["aux_subparsers"].add_parser(
+            "exec",
+            formatter_class=HelpFormatterNewlines,
+            help="Executes binary with arguments or desktop entry (for use in wayland-wm@.service in wayland-session@.target).",
+            description="Used in ExecStart of wayland-wm@.service.",
+        )
+        parsers["exec"].add_argument(
+            "wm_cmdline",
+            nargs="+",
+            metavar="wm",
+            help="Executable or desktop entry (used as compositor ID), may be followed by arbitrary arguments.",
+        )
+        parsers["app_daemon"] = parsers["aux_subparsers"].add_parser(
+            "app-daemon",
+            formatter_class=HelpFormatterNewlines,
+            help="Daemon for fast app argument generation",
+            description="Receives app arguments from a named pipe, returns shell code",
+            epilog=dedent(
+                f"""
+                Receives app arguments via "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in" pipe.\n
+                \n
+                Arguments are expected to be "\\0"-delimited, leading "\\0" are stripped.
+                One command is received per write+close.\n
+                \n
+                The first argument determines the behavior:\n
+                \n
+                  app	the rest is processed the same as in "{BIN_NAME} app"\n
+                  ping	just "pong" is returned\n
+                  stop	daemon is stopped\n
+                \n
+                Resulting arguments are formatted as shell code and written to
+                "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out" pipe.\n
+                \n
+                Single commands are prepended with "exec", iterated commands are assembled with trailing "&" each,
+                followed by "wait"\n
+                \n
+                The purpose of all this is to skip all the expensive python startup and import routines that slow things
+                down every time "{BIN_NAME} app" is called. Instead the daemon does it once and then listens for requests,
+                while a simple shell script may dump arguments to one pipe and run the code received from another via eval,
+                which is much faster\n
+                \n
+                The simplest script is:\n
+                \n
+                  #!/bin/sh\n
+                  printf '\\0%s' app "$@" > ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in\n
+                  IFS='' read -r cmd < ${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out\n
+                  eval "$cmd"\n
+                \n
+                Provided "{BIN_NAME}-app" client script is a bit smarter: it can start the daemon, applies timeouts,
+                and supports newlines in returned args.
+                """
+            ),
+        )
+
+        if custom_args is None:
+            # store args globally
+            parsers["main"].parse_args(namespace=self.parsed)
+            if store_parsers:
+                self.parsers.__dict__.update(parsers)
+        else:
+            # store args in instance
+            self.parsed = parsers["main"].parse_args(custom_args)
+            if store_parsers:
+                self.parsers = argparse.Namespace(**parsers)
+
+    def __str__(self):
+        return str({'parsed': self.parsed})
 
 
 def finalize(additional_vars=None):
@@ -3035,6 +3047,7 @@ def write_neg_cache(name: str, data: dict):
 
 def app(
     cmdline,
+    terminal,
     slice_name,
     app_unit_type,
     app_name,
@@ -3091,7 +3104,7 @@ def app(
         # request terminal
         if entry.getTerminal():
             print_debug("entry requested a terminal")
-            args.terminal = True
+            terminal = True
 
         # set app name to entry id without extension if no override
         if not app_name:
@@ -3128,6 +3141,7 @@ def app(
                 sub_apps.append(
                     app(
                         cmdline_instance,
+                        terminal,
                         slice_name,
                         app_unit_type,
                         app_name,
@@ -3174,7 +3188,7 @@ def app(
 
     print_debug("cmdline", cmdline)
 
-    if args.terminal:
+    if terminal:
         # Terminal.entry, Terminal.entry_action_id are global, so generate only once
         # no matter how many times app() is called for forks
         if not Terminal.entry:
@@ -3357,9 +3371,6 @@ def app_daemon():
     signal.signal(signal.SIGTERM, trap_stopper)
     signal.signal(signal.SIGHUP, trap_stopper)
 
-    # these will be reset with every call
-    global args
-
     # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
     # crudely work around it
     error_flag_path = os.path.join(
@@ -3426,7 +3437,7 @@ def app_daemon():
 
         # parse args via standard parser
         try:
-            args, _ = parse_args(args_in, exit_on_error=False)
+            args = Args(args_in, exit_on_error=False)
         except Exception as caught_exception:
             send_cmdline(
                 args_in,
@@ -3446,12 +3457,13 @@ def app_daemon():
         # call app with return_cmdline=True
         try:
             app_args = app(
-                cmdline=args.cmdline,
-                slice_name=args.slice_name,
-                app_unit_type=args.app_unit_type,
-                app_name=args.app_name,
-                unit_name=args.unit_name,
-                unit_description=args.unit_description,
+                cmdline=args.parsed.cmdline,
+                terminal=args.parsed.terminal,
+                slice_name=args.parsed.slice_name,
+                app_unit_type=args.parsed.app_unit_type,
+                app_name=args.parsed.app_name,
+                unit_name=args.parsed.unit_name,
+                unit_description=args.parsed.unit_description,
                 return_cmdline=True,
             )
             if isinstance(app_args[0], str):
@@ -3505,11 +3517,11 @@ def fill_wm_globals():
     based on args or desktop entry
     """
 
-    CompGlobals.id = args.wm_cmdline[0]
+    CompGlobals.id = Args.parsed.wm_cmdline[0]
 
     if not CompGlobals.id:
         print_error("Compositor is not provided!")
-        parsers["start"].print_help(file=sys.stderr)
+        Args.parsers.start.print_help(file=sys.stderr)
         sys.exit(1)
 
     # detect and parse desktop entry
@@ -3518,7 +3530,7 @@ def fill_wm_globals():
         print_error(
             f'Paths are not supported, only names or IDs, got: "{CompGlobals.id}"!'
         )
-        parsers["start"].print_help(file=sys.stderr)
+        Args.parsers.start.print_help(file=sys.stderr)
         sys.exit(1)
 
     if not Val.wm_id.search(CompGlobals.id):
@@ -3575,31 +3587,31 @@ def fill_wm_globals():
                     f'Entry "{CompGlobals.id}" uses {BIN_NAME}, reparsing args...'
                 )
                 # reparse args from entry into separate namespace
-                entry_uwsm_args, _ = parse_args(CompGlobals.cmdline)
-                print_debug("entry_uwsm_args", entry_uwsm_args)
+                entry_uwsm_args = Args(CompGlobals.cmdline)
+                print_debug("entry_uwsm_args.parsed", entry_uwsm_args.parsed)
 
                 # check for various incompatibilities
-                if MainArg(entry_uwsm_args.wm_cmdline[0]).entry_id is not None:
+                if MainArg(entry_uwsm_args.parsed.wm_cmdline[0]).entry_id is not None:
                     raise ValueError(
-                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to a desktop entry "{entry_uwsm_args.wm_cmdline[0]}"!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to a desktop entry "{entry_uwsm_args.parsed.wm_cmdline[0]}"!'
                     )
-                if entry_uwsm_args.dry_run:
+                if entry_uwsm_args.parsed.dry_run:
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME} in "dry run" mode!'
                     )
-                if entry_uwsm_args.only_generate:
+                if entry_uwsm_args.parsed.only_generate:
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME} in "only generate" mode!'
                     )
-                if entry_uwsm_args.desktop_names and not Val.dn_colon.search(
-                    entry_uwsm_args.desktop_names
+                if entry_uwsm_args.parsed.desktop_names and not Val.dn_colon.search(
+                    entry_uwsm_args.parsed.desktop_names
                 ):
                     raise ValueError(
-                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.desktop_names}"!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.parsed.desktop_names}"!'
                     )
 
-                # replace CompGlobals.cmdline with args.wm_cmdline from entry
-                CompGlobals.cmdline = entry_uwsm_args.wm_cmdline
+                # replace CompGlobals.cmdline with Args.parsed.wm_cmdline from entry
+                CompGlobals.cmdline = entry_uwsm_args.parsed.wm_cmdline
 
             except Exception as caught_exception:
                 print_error_or_traceback(caught_exception)
@@ -3608,33 +3620,33 @@ def fill_wm_globals():
         # combine Exec from entry and arguments
         # TODO: either drop this behavior, or add support for % fields
         # not that wayland session entries will ever use them
-        CompGlobals.cmdline = CompGlobals.cmdline + args.wm_cmdline[1:]
+        CompGlobals.cmdline = CompGlobals.cmdline + Args.parsed.wm_cmdline[1:]
 
         print_debug("CompGlobals.cmdline", CompGlobals.cmdline)
 
-        # use existence of args.desktop_names as a condition
+        # use existence of Args.parsed.desktop_names as a condition
         # because this does not happen in aux exec mode
-        if "desktop_names" in args:
+        if "desktop_names" in Args.parsed:
             # check desktop names
-            if args.desktop_names and not Val.dn_colon.search(args.desktop_names):
-                print_error(f'Got malformed desktop names: "{args.desktop_names}"!')
+            if Args.parsed.desktop_names and not Val.dn_colon.search(Args.parsed.desktop_names):
+                print_error(f'Got malformed desktop names: "{Args.parsed.desktop_names}"!')
                 sys.exit(1)
 
             # exclusive CLI desktop names
-            if args.desktop_names_exclusive:
+            if Args.parsed.desktop_names_exclusive:
                 # error out on conflicting args
-                if not args.desktop_names:
+                if not Args.parsed.desktop_names:
                     print_error(
                         'Requested exclusive desktop names ("-e") but no desktop names were given via "-D"!'
                     )
                     sys.exit(1)
                 else:
                     # set exclusive desktop names
-                    CompGlobals.desktop_names = sane_split(args.desktop_names, ":")
+                    CompGlobals.desktop_names = sane_split(Args.parsed.desktop_names, ":")
 
             # exclusive nested CLI desktop names from entry
-            elif entry_uwsm_args and entry_uwsm_args.desktop_names_exclusive:
-                if not entry_uwsm_args.desktop_names:
+            elif entry_uwsm_args is not None and entry_uwsm_args.parsed.desktop_names_exclusive:
+                if not entry_uwsm_args.parsed.desktop_names:
                     print_error(
                         f'{BIN_NAME} in entry "{CompGlobals.id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
                     )
@@ -3642,7 +3654,7 @@ def fill_wm_globals():
                 else:
                     # set exclusive desktop names
                     CompGlobals.desktop_names = sane_split(
-                        entry_uwsm_args.desktop_names, ":"
+                        entry_uwsm_args.parsed.desktop_names, ":"
                     )
             # prepend desktop names from entry (and existing environment if there is no active session)
             # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP
@@ -3658,28 +3670,28 @@ def fill_wm_globals():
                     + entry.get("DesktopNames", list=True)
                     + [CompGlobals.cmdline[0]]
                     + (
-                        sane_split(entry_uwsm_args.desktop_names, ":")
-                        if entry_uwsm_args
+                        sane_split(entry_uwsm_args.parsed.desktop_names, ":")
+                        if entry_uwsm_args is not None
                         else []
                     )
-                    + sane_split(args.desktop_names, ":")
+                    + sane_split(Args.parsed.desktop_names, ":")
                 )
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
             # fill name and description with fallbacks from: CLI, nested CLI, Entry
-            if args.wm_name:
-                CompGlobals.name = args.wm_name
-            elif entry_uwsm_args and entry_uwsm_args.wm_name:
-                CompGlobals.name = entry_uwsm_args.wm_name
+            if Args.parsed.wm_name:
+                CompGlobals.name = Args.parsed.wm_name
+            elif entry_uwsm_args is not None and entry_uwsm_args.parsed.wm_name:
+                CompGlobals.name = entry_uwsm_args.parsed.wm_name
             else:
                 CompGlobals.name = " - ".join(
                     n for n in (entry_dict["Name"], entry.getGenericName()) if n
                 )
 
-            if args.wm_comment:
-                CompGlobals.description = args.wm_comment
-            elif entry_uwsm_args and entry_uwsm_args.wm_comment:
-                CompGlobals.description = entry_uwsm_args.wm_comment
+            if Args.parsed.wm_comment:
+                CompGlobals.description = Args.parsed.wm_comment
+            elif entry_uwsm_args is not None and entry_uwsm_args.parsed.wm_comment:
+                CompGlobals.description = entry_uwsm_args.parsed.wm_comment
             elif entry.getComment():
                 CompGlobals.description = entry.getComment()
 
@@ -3691,13 +3703,13 @@ def fill_wm_globals():
             print_error(f'"{CompGlobals.id}" is not in PATH!')
             sys.exit(1)
 
-        CompGlobals.cmdline = args.wm_cmdline
+        CompGlobals.cmdline = Args.parsed.wm_cmdline
 
         # this does not happen in aux exec mode
-        if "desktop_names" in args:
+        if "desktop_names" in Args.parsed:
             # fill other data
-            if args.desktop_names_exclusive:
-                CompGlobals.desktop_names = sane_split(args.desktop_names, ":")
+            if Args.parsed.desktop_names_exclusive:
+                CompGlobals.desktop_names = sane_split(Args.parsed.desktop_names, ":")
             else:
                 CompGlobals.desktop_names = (
                     (
@@ -3706,20 +3718,20 @@ def fill_wm_globals():
                         else []
                     )
                     + [CompGlobals.cmdline[0]]
-                    + sane_split(args.desktop_names, ":")
+                    + sane_split(Args.parsed.desktop_names, ":")
                 )
-            CompGlobals.name = args.wm_name
-            CompGlobals.description = args.wm_comment
+            CompGlobals.name = Args.parsed.wm_name
+            CompGlobals.description = Args.parsed.wm_comment
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
     # fill cli-exclusive vars for reproduction in unit drop-ins
-    CompGlobals.cli_args = args.wm_cmdline[1:]
+    CompGlobals.cli_args = Args.parsed.wm_cmdline[1:]
     # this does not happen in aux exec mode
-    if "desktop_names" in args:
-        CompGlobals.cli_desktop_names = sane_split(args.desktop_names, ":")
-        CompGlobals.cli_desktop_names_exclusive = args.desktop_names_exclusive
-        CompGlobals.cli_name = args.wm_name
-        CompGlobals.cli_description = args.wm_comment
+    if "desktop_names" in Args.parsed:
+        CompGlobals.cli_desktop_names = sane_split(Args.parsed.desktop_names, ":")
+        CompGlobals.cli_desktop_names_exclusive = Args.parsed.desktop_names_exclusive
+        CompGlobals.cli_name = Args.parsed.wm_name
+        CompGlobals.cli_description = Args.parsed.wm_comment
 
         # deduplicate desktop names preserving order
         ddn = []
@@ -3764,7 +3776,7 @@ def stop_wm():
     if len(units) > 1:
         print_warning(f"Multiple compositor units found: {', '.join(units)}!")
 
-    if args.dry_run:
+    if Args.parsed.dry_run:
         print_normal(f"Will stop compositor {units[0]}.")
         return True
 
@@ -3841,15 +3853,15 @@ def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
 
 
 def main():
+    "UWSM main entrypoint"
 
-    # get args and parsers (for help)
-    global args, parsers
-    args, parsers = parse_args()
+    # parse args globally
+    Args(store_parsers=True)
 
-    print_debug("args", args)
+    print_debug("Args.parsed", Args.parsed)
 
     #### SELECT
-    if args.mode == "select":
+    if Args.parsed.mode == "select":
         try:
             default_id = get_default_comp_entry()
             select_wm_id = select_comp_entry(default_id)
@@ -3867,19 +3879,19 @@ def main():
             sys.exit(1)
 
     #### START
-    elif args.mode == "start":
+    elif Args.parsed.mode == "start":
         # Get ID from whiptail menu
-        if args.wm_cmdline[0] in ["select", "default"]:
+        if Args.parsed.wm_cmdline[0] in ["select", "default"]:
             try:
                 default_id = get_default_comp_entry()
                 select_wm_id = select_comp_entry(
-                    default_id, args.wm_cmdline[0] == "default"
+                    default_id, Args.parsed.wm_cmdline[0] == "default"
                 )
                 if select_wm_id:
                     if select_wm_id != default_id:
                         save_default_comp_entry(select_wm_id)
-                    # update args.wm_cmdline in place
-                    args.wm_cmdline = [select_wm_id]
+                    # update Args.parsed.wm_cmdline in place
+                    Args.parsed.wm_cmdline = [select_wm_id]
                 else:
                     print_error("No compositor was selected!")
                     sys.exit(1)
@@ -3887,7 +3899,11 @@ def main():
                 print_error_or_traceback(caught_exception)
                 sys.exit(1)
 
-        fill_wm_globals()
+        try:
+            fill_wm_globals()
+        except Exception as caught_exception:
+            print_error_or_traceback(caught_exception)
+            sys.exit(1)
 
         print_normal(
             dedent(
@@ -3904,7 +3920,7 @@ def main():
 
         if is_active(verbose_active=True):
             print_error("A compositor or graphical-session* target is already active!")
-            if not args.dry_run:
+            if not Args.parsed.dry_run:
                 sys.exit(1)
             else:
                 print_ok("...but this is dry run, so the dream continues.")
@@ -3916,7 +3932,7 @@ def main():
         else:
             print_normal("Units unchanged.")
 
-        if args.only_generate:
+        if Args.parsed.only_generate:
             print_warning("Only unit creation was requested. Will not go further.")
             sys.exit(0)
 
@@ -3939,7 +3955,7 @@ def main():
             )
             time.sleep(5)
 
-        if args.dry_run:
+        if Args.parsed.dry_run:
             print_normal(f"Will start {CompGlobals.id}...")
             print_warning("Dry Run Mode. Will not go further.")
             sys.exit(0)
@@ -3971,7 +3987,7 @@ def main():
         trap_stopper(systemctl_rc=sprc.returncode)
 
     #### STOP
-    elif args.mode == "stop":
+    elif Args.parsed.mode == "stop":
         try:
             stop_result = stop_wm()
             stop_rc = 0
@@ -3980,9 +3996,9 @@ def main():
             stop_result = False
             stop_rc = 1
 
-        # args.remove_units is False when not given, None if given without argument
-        if args.remove_units is not False:
-            remove_units(args.remove_units)
+        # Args.parsed.remove_units is False when not given, None if given without argument
+        if Args.parsed.remove_units is not False:
+            remove_units(Args.parsed.remove_units)
             if UnitsState.changed:
                 reload_systemd()
             else:
@@ -3991,32 +4007,33 @@ def main():
         sys.exit(stop_rc)
 
     #### FINALIZE
-    elif args.mode == "finalize":
-        finalize(args.env_names)
+    elif Args.parsed.mode == "finalize":
+        finalize(Args.parsed.env_names)
 
     #### APP
-    elif args.mode == "app":
+    elif Args.parsed.mode == "app":
         try:
             app(
-                cmdline=args.cmdline,
-                slice_name=args.slice_name,
-                app_unit_type=args.app_unit_type,
-                app_name=args.app_name,
-                unit_name=args.unit_name,
-                unit_description=args.unit_description,
+                cmdline=Args.parsed.cmdline,
+                terminal=Args.parsed.terminal,
+                slice_name=Args.parsed.slice_name,
+                app_unit_type=Args.parsed.app_unit_type,
+                app_name=Args.parsed.app_name,
+                unit_name=Args.parsed.unit_name,
+                unit_description=Args.parsed.unit_description,
             )
         except Exception as caught_exception:
             print_error_or_traceback(caught_exception)
             sys.exit(1)
 
     #### CHECK
-    elif args.mode == "check" and args.checker == "is-active":
-        if is_active(args.wm, args.verbose):
+    elif Args.parsed.mode == "check" and Args.parsed.checker == "is-active":
+        if is_active(Args.parsed.wm, Args.parsed.verbose):
             sys.exit(0)
         else:
             sys.exit(1)
 
-    elif args.mode == "check" and args.checker == "may-start":
+    elif Args.parsed.mode == "check" and Args.parsed.checker == "may-start":
         already_active_msg = (
             "A compositor and/or graphical-session* targets are already active"
         )
@@ -4046,7 +4063,7 @@ def main():
             dealbreakers.append("Could not determine foreground VT")
         else:
             # argparse does not pass default for this
-            allowed_vtnr = args.vtnr or [1]
+            allowed_vtnr = Args.parsed.vtnr or [1]
             if fgvt not in allowed_vtnr:
                 dealbreakers.append(
                     f"Foreground VT ({fgvt}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
@@ -4063,21 +4080,21 @@ def main():
             dealbreakers.append("System has not reached graphical.target")
 
         if dealbreakers:
-            if args.verbose or (
+            if Args.parsed.verbose or (
                 # if the only failed condition is active graphical session, say it,
                 # unless -q is given
-                not args.quiet
+                not Args.parsed.quiet
                 and dealbreakers == [already_active_msg]
             ):
                 print_warning("\n  ".join(["May not start compositor:"] + dealbreakers))
             sys.exit(1)
         else:
-            if args.verbose:
+            if Args.parsed.verbose:
                 print_ok("May start compositor.")
             sys.exit(0)
 
     #### AUX
-    elif args.mode == "aux":
+    elif Args.parsed.mode == "aux":
         manager_pid = int(os.getenv("MANAGERPID", ""))
         ppid = int(os.getppid())
         print_debug(f"manager_pid: {manager_pid}, ppid: {ppid}")
@@ -4085,7 +4102,7 @@ def main():
             print_error("Aux actions can only be run by systemd user manager!")
             sys.exit(1)
 
-        if args.aux_action == "prepare-env":
+        if Args.parsed.aux_action == "prepare-env":
             fill_wm_globals()
             try:
                 prepare_env()
@@ -4097,7 +4114,7 @@ def main():
                 except Exception as caught_exception:
                     print_error_or_traceback(caught_exception)
                 sys.exit(1)
-        elif args.aux_action == "cleanup-env":
+        elif Args.parsed.aux_action == "cleanup-env":
             if is_active("compositor-only", verbose_active=True):
                 print_error("A compositor is running, will not cleanup environment!")
                 sys.exit(1)
@@ -4108,13 +4125,13 @@ def main():
                 except Exception as caught_exception:
                     print_error_or_traceback(caught_exception)
                     sys.exit(1)
-        elif args.aux_action == "exec":
+        elif Args.parsed.aux_action == "exec":
             fill_wm_globals()
             print_debug(CompGlobals.cmdline)
             print_normal(f"Starting: {shlex.join(CompGlobals.cmdline)}...")
             os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
 
-        elif args.aux_action == "app-daemon":
+        elif Args.parsed.aux_action == "app-daemon":
             print_normal("Launching app daemon", file=sys.stderr)
             try:
                 app_daemon()
