@@ -1,7 +1,7 @@
 has_system_dbus = \
   run_command(
     PYTHON_PROG,
-    '-c',
+    '-BIc',
     'import dbus',
     check: false,
   ).returncode() == 0
@@ -9,7 +9,7 @@ has_system_dbus = \
 has_system_xdg = \
   run_command(
     PYTHON_PROG,
-    '-c',
+    '-BIc',
     'import xdg',
     check: false,
   ).returncode() == 0
@@ -52,7 +52,7 @@ init_file = configure_file(
   capture: true,
   command: [
     PYTHON_PROG,
-    '-c',
+    '-BIc',
     'import sys; sys.exit(0)',
   ],
 )
@@ -72,7 +72,7 @@ generated_uwsm_dir = GENERATED_DIR / 'uwsm'
 
 run_command(
   PYTHON_PROG,
-  '-c',
+  '-BIc',
   COPY_TO_SUBDIR_SCRIPT,
   meson.build_root(),
   params_file,
@@ -82,7 +82,7 @@ run_command(
 
 run_command(
   PYTHON_PROG,
-  '-c',
+  '-BIc',
   COPY_TO_SUBDIR_SCRIPT,
   meson.build_root(),
   init_file,
