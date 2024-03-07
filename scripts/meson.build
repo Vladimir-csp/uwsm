@@ -1,29 +1,38 @@
-want_uuctl = get_option('uuctl').allowed()
-want_uwsm_app = get_option('uwsm-app').allowed()
+if get_option('uuctl').allowed()
+  install_data(
+    'uuctl.sh',
+    rename: 'uuctl',
+    install_dir: get_option('bindir'),
+    install_mode: 'rwxr-xr-x',
+  )
+  install_data(
+    'uuctl.desktop',
+    rename: 'uuctl.desktop',
+    install_dir: join_paths(get_option('datadir'), 'applications'),
+    install_mode: 'rw-r--r--',
+  )
+endif
 
-configure_file(
-  input: 'uuctl.sh',
-  output: 'uuctl',
-  copy: true,
-  install: want_uuctl,
-  install_dir: get_option('bindir'),
-  install_mode: 'rwxr-xr-x',
-)
-
-configure_file(
-  input: 'uuctl.desktop',
-  output: 'uuctl.desktop',
-  copy: true,
-  install: want_uuctl,
-  install_dir: join_paths(get_option('datadir'), 'applications'),
-  install_mode: 'rw-r--r--',
-)
-
-configure_file(
-  input: 'uwsm-app.sh',
-  output: 'uwsm-app',
-  copy: true,
-  install: want_uwsm_app,
-  install_dir: get_option('bindir'),
-  install_mode: 'rwxr-xr-x',
-)
+if get_option('uwsm-app').allowed()
+  install_data(
+    'uwsm-app.sh',
+    rename: 'uwsm-app',
+    install_dir: get_option('bindir'),
+    install_mode: 'rwxr-xr-x',
+  )
+  install_symlink(
+    'uwsm-terminal',
+    install_dir: get_option('bindir'),
+    pointing_to: 'uwsm-app',
+  )
+  install_symlink(
+    'uwsm-terminal-service',
+    install_dir: get_option('bindir'),
+    pointing_to: 'uwsm-app',
+  )
+  install_symlink(
+    'uwsm-terminal-scope',
+    install_dir: get_option('bindir'),
+    pointing_to: 'uwsm-app',
+  )
+endif
