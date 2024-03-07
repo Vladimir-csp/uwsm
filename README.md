@@ -317,7 +317,7 @@ Either of:
   uwsm in this session will bring down graphical session units before exiting.
   Empty argument will only work if loginctl is called from session scope itself)
 - `uwsm stop` (brings down graphical session units. Login session will end if `uwsm start` replaces login shell)
-- `systemctl --user stop wayland-session@*.service` (effectively the same as previous one)
+- `systemctl --user stop wayland-wm@*.service` (effectively the same as previous one)
 
 ## Longer story, tour under the hood
 
