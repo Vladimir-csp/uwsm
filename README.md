@@ -42,9 +42,14 @@ Systemd units are treated with hierarchy and universality in mind.
 </details>
 
 <details><summary>
-Compositor-specific behavior is adjustable by plugins. Currently included: `sway`, `wayfire`, `labwc`, `hyprland`.
+Compositor-specific behavior is adjustable by plugins.
 </summary>
 
+Currently included:
+- `sway`
+- `wayfire`
+- `labwc`
+- `hyprland`
 </details>
 
 <details><summary>
@@ -81,8 +86,11 @@ Can work with Desktop entries from `wayland-sessions` in XDG data hierarchy and/
 </details>
 
 <details><summary>
-Can run with arbitrary compositor command line (saved as a unit drop-in).
+Can run with arbitrary compositor command line, or take it (along with other data) from desktop entries (saved as a unit drop-in).
 </summary>
+
+    wayland-wm-env@${compositor}.service.d/50_custom.conf
+    wayland-wm@${compositor}.service.d/50_custom.conf
 </details>
 
 <details><summary>
@@ -97,30 +105,82 @@ Provides better control of XDG autostart apps.
 <details><summary>
 Tries best to shutdown session cleanly via a net of dependencies between units.
 </summary>
+
+All managed transient files (in `/run/user/${UID}/systemd/user`):
+
+    background-graphical.slice
+    app-graphical.slice
+    session-graphical.slice
+    app-@autostart.service.d/slice-tweak.conf
+    wayland-session-pre@.target
+    wayland-session-shutdown.target
+    wayland-session-xdg-autostart@.target
+    wayland-session@.target
+    wayland-wm-app-daemon.service
+    wayland-wm-env@.service
+    wayland-wm-env@${compositor}.service.d/50_custom.conf
+    wayland-wm@.service
+    wayland-wm@${compositor}.service.d/50_custom.conf
+
+See [Longer story](#longer-story-tour-under-the-hood) section below for descriptions.
 </details>
 
 <details><summary>
-Provides helpers for various operations.
+Provides helpers and tools for various operations.
 </summary>
 
-  - Finalizing service startup (compositor service unit uses `Type=notify`) and exporting variables set by compositor
-  - Launching applications as scopes or services in proper slices
-    - desktop entries or plain executables are supported
-    - support for launching a terminal/in terminal
-    - flexible unit metadata support
-  - Checking conditions for launch at login (for integration into login shell profile)
+- `uwsm finalize`: for finalizing service startup (compositor service unit uses `Type=notify`) and exporting variables set by compositor
+- `uwsm check may-start`: for checking conditions for launch at login (for integration into login shell profile)
+- `uwsm app`: for launching applications as scopes or services in proper slices
+  - desktop entries or plain executables are supported
+  - support for launching a terminal/in terminal (proposed xdg-terminal-exec)
+  - flexible unit metadata support
+- `uwsm-app`: a simple and fast shell client to app-daemon feature of uwsm, a drop-in replacement of `uwsm app`.
+  The daemon (started on-demand) handles finding requested desktop entries, parsing and generation of commands for client
+  to execute. This avoids the overhead of repeated python startup and increases app launch speed.
+- `uuctl`: a graphical tool for managing user units (uses dmenu-like menus).
 </details>
 
 ## Installation
 
-### 1. Building the project
+### 1. Building and installing
 
+<details><summary>
+Building and installing the python project directly.
+</summary>
 
     meson setup --prefix=/usr/local build
     meson install -C build
 
-If you wish to install `uuctl`, a graphical tool for managing user units, you can pass `-Duuctl=enabled` to `meson setup`.
-Likewise, you can use `-Duwsm-app=enabled` to install `uwsm-app`.
+Optional tools available in this project (see helpers and tools (concepts section)[#concepts-and-features] above) can be enabled by adding arguments to `meson setup`:
+
+- `uuctl`: `-Duuctl=enabled`.
+- `uwsm-app`: `-Duwsm-app=enabled`.
+</details>
+
+<details><summary>
+Building and installing a deb package.
+</summary>
+
+    sudo apt install debhelper dh-python meson
+    dpkg-buildpackage -b -tc --no-sign
+    sudo apt install ../uwsm_${current_version}_all.deb
+</details>
+
+<details><summary>
+Arch AUR package.
+</summary>
+
+https://aur.archlinux.org/packages/uwsm
+</details>
+
+
+<details><summary>
+Nix flake/derivation.
+</summary>
+
+https://github.com/minego/uwsm.nix
+</details>
 
 ### 2. Vars set by compositor and startup notification
 
