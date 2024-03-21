@@ -152,7 +152,7 @@ Building and installing the python project directly.
     meson setup --prefix=/usr/local build
     meson install -C build
 
-Optional tools available in this project (see helpers and tools [concepts section](#concepts-and-features) above) can be enabled by adding arguments to `meson setup`:
+Optional tools available in this project (see helpers and tools spoiler in [concepts section](#concepts-and-features) above) can be enabled by adding arguments to `meson setup`:
 
 - `uuctl`: `-Duuctl=enabled`.
 - `uwsm-app`: `-Duwsm-app=enabled`.
