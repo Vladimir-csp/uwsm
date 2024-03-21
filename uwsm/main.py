@@ -146,6 +146,9 @@ class Val:
     sh_varname = re.compile(
         r"\A([a-zA-Z_][a-zA-Z0-9_]+|[a-zA-Z][a-zA-Z0-9_]*)\Z", re.MULTILINE
     )
+    invalid_locale_key_error = re.compile(
+        r"^Invalid key: \w+\[.+\]$"
+    )
 
 
 def dedent(data: str) -> str:
@@ -480,6 +483,8 @@ def check_entry_basic(entry, entry_action=None):
             # Used in X-tended sections, but triggers errors anyway
             "Invalid key: TargetEnvironment",
         ]:
+            continue
+        if Val.invalid_locale_key_error.match(error):
             continue
         errors.add(error)
     if errors:
