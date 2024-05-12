@@ -12,6 +12,7 @@ quirks_labwc() {
 			;;
 		esac
 	fi
+
 	# Xwayland is always on in labwc
 	XWAYLAND=true
 
@@ -37,12 +38,4 @@ quirks_labwc() {
 		printf '%s\n' "$TEMP_DROPIN_CONTENT" > "${TEMP_DROPIN_DIR}/55_reload.conf"
 		systemctl --user daemon-reload
 	fi
-}
-
-in_each_config_dir_reversed_labwc() {
-	# load wm env normally
-	in_each_config_dir_reversed "${1}"
-
-	# also add env from labwc location
-	source_file "${1}/${__WM_BIN_ID__}/env"
 }
