@@ -52,11 +52,12 @@ for arg in "$@"; do
 done
 
 if [ "$#" -le "1" ]; then
-	read -r dmenu_candidate <<- EOF
-		$(which "$@" fuzzel wofi rofi tofi bemenu dmenu)
-	EOF
+	dmenu_candidates="$1 fuzzel wofi rofi tofi bemenu wmenu dmenu"
+	for dmenu_candidate in $dmenu_candidates; do
+		! command -v "$dmenu_candidate" >/dev/null || break
+	done
 
-	case "${dmenu_candidate##*/}" in
+	case "$dmenu_candidate" in
 	fuzzel)
 		set -- fuzzel --dmenu -R --log-no-syslog --log-level=warning -p
 		;;
@@ -79,7 +80,8 @@ if [ "$#" -le "1" ]; then
 		set -- dmenu -p
 		;;
 	'' | *)
-		echo "Could not find a menu tool among:" "$@" fuzzel wofi rofi tofi bemenu dmenu >&2
+		# shellcheck disable=SC2086
+		echo "Could not find a menu tool among: " $dmenu_candidates
 		exit 1
 		;;
 	esac
