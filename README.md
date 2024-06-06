@@ -4,11 +4,10 @@ Provides graphical session with environment management, XDG autostart support,
 and clean shutdown by wrapping standalone Wayland compositors into a set of
 systemd units.
 
-> [!IMPORTANT] This project is a work-in-progress! The main structure of
-> subcommands and features is more or less settled and will likely not receive
-> any drastic changes unless some illuminative idea comes by. Nonetheless, keep
-> an eye for commits with breaking changes, indicated by an exclamation point
-> (e.g. `fix!: ...`, `chore!: ...`, `feat!: ...`, etc.).
+> [!IMPORTANT] This project is currently in a stable phase with a slow-burning
+> refactoring. Although no drastic changes are planned, keep an eye for commits
+> with breaking changes, indicated by an exclamation point (e.g. `fix!: ...`, 
+> `chore!: ...`, `feat!: ...`, etc.).
 
 > [!NOTE] It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
@@ -449,7 +448,7 @@ Type=Application
 Things to keep in mind:
 
 - For consistency, command line arguments should mirror the keys of the entry
-- Command in `Exec=` should start with `uwsm`
+- Command in `Exec=` should start with `uwsm start`
 - It should not launch a desktop entry, only an executable.
 
 Potentially such entries may be found and used by `uwsm` itself, i.e. in shell
@@ -671,7 +670,7 @@ Standard functions:
   does nothing ATM
 - `source_file` - sources `$1` file, providing messages for log.
 
-See code inside `uwsm` for more auxillary funcions.
+See code inside `uwsm/main.py` for more auxillary funcions.
 
 Functions that can be added by plugins, replacing standard funcions:
 
@@ -683,7 +682,7 @@ Functions that can be added by plugins, replacing standard funcions:
 - `in_each_config_dir__${__WM_BIN_ID__}`
 
 Original functions are still available for calling explicitly if combined effect
-is needed, see example in labwc plugin.
+is needed.
 
 Example:
 

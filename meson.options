@@ -4,6 +4,12 @@ option(
   description: 'documentation directory',
 )
 option(
+  'man-pages',
+  type: 'feature',
+  value: 'enabled',
+  description: 'install manpages',
+)
+option(
   'python-bin',
   type: 'string',
   description: 'path to the python binary',

@@ -72,6 +72,7 @@ subdir('uwsm')
 subdir('uwsm-plugins')
 subdir('example-units')
 subdir('scripts')
+subdir('man')
 
 uwsm_doc_files = [
   'README.md',

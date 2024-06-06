@@ -7,6 +7,7 @@ Build-Depends:
  debhelper-compat (= 13),
  dh-python,
  meson,
+ scdoc,
 Standards-Version: 4.6.2
 Homepage: https://github.com/Vladimir-csp/uwsm
 Vcs-Browser: https://github.com/Vladimir-csp/uwsm
