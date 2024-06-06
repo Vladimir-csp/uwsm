@@ -4,12 +4,14 @@ Provides graphical session with environment management, XDG autostart support,
 and clean shutdown by wrapping standalone Wayland compositors into a set of
 systemd units.
 
-> [!IMPORTANT] This project is currently in a stable phase with a slow-burning
-> refactoring. Although no drastic changes are planned, keep an eye for commits
-> with breaking changes, indicated by an exclamation point (e.g. `fix!: ...`, 
-> `chore!: ...`, `feat!: ...`, etc.).
+> [!IMPORTANT]
+> This project is currently in a stable phase with a slow-burning refactoring.
+> Although no drastic changes are planned, keep an eye for commits with breaking
+> changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
+> `feat!: ...`, etc.).
 
-> [!NOTE] It is highly recommended to use
+> [!NOTE]
+> It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
 > implementation. Among other benefits, it reuses the systemd activation
 > environment instead of having its own separate one. This simplifies
