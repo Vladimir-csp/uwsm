@@ -6,7 +6,7 @@ UWSM(1)
 
 # SYNOPSIS
 
-*uwsm [-h] {subcommand} [options...]*
+*uwsm* [-h] {_subcommand_} [_options_ ...]
 
 # DESCRIPTION
 
@@ -35,7 +35,7 @@ scopes or services.
 
 See corresponding _SUBCOMMANDS_ subsections below for further info.
 
-Help for each subcommand is accessible by running *uwsm {subcommand} -h*.
+Help for each subcommand is accessible by running "*uwsm* {_subcommand_} -h".
 
 # CONFIGURATION
 
@@ -44,7 +44,7 @@ Help for each subcommand is accessible by running *uwsm {subcommand} -h*.
 In XDG config hierarchy:
 |[ *uwsm-env*
 :<
-|  *uwsm-env-${compositor}*
+|  *uwsm-env-*_${compositor}_
 :  Environment (shell) to be sourced for
    the graphical session. Sourced from directories of increasing priority,
    in each directory common file is sourced first, then suffixed files in the
@@ -55,14 +55,14 @@ In XDG config hierarchy:
 ## Environment vars
 
 |[ *UWSM_USE_SESSION_SLICE*
-:< (true|false)
+:< (*true*|*false*)
 | 
 :  Put compositor unit in *session.slice*
 |  *UWSM_APP_UNIT_TYPE*
-:  (service|scope)
+:  (*service*|*scope*)
 | 
 :  Default unit type for launching apps
-|  DEBUG
+|  *DEBUG*
 :  Dump debug info to stderr
 
 # OPERATION OVERVIEW
@@ -72,7 +72,7 @@ In XDG config hierarchy:
 *uwsm* can be launched by using conditional _exec_ in shell profile to replace
 login shell (see _Shell Profile Integration_ section).
 
-Alternatively *uwsm start ...* command can be put into wayland session's
+Alternatively "*uwsm* start ..." command can be put into wayland session's
 Desktop Entry to be launched by a display manager (see _Use Inside Desktop
 Entry_ section).
 
@@ -81,7 +81,7 @@ Entry_ section).
 *uwsm* can run arbitrary compositor command line or a Desktop Entry by ID
 (specifying Action ID is also supported).
 
-Desktop Entry can also be selected via a _whiptail_ menu (see _select_
+Desktop Entry can also be selected via a *whiptail* menu (see _select_
 subcommand section).
 
 ## Startup
@@ -89,6 +89,7 @@ subcommand section).
 See _start_ subcommand section for command syntax.
 
 A set of runtime units bound to standard user session targets is generated:
+
 - *wayland-session-pre@.target* (bound to *graphical-session-pre.target*)
 	- *wayland-wm-env@.service* (environment preloader service)
 - *wayland-session@.target* (bound to *graphical-session.target*)
@@ -106,7 +107,7 @@ service and is marked for cleanup at shutdown stage.
 
 At the stage of *graphical-session.target* the main compositor unit is started.
 
-Compositor should finalize its startup by running *uwsm finalize* (see
+Compositor should finalize its startup by running "*uwsm* finalize" (see
 _finalize_ subcommand section). This adds *WAYLAND_DISPLAY* var set by
 compositor to activation environments and puts compositor's unit in active
 state, so *graphical-session.target* is declared reached, allowing dependent
@@ -128,18 +129,18 @@ A helper *app* subcommand is provided to handle all the systemd-run invocations
 for you (See _app_ subcommand section).
 
 If app launching is configured as recommended, *uwsm* can be set to launch
-compositor in *session.slice* (as recommended by _man systemd.special_) by
+compositor in *session.slice* (as recommended by *systemd.special*(7)) by
 adding "-S" to *start* subcommand, or adding this to the environment in which
-*uwsm start* is launched:
+"*uwsm* start" is launched:
 
 	UWSM_USE_SESSION_SLICE=true
 
 ## Shutdown
 
-Systemd stops all user units in reverse, as it usually does. During shutdown
-of *graphical-session-pre.target* environment preloader service removes all
-environment vars marked for removal during startup and finalization from
-activation environments.
+Systemd stops all user units in reverse, as it usually does. During deactivation
+of *graphical-session-pre.target* environment preloader service cleans
+activation environments by unsetting all variables that were marked for removal
+during startup and finalization stages.
 
 # SUBCOMMANDS
 
@@ -147,7 +148,7 @@ activation environments.
 
 Selects default wayland session compositor Desktop Entry.
 
-	*uwsm select*
+	*uwsm* select
 
 Invokes a whiptail menu to select default session among Desktop Entries in
 *wayland-sessions* XDG data hierarchy. Writes to
@@ -161,11 +162,11 @@ Performs tests, returns *0* on success, *1* on failure.
 
 *is-active*:
 
-	*uwsm check is-active [-h] [-v] [compositor]*
+	*uwsm* check is-active [-h] [-v] [_compositor_]
 
 |[     *-v*
 :< show additional info
-|      *compositor*
+|      _compositor_
 :  check for specific compositor
 
 
@@ -174,13 +175,13 @@ general is in active or activating state.
 
 *may-start*:
 
-	*uwsm check may-start [-h] [-v|-q] [N ...]*
+	*uwsm* check may-start [-h] [-v|-q] [_N_ ...]
 
 |[     *-v*
 :< show all failed tests
 |      *-q*
 :  be quiet
-|      *N* ...
+|      _N_ ...
 :  allowed VT numbers (default: 1)
 
 
@@ -195,10 +196,10 @@ Checks whether it is OK to launch a wayland session by following conditions:
 Generates units for given compositor command line or Desktop Entry and starts
 them.
 
-	*uwsm start [-h] [-D name[:name...]] [-a|-e] [-N Name] [-C Comment]
-	\[-S|-A] [-o] [-n] -- compositor [args ...]*
+	*uwsm* start [-h] [-D _name_[:_name_...]] [-a|-e] [-N _Name_] [-C _Comment_]
+	\[-S|-A] [-o] [-n] -- _compositor_ [_args_ ...]
 
-|[     *-D name[:name...]*
+|[     *-D* _name_[:_name_...]
 :< Names to fill *XDG_CURRENT_DESKTOP* with
    (:-separated). Existing var content is a starting point if no active
    session is running.
@@ -206,10 +207,10 @@ them.
 :  Append desktop names set by -D to other sources (default).
 |      *-e*
 :  Use desktop names set by -D exclusively, discard other sources.
-|      *-N Name*
+|      *-N* _Name_
 :  Fancy name for compositor (filled from Desktop Entry by
    default).
-|      *-C Comment*
+|      *-C* _Comment_
 :  Fancy description for compositor (filled from Desktop
    Entry by default).
 |      *-S*
@@ -221,7 +222,7 @@ them.
 |      *-n*
 :  Do not write or start anything.
 
-The first argument from the compositor command line acts as an ID and should be
+The first argument of the compositor command line acts as an ID and should be
 either one of:
 - Executable name
 - Desktop Entry ID (optionally with "*:*"-delimited action ID)
@@ -230,20 +231,20 @@ either one of:
 	- *default* - run previously selected compositor (or select if no
 	  selection was saved).
 
-Always use *--* to disambiguate dashed arguments intended for compositor itself.
+Always use "*--*" to disambiguate dashed arguments intended for compositor itself.
 
-After units are (re)generated, *wayland-wm@${ID}.service* is started.
-*uwsm start* will hold until the unit is stopped, or stop the unit if itself
+After units are (re)generated, *wayland-wm@*_${ID}_*.service* is started.
+"*uwsm* start" will hold until the unit is stopped, or stop the unit if itself
 interrupted or terminated.
 
-In order to complete the startup sequence, compositor has to run *uwsm finalize*
+In order to complete the startup sequence, compositor has to run "*uwsm* finalize"
 (see the next subsection).
 
 ## finalize
 
 For running by compositor on startup.
 
-	*uwsm finalize [-h] [VAR_NAME ...]*
+	*uwsm* finalize [-h] [_VAR_NAME_ ...]
 
 Exports *WAYLAND_DISPLAY*, *DISPLAY* and any defined vars mentioned by names
 in arguments. Sends startup notification for the unit to systemd user manager.
@@ -255,10 +256,10 @@ unit will terminate due to startup timeout.
 
 Stops compositor and optionally removes generated units.
 
-	*uwsm stop [-h] [-r [wm,wm.desktop[:action]]] [-n]*
+	*uwsm* stop [-h] [-r [_compositor_] [-n]
 
-|[ *-r [wm,wm.desktop[:action]*
-:< Also remove units (all or only compositor-specific).
+|[ *-r* [_compositor_]
+:< Also remove units (all or only _compositor_-specific).
 |  *-n*
 :  Dry run, do not stop or remove anything.
 
@@ -266,28 +267,28 @@ Stops compositor and optionally removes generated units.
 
 Application-to-unit launcher with Desktop Entry support.
 
-	*uwsm app [-h] [-s {a,b,s,custom.slice}] [-t {scope,service}]
-	\[-a app_name] [-u unit_name] [-d unit_description] [-T] -- application
-	\[args ...]*
+	*uwsm* app [-h] [-s {*a*,*b*,*s*,_custom_.slice}] [-t {scope,service}]
+	\[-a _app_name_] [-u _unit_name_] [-d _unit_description_] [-T] -- _application_
+	\[_args_ ...]
 
-|[ *-s {a,b,s,custom.slice}*
-:< Slice selector (default: a):
+|[ *-s* {*a*,*b*,*s*,_custom_.slice}
+:< Slice selector (default: *a*):
 | 
-:     *a*pp-graphical.slice
+:     *a* - *app-graphical.slice*
 | 
-:     *b*ackground-graphical.slice
+:     *b* - *background-graphical.slice*
 | 
-:     *s*ession-graphical.slice
+:     *s* - *session-graphical.slice*
 | 
 :     any slice by full name
-|  *-t {scope,service}*
-:  Type of unit to launch (default: service, can be preset by UWSM_APP_UNIT_TYPE
+|  *-t* {*scope*,*service*}
+:  Type of unit to launch (default: *service*, can be preset by *UWSM_APP_UNIT_TYPE*
    env var).
-|  *-a app_name*
+|  *-a* _app_name_
 :  Override app name (a substring in unit name).
-|  *-u unit_name*
+|  *-u* _unit_name_
 :  Override the whole autogenerated unit name.
-|  *-d unit_description*
+|  *-d* _unit_description_
 :  Unit Description.
 |  *-T*
 :  Launch app in a terminal. Allows command to be empty to just launch a
@@ -298,7 +299,7 @@ Application can be provided as a command with optional arguments, or a Desktop
 Entry ID, optionally suffixed with "*:*"-delimited Action ID. If Destop Entry
 is being launched, arguments should be compatible with it.
 
-Always use *--* to disambiguate dashed arguments intended for application itself.
+Always use "*--*" to disambiguate dashed arguments intended for application itself.
 
 ## aux
 
@@ -323,14 +324,14 @@ Provided as *wayland-wm-app-daemon.service* to be started on-demand.
 Daemon receives app arguments from *${XDG_RUNTIME_DIR}/uwsm-app-daemon-in*
 pipe.
 Resulting arguments are formatted as shell code and written to
-*${{XDG_RUNTIME_DIR}/uwsm-app-daemon-out* pipe.
+*${XDG_RUNTIME_DIR}/uwsm-app-daemon-out* pipe.
 
 Arguments are expected to be *\\0*-delimited, leading *\\0* are stripped.
 One command is received per write+close.
 
 The first argument determines the behavior:
 
-- *app*	the rest is processed the same as in "{BIN_NAME} app"\n
+- *app*	the rest is processed the same as in "{BIN_NAME} app"
 - *ping*	just "pong" is returned\n
 - *stop*	daemon is stopped\n
 
@@ -339,7 +340,7 @@ Single commands are prepended with *exec*, iterated commands are assembled with
 trailing *&* each, followed by *wait*.
 
 The purpose of all this is to skip all the expensive python startup and import
-routines that slow things down every time *uwsm app* is called. Instead the
+routines that slow things down every time "*uwsm* app" is called. Instead the
 daemon does it once and then listens for requests, while a simple shell script
 may dump arguments to one pipe and run the code received from another via eval,
 which is much faster.
@@ -380,7 +381,7 @@ This just starts a specific compositor depending on foreground VT:
 	fi
 ```
 
-Using *uwsm may-start* as a condition is *essential*, not only to prevent
+Using "*uwsm* may-start" as a condition is *essential*, not only to prevent
 accidental startup attempts where they are not expected, but also since startup
 involves sourcing shell profile, which might lead to nasty loops.
 
@@ -391,7 +392,7 @@ See _check_ subcommand section for info on *check may-start*.
 
 # USE INSIDE DESKTOP ENTRY
 
-To launch *uwsm* from a display/login manager, *uwsm start* can be used inside
+To launch *uwsm* from a display/login manager, "*uwsm* start" can be used inside
 Desktop Entries. Example
 */usr/local/share/wayland-sessions/my-compositor.desktop*:
 
@@ -407,10 +408,14 @@ Desktop Entries. Example
 Things to keep in mind:
 
 - For consistency, command line arguments should mirror the keys of the entry
-- Command in *Exec=* should start with *uwsm start*
+- Command in *Exec=* should start with "*uwsm* start"
 - It should not launch a desktop entry, only an executable.
 
 Potentially such entries may be found and used by *uwsm* itself, i.e. in shell
 profile integration situation, or when launched manually. Following the
 principles above ensures *uwsm* will properly recognize itself and parse
 requested arguments inside the entry without any side effects.
+
+# SEE ALSO
+
+*uwsm-plugins*(3), *systemd-run*(1), *systemd.special*(7)

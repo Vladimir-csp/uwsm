@@ -1827,7 +1827,7 @@ class Args:
         parsers["stop"].add_argument(
             "-r",
             nargs="?",
-            metavar="wm,wm.desktop[:action]",
+            metavar="compositor",
             default=False,
             dest="remove_units",
             help="Also remove units (all or only compositor-specific).",
