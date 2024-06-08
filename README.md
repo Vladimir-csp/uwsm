@@ -188,16 +188,13 @@ Building and installing the python project directly.
 </summary>
 
 ```
-meson setup --prefix=/usr/local build
+meson setup --prefix=/usr/local -Duuctl=enabled -Duwsm-app=enabled build
 meson install -C build
 ```
 
-Optional tools available in this project (see helpers and tools spoiler in
-[concepts section](#concepts-and-features) above) can be enabled by adding
-arguments to `meson setup`:
-
-- `uuctl`: `-Duuctl=enabled`.
-- `uwsm-app`: `-Duwsm-app=enabled`.
+The example enables optional tools `uuctl` and `uwsm-app` available in this
+project (see _helpers and tools_ spoiler in
+[concepts section](#concepts-and-features) above).
 
 </details>
 
@@ -206,7 +203,10 @@ Building and installing a deb package.
 </summary>
 
 ```
-sudo apt install debhelper dh-python meson
+IFS='()' read -r _ current_version _ < debian/changelog
+sudo apt install devscripts
+mk-build-deps
+sudo apt install --mark-auto ./uwsm-build-deps_${current_version}_all.deb
 dpkg-buildpackage -b -tc --no-sign
 sudo apt install ../uwsm_${current_version}_all.deb
 ```
