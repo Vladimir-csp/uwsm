@@ -2180,11 +2180,7 @@ def finalize(additional_vars=None):
         + "\n  ".join(export_vars_names)
     )
 
-    try:
-        set_systemd_vars(export_vars)
-    except Exception as caught_exception:
-        print_error(caught_exception)
-        sys.exit(1)
+    set_systemd_vars(export_vars)
 
     # if no prior failures and unit is in activating state, exec systemd-notify
     if activating_wm_id:
@@ -3908,90 +3904,91 @@ def main():
 
         try:
             fill_wm_globals()
-        except Exception as caught_exception:
-            print_error(caught_exception)
-            sys.exit(1)
 
-        print_normal(
-            dedent(
-                f"""
-                 Selected compositor ID: {CompGlobals.id}
-                           Command Line: {shlex.join(CompGlobals.cmdline)}
-                       Plugin/binary ID: {CompGlobals.bin_id}
-                  Initial Desktop Names: {':'.join(CompGlobals.desktop_names)}
-                                   Name: {CompGlobals.name}
-                            Description: {CompGlobals.description}
-                """
-            )
-        )
-
-        if is_active(verbose_active=True):
-            print_error("A compositor or graphical-session* target is already active!")
-            if not Args.parsed.dry_run:
-                sys.exit(1)
-            else:
-                print_ok("...but this is dry run, so the dream continues.")
-
-        generate_units()
-
-        if UnitsState.changed:
-            reload_systemd()
-        else:
-            print_normal("Units unchanged.")
-
-        if Args.parsed.only_generate:
-            print_warning("Only unit creation was requested. Will not go further.")
-            sys.exit(0)
-
-        bus_system = DbusInteractions("system")
-        print_debug("bus_system initial", bus_system)
-
-        # query systemd dbus for active matching units
-        units = bus_system.list_units_by_patterns(
-            ["active", "activating"], ["graphical.target"]
-        )
-        if len(units) < 1:
-            print_warning(
+            print_normal(
                 dedent(
-                    """
-                    System has not reached graphical.target.
-                    It might be a good idea to screen for this with a condition.
-                    Will continue in 5 seconds...
+                    f"""
+                     Selected compositor ID: {CompGlobals.id}
+                               Command Line: {shlex.join(CompGlobals.cmdline)}
+                           Plugin/binary ID: {CompGlobals.bin_id}
+                      Initial Desktop Names: {':'.join(CompGlobals.desktop_names)}
+                                       Name: {CompGlobals.name}
+                                Description: {CompGlobals.description}
                     """
                 )
             )
-            time.sleep(5)
 
-        if Args.parsed.dry_run:
-            print_normal(f"Will start {CompGlobals.id}...")
-            print_warning("Dry Run Mode. Will not go further.")
-            sys.exit(0)
-        else:
-            print_normal(
-                f"Starting {CompGlobals.id} and waiting while it is running..."
+            if is_active(verbose_active=True):
+                print_error("A compositor or graphical-session* target is already active!")
+                if not Args.parsed.dry_run:
+                    sys.exit(1)
+                else:
+                    print_ok("...but this is dry run, so the dream continues.")
+
+            generate_units()
+
+            if UnitsState.changed:
+                reload_systemd()
+            else:
+                print_normal("Units unchanged.")
+
+            if Args.parsed.only_generate:
+                print_warning("Only unit creation was requested. Will not go further.")
+                sys.exit(0)
+
+            bus_system = DbusInteractions("system")
+            print_debug("bus_system initial", bus_system)
+
+            # query systemd dbus for active matching units
+            units = bus_system.list_units_by_patterns(
+                ["active", "activating"], ["graphical.target"]
             )
+            if len(units) < 1:
+                print_warning(
+                    dedent(
+                        """
+                        System has not reached graphical.target.
+                        It might be a good idea to screen for this with a condition.
+                        Will continue in 5 seconds...
+                        """
+                    )
+                )
+                time.sleep(5)
 
-        # trap exit on INT TERM HUP
-        signal.signal(signal.SIGINT, trap_stopper)
-        signal.signal(signal.SIGTERM, trap_stopper)
-        signal.signal(signal.SIGHUP, trap_stopper)
+            if Args.parsed.dry_run:
+                print_normal(f"Will start {CompGlobals.id}...")
+                print_warning("Dry Run Mode. Will not go further.")
+                sys.exit(0)
+            else:
+                print_normal(
+                    f"Starting {CompGlobals.id} and waiting while it is running..."
+                )
 
-        # run start job via systemctl
-        # this will wait until compositor is stopped
-        sprc = subprocess.run(
-            [
-                "systemctl",
-                "--user",
-                "start",
-                "--wait",
-                f"wayland-wm@{CompGlobals.id_unit_string}.service",
-            ],
-            check=False,
-        )
-        print_debug(sprc)
+            # trap exit on INT TERM HUP
+            signal.signal(signal.SIGINT, trap_stopper)
+            signal.signal(signal.SIGTERM, trap_stopper)
+            signal.signal(signal.SIGHUP, trap_stopper)
 
-        # reuse trap_stopper with signal 0 to report on ended systemctl
-        trap_stopper(systemctl_rc=sprc.returncode)
+            # run start job via systemctl
+            # this will wait until compositor is stopped
+            sprc = subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "start",
+                    "--wait",
+                    f"wayland-wm@{CompGlobals.id_unit_string}.service",
+                ],
+                check=False,
+            )
+            print_debug(sprc)
+
+            # reuse trap_stopper with signal 0 to report on ended systemctl
+            trap_stopper(systemctl_rc=sprc.returncode)
+
+        except Exception as caught_exception:
+            print_error(caught_exception)
+            sys.exit(1)
 
     #### STOP
     elif Args.parsed.mode == "stop":
@@ -4007,7 +4004,10 @@ def main():
         if Args.parsed.remove_units is not False:
             remove_units(Args.parsed.remove_units)
             if UnitsState.changed:
-                reload_systemd()
+                try:
+                    reload_systemd()
+                except Exception as caught_exception:
+                    print_warning(caught_exception)
             else:
                 print_normal("Units unchanged.")
 
@@ -4015,7 +4015,10 @@ def main():
 
     #### FINALIZE
     elif Args.parsed.mode == "finalize":
-        finalize(Args.parsed.env_names)
+        try:
+            finalize(Args.parsed.env_names)
+        except Exception as caught_exception:
+            print_error(caught_exception, notify=1)
 
     #### APP
     elif Args.parsed.mode == "app":
@@ -4035,9 +4038,13 @@ def main():
 
     #### CHECK
     elif Args.parsed.mode == "check" and Args.parsed.checker == "is-active":
-        if is_active(Args.parsed.wm, Args.parsed.verbose):
-            sys.exit(0)
-        else:
+        try:
+            if is_active(Args.parsed.wm, Args.parsed.verbose):
+                sys.exit(0)
+            else:
+                sys.exit(1)
+        except Exception as caught_exception:
+            print_error(caught_exception)
             sys.exit(1)
 
     elif Args.parsed.mode == "check" and Args.parsed.checker == "may-start":
@@ -4045,8 +4052,14 @@ def main():
             "A compositor and/or graphical-session* targets are already active"
         )
         dealbreakers = []
-        if is_active():
-            dealbreakers.append(already_active_msg)
+
+        try:
+            if is_active():
+                dealbreakers.append(already_active_msg)
+        except Exception as caught_exception:
+            print_error("Could not check for active compositor!")
+            print_error(caught_exception)
+            sys.exit(1)
 
         # check if parent process is a login shell
         try:
@@ -4067,7 +4080,8 @@ def main():
         # check foreground VT
         fgvt = get_fg_vt()
         if fgvt is None:
-            dealbreakers.append("Could not determine foreground VT")
+            print_error("Could not determine foreground VT")
+            sys.exit(1)
         else:
             # argparse does not pass default for this
             allowed_vtnr = Args.parsed.vtnr or [1]
@@ -4077,14 +4091,19 @@ def main():
                 )
 
         # check for graphical target
-        bus_system = DbusInteractions("system")
-        print_debug("bus_system initial", bus_system)
-        units = bus_system.list_units_by_patterns(
-            ["active", "activating"], ["graphical.target"]
-        )
-        print_debug("graphical.target units", units)
-        if len(units) < 1:
-            dealbreakers.append("System has not reached graphical.target")
+        try:
+            bus_system = DbusInteractions("system")
+            print_debug("bus_system initial", bus_system)
+            units = bus_system.list_units_by_patterns(
+                ["active", "activating"], ["graphical.target"]
+            )
+            print_debug("graphical.target units", units)
+            if len(units) < 1:
+                dealbreakers.append("System has not reached graphical.target")
+        except Exception as caught_exception:
+            print_error("Could not check if graphical.target is reached!")
+            print_error(caught_exception)
+            sys.exit(1)
 
         if dealbreakers:
             if Args.parsed.verbose or (
