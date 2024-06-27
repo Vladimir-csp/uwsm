@@ -18,6 +18,12 @@ Architecture: all
 Depends:
  ${python3:Depends},
  ${misc:Depends},
+ systemd,
+Recommends:
+ whiptail,
+ fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu
 Description: Universal Wayland Session Manager
- Provides graphical session with environment management, XDG autostart support, and clean shutdown by
- wrapping standalone Wayland compositors into a set of systemd units.
+ Provides graphical session with environment management, XDG autostart, and
+ clean shutdown by wrapping standalone Wayland compositors into a set of systemd
+ units. Also provides helpers for launching applications, user units management,
+ and login shell integration.
