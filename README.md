@@ -151,6 +151,7 @@ wayland-wm-env@.service
 wayland-wm-env@${compositor}.service.d/50_custom.conf
 wayland-wm@.service
 wayland-wm@${compositor}.service.d/50_custom.conf
+wayland-session-bindpid@.target
 ```
 
 See [Longer story](#longer-story-tour-under-the-hood) section below for
@@ -228,6 +229,18 @@ Nix flake/derivation.
 https://github.com/minego/uwsm.nix
 
 </details>
+
+Runtime dependencies:
+- `waitpid` (`util-linux` or `util-linux-extra` package)
+- `whiptail` (optional, for `select` feature, `whiptail` or `libnewt` package)
+- a dmenu-like menu (optional, for `uuctl` script), supported:
+    - fuzzel
+    - wofi
+    - rofi
+    - tofi
+    - bemenu
+    - wmenu
+    - dmenu
 
 ### 2. Service startup notification and vars set by compositor
 
@@ -524,28 +537,30 @@ Basic set of generated units:
     various names were given on command line, they go here.
   - `app-@autostart.service.d/slice-tweak.conf` - assigns XDG autostart apps to
     `app-graphical.slice`
-- shutdown and cleanup target
+- shutdown and cleanup units
   - `wayland-session-shutdown.target` - conflicts with operational units.
     Triggered by the end of `wayland-wm*.service` units for more robust cleanup,
     including on failures. But can also be called manually for shutdown.
+  - `wayland-session-bindpid@.service` - starts `waitpid` utility for a given
+    PID. Invokes `wayland-session-shutdown.target` when deactivated.
+    Started by `uwsm start`.
 
 After units are generated, compositor can be started by:
 `systemctl --user start wayland-wm@${compositor}.service`
 
-Add `--wait` to hold terminal until session ends.
+But this would run it completely disconnected from a login session or any
+process that started it. To fix that use `wayland-session-bindpid@.service` to
+track PID of login shell and stop graphical session when it exits:
 
-`exec` it from login shell to bind to login session:
+`systemctl --user start wayland-session-bindpid@$$.service`
+
+Add `--wait` to hold the terminal until session ends, `exec` it to bind to login
+session:
 
 `exec systemctl --user start --wait wayland-wm@${compositor}.service`
 
-Still if login session is terminated, wayland session will continue running,
-most likely no longer being accessible.
-
-To also bind it the other way around, shell traps are used:
-
-`trap "if systemctl --user is-active -q wayland-wm@${compositor}.service ; then systemctl --user --stop wayland-wm@${compositor}.service ; fi" INT EXIT HUP TERM`
-
-This makes the end of login shell also be the end of wayland session.
+This makes the end of login shell also be the end of wayland session and vice
+versa.
 
 When `wayland-wm-env@.service` is started during `graphical-session-pre.target`
 startup, `uwsm aux prepare-env ${compositor}` is launched (with shared set of

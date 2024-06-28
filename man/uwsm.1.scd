@@ -35,7 +35,7 @@ scopes or services.
 
 See corresponding _SUBCOMMANDS_ subsections below for further info.
 
-Help for each subcommand is accessible by running "*uwsm* {_subcommand_} -h".
+Help for each subcommand is accessible by running "*uwsm* {_subcommand_} *-h*".
 
 # CONFIGURATION
 
@@ -72,7 +72,7 @@ In XDG config hierarchy:
 *uwsm* can be launched by using conditional _exec_ in shell profile to replace
 login shell (see _Shell Profile Integration_ section).
 
-Alternatively "*uwsm* start ..." command can be put into wayland session's
+Alternatively "*uwsm start* ..." command can be put into wayland session's
 Desktop Entry to be launched by a display manager (see _Use Inside Desktop
 Entry_ section).
 
@@ -96,6 +96,8 @@ A set of runtime units bound to standard user session targets is generated:
 	- *wayland-wm@.service* (service for the selected compositor)
 - *wayland-session-xdg-autostart@.target* (bound to
   *xdg-desktop-autostart.target*)
+- *wayland-session-shutdown.target* (conflicts with targets above for shutdown)
+- *wayland-session-bindpid@.service* (PID-tracking session killswitch)
 
 Compositor ID (Desktop Entry ID or executable name) becomes the specifier
 for all templated units.
@@ -107,7 +109,7 @@ service and is marked for cleanup at shutdown stage.
 
 At the stage of *graphical-session.target* the main compositor unit is started.
 
-Compositor should finalize its startup by running "*uwsm* finalize" (see
+Compositor should finalize its startup by running "*uwsm finalize*" (see
 _finalize_ subcommand section). This adds *WAYLAND_DISPLAY* var set by
 compositor to activation environments and puts compositor's unit in active
 state, so *graphical-session.target* is declared reached, allowing dependent
@@ -131,11 +133,16 @@ for you (See _app_ subcommand section).
 If app launching is configured as recommended, *uwsm* can be set to launch
 compositor in *session.slice* (as recommended by *systemd.special*(7)) by
 adding "-S" to *start* subcommand, or adding this to the environment in which
-"*uwsm* start" is launched:
+"*uwsm start*" is launched:
 
 	UWSM_USE_SESSION_SLICE=true
 
 ## Shutdown
+
+Can be initiated by either:
+- running *uwsm stop*
+- stopping *wayland-wm@\*.service*
+- starting *wayland-session-shutdown.target*
 
 Systemd stops all user units in reverse, as it usually does. During deactivation
 of *graphical-session-pre.target* environment preloader service cleans
@@ -231,18 +238,20 @@ either one of:
 	- *default* - run previously selected compositor (or select if no
 	  selection was saved).
 
-Always use "*--*" to disambiguate dashed arguments intended for compositor itself.
+Always use "*--*" to disambiguate dashed arguments intended for compositor
+itself.
 
-After units are (re)generated, *wayland-wm@*_${ID}_*.service* is started.
-"*uwsm* start" will hold until the unit is stopped, or stop the unit if itself
-interrupted or terminated.
+After units are (re)generated, *wayland-session-bindpid@*_${PID}_*.service* is
+started, to track the PID of invoking *uwsm*, then *uwsm* process replaces
+itself with *systemctl* execution that starts *wayland-wm@*_${ID}_*.service*
+and waits for it to finish.
 
-In order to complete the startup sequence, compositor has to run "*uwsm* finalize"
-(see the next subsection).
+In order to complete the startup sequence, the compositor has to run "*uwsm
+finalize*" (see the next subsection).
 
 ## finalize
 
-For running by compositor on startup.
+For running by a compositor on startup.
 
 	*uwsm* finalize [-h] [_VAR_NAME_ ...]
 
@@ -282,8 +291,8 @@ Application-to-unit launcher with Desktop Entry support.
 | 
 :     any slice by full name
 |  *-t* {*scope*,*service*}
-:  Type of unit to launch (default: *service*, can be preset by *UWSM_APP_UNIT_TYPE*
-   env var).
+:  Type of unit to launch (default: *service*, can be preset by
+   *UWSM_APP_UNIT_TYPE* env var).
 |  *-a* _app_name_
 :  Override app name (a substring in unit name).
 |  *-u* _unit_name_
@@ -299,7 +308,8 @@ Application can be provided as a command with optional arguments, or a Desktop
 Entry ID, optionally suffixed with "*:*"-delimited Action ID. If Destop Entry
 is being launched, arguments should be compatible with it.
 
-Always use "*--*" to disambiguate dashed arguments intended for application itself.
+Always use "*--*" to disambiguate dashed arguments intended for application
+itself.
 
 ## aux
 
@@ -340,7 +350,7 @@ Single commands are prepended with *exec*, iterated commands are assembled with
 trailing *&* each, followed by *wait*.
 
 The purpose of all this is to skip all the expensive python startup and import
-routines that slow things down every time "*uwsm* app" is called. Instead the
+routines that slow things down every time "*uwsm app*" is called. Instead the
 daemon does it once and then listens for requests, while a simple shell script
 may dump arguments to one pipe and run the code received from another via eval,
 which is much faster.
@@ -381,7 +391,7 @@ This just starts a specific compositor depending on foreground VT:
 	fi
 ```
 
-Using "*uwsm* may-start" as a condition is *essential*, not only to prevent
+Using "*uwsm may-start*" as a condition is *essential*, not only to prevent
 accidental startup attempts where they are not expected, but also since startup
 involves sourcing shell profile, which might lead to nasty loops.
 
@@ -392,7 +402,7 @@ See _check_ subcommand section for info on *check may-start*.
 
 # USE INSIDE DESKTOP ENTRY
 
-To launch *uwsm* from a display/login manager, "*uwsm* start" can be used inside
+To launch *uwsm* from a display/login manager, "*uwsm start*" can be used inside
 Desktop Entries. Example
 */usr/local/share/wayland-sessions/my-compositor.desktop*:
 
@@ -408,7 +418,7 @@ Desktop Entries. Example
 Things to keep in mind:
 
 - For consistency, command line arguments should mirror the keys of the entry
-- Command in *Exec=* should start with "*uwsm* start"
+- Command in *Exec=* should start with "*uwsm start*"
 - It should not launch a desktop entry, only an executable.
 
 Potentially such entries may be found and used by *uwsm* itself, i.e. in shell
