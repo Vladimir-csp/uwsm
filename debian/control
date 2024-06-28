@@ -19,6 +19,7 @@ Depends:
  ${python3:Depends},
  ${misc:Depends},
  systemd,
+ util-linux-extra
 Recommends:
  whiptail,
  fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu
