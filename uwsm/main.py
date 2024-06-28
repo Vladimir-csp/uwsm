@@ -1412,6 +1412,27 @@ def generate_units():
             """
         ),
     )
+    update_unit(
+        "wayland-session-bindpid@.service",
+        dedent(
+            f"""
+            # injected by {BIN_NAME}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            Description=Bind graphical session to PID %i
+            Documentation=man:systemd.service(7)
+            CollectMode=inactive-or-failed
+            OnSuccess=wayland-session-shutdown.target
+            OnFailure=wayland-session-shutdown.target
+            [Service]
+            Type=exec
+            ExecStart=waitpid -e %i
+            Restart=no
+            SyslogIdentifier={BIN_NAME}_bindpid
+            Slice=background.slice
+            """
+        ),
+    )
 
     # slices
     update_unit(
@@ -3798,63 +3819,6 @@ def stop_wm():
     return True
 
 
-def trap_stopper(signal=0, stack_frame=None, systemctl_rc=None):
-    """
-    For use in signal trap or after waiting systemctl exits.
-    Ensures compositor is stopped and exits.
-    """
-
-    # initiate only once
-    if Stopper.initiated:
-        print_debug(
-            f"stopper was already initiated, now invoked with ({signal}, {stack_frame}, {systemctl_rc})"
-        )
-        return
-    Stopper.initiated = True
-
-    if systemctl_rc is not None:
-        if systemctl_rc == 0:
-            print_normal("systemctl exited normally")
-        elif systemctl_rc == -15:
-            print_warning("systemctl was terminated")
-        elif systemctl_rc < 0:
-            print_error(f"systemctl was killed with signal {systemctl_rc * -1}!")
-        elif systemctl_rc > 0:
-            print_error(f"systemctl returned {systemctl_rc}!")
-    else:
-        print_normal(f"Received signal {signal}.")
-        print_debug(stack_frame)
-
-    try:
-        stop_wm()
-        stop_rc = 0
-    except Exception as caught_exception:
-        print_error(caught_exception)
-        stop_rc = 1
-
-    if (stop_rc or systemctl_rc) and (sys.stdout.isatty() or sys.stderr.isatty()):
-        # Check if parent process is login.
-        # If it is, sleep a bit to show messages before console is cleared.
-        try:
-            with open(
-                f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
-            ) as ppcmdline:
-                parent_cmdline = ppcmdline.read()
-            parent_cmdline = parent_cmdline.strip().split("\0")
-            print_debug(f"parent_pid: {os.getppid()}")
-            print_debug(f"parent_cmdline: {parent_cmdline}")
-            if os.path.basename(parent_cmdline[0]) == "login":
-                print_warning("Will exit in 10 seconds...")
-                time.sleep(10)
-        except Exception as caught_exception:
-            # no error is needed here
-            print_debug("Could not determine parent process command")
-            print_debug(caught_exception)
-
-    print_normal("Exiting.")
-    sys.exit(stop_rc if systemctl_rc is None else systemctl_rc)
-
-
 def main():
     "UWSM main entrypoint"
 
@@ -3919,7 +3883,9 @@ def main():
             )
 
             if is_active(verbose_active=True):
-                print_error("A compositor or graphical-session* target is already active!")
+                print_error(
+                    "A compositor or graphical-session* target is already active!"
+                )
                 if not Args.parsed.dry_run:
                     sys.exit(1)
                 else:
@@ -3964,27 +3930,29 @@ def main():
                     f"Starting {CompGlobals.id} and waiting while it is running..."
                 )
 
-            # trap exit on INT TERM HUP
-            signal.signal(signal.SIGINT, trap_stopper)
-            signal.signal(signal.SIGTERM, trap_stopper)
-            signal.signal(signal.SIGHUP, trap_stopper)
-
-            # run start job via systemctl
-            # this will wait until compositor is stopped
+            # start bindpid service on our PID
             sprc = subprocess.run(
                 [
                     "systemctl",
                     "--user",
                     "start",
-                    "--wait",
-                    f"wayland-wm@{CompGlobals.id_unit_string}.service",
+                    f"wayland-session-bindpid@{os.getpid()}.service",
                 ],
-                check=False,
+                check=True,
             )
             print_debug(sprc)
 
-            # reuse trap_stopper with signal 0 to report on ended systemctl
-            trap_stopper(systemctl_rc=sprc.returncode)
+            # replace ourselves with systemctl
+            # this will start the main compositor unit
+            # and wait until compositor is stopped
+            os.execlp(
+                "systemctl",
+                "systemctl",
+                "--user",
+                "start",
+                "--wait",
+                f"wayland-wm@{CompGlobals.id_unit_string}.service",
+            )
 
         except Exception as caught_exception:
             print_error(caught_exception)
