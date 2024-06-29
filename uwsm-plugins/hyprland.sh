@@ -16,4 +16,8 @@ quirks_hyprland() {
 	# Without this unit will be declared started before "finalize" is executed,
 	# So some autostarted units may not get custom vars
 	export HYPRLAND_NO_SD_NOTIFY=true
+
+	# mark additional vars for export on finalize
+	UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES+: }HYPRLAND_INSTANCE_SIGNATURE XCURSOR_SIZE XCURSOR_THEME"
+	export UWSM_FINALIZE_VARNAMES
 }

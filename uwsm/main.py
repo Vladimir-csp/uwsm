@@ -1868,8 +1868,9 @@ class Args:
             description="For use inside compositor to export essential variables and complete compositor unit startup.",
             epilog=dedent(
                 """
-                Exports WAYLAND_DISPLAY, DISPLAY, and any optional variables
-                (mentioned by name as arguments) to systemd user manager.\n
+                Exports variables to systemd user manager: WAYLAND_DISPLAY, DISPLAY,
+                and any optional variables mentioned by name as arguments, or listed
+                whitespace-separated in UWSM_FINALIZE_VARNAMES environment var.\n
                 \n
                 Variables are also added to cleanup list to be unset during deactivation.\n
                 \n
@@ -2164,7 +2165,7 @@ def finalize(additional_vars=None):
         )
         sys.exit(1)
     export_vars = {}
-    for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(additional_vars):
+    for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(set(additional_vars)):
         value = os.getenv(var, None)
         if value is not None:
             export_vars.update({var: value})
@@ -3995,7 +3996,7 @@ def main():
     #### FINALIZE
     elif Args.parsed.mode == "finalize":
         try:
-            finalize(Args.parsed.env_names)
+            finalize(Args.parsed.env_names + os.getenv('UWSM_FINALIZE_VARNAMES', '').split())
         except Exception as caught_exception:
             print_error(caught_exception, notify=1)
 

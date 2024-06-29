@@ -38,4 +38,39 @@ quirks_labwc() {
 		printf '%s\n' "$TEMP_DROPIN_CONTENT" > "${TEMP_DROPIN_DIR}/55_reload.conf"
 		systemctl --user daemon-reload
 	fi
+
+	# mark additional vars for export on finalize
+	UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES+: }LABWC_PID XCURSOR_SIZE XCURSOR_THEME"
+	export UWSM_FINALIZE_VARNAMES
+}
+
+labwc_environment2finalize() {
+	# expects labwc env file content on stdin
+	# adds varnames to UWSM_FINALIZE_VARNAMES
+	while read -r line; do
+		case "$line" in
+		[!a-zA-Z_]* ) continue ;;
+		*=*) true ;;
+		*) continue ;;
+		esac
+		IFS='=' read -r var value <<- EOF
+			$line
+		EOF
+		case "$var" in
+		*[!a-zA-Z0-9_]* | '') continue ;;
+		esac
+		UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES+: }$var"
+	done
+}
+
+in_each_config_dir_reversed_labwc() {
+	# do normal stuff
+	in_each_config_dir_reversed "$1"
+
+	# fill UWSM_FINALIZE_VARNAMES with varnames from labwc env files
+	if [ -r "${1}/labwc/environment" ]; then
+		echo "Collecting varnames from \"${1}/labwc/environment\""
+		labwc_environment2finalize < "${1}/labwc/environment"
+		export UWSM_FINALIZE_VARNAMES
+	fi
 }

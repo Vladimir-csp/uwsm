@@ -18,4 +18,8 @@ quirks_sway() {
 		*) export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP}:wlroots" ;;
 		esac
 	fi
+
+	# mark additional vars for export on finalize
+	UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES+: }SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME"
+	export UWSM_FINALIZE_VARNAMES
 }
