@@ -2335,6 +2335,7 @@ def prepare_env_gen_sh(random_mark):
     # vars for use in plugins
     shell_definitions = dedent(
         f"""
+        # vars for plugins
         __SELF_NAME__={shlex.quote(BIN_NAME)}
         __WM_ID__={shlex.quote(CompGlobals.id)}
         __WM_ID_UNIT_STRING__={shlex.quote(CompGlobals.id_unit_string)}
@@ -2343,6 +2344,8 @@ def prepare_env_gen_sh(random_mark):
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(CompGlobals.desktop_names[0])}
         __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if CompGlobals.cli_desktop_names_exclusive else 'false'}
         __OIFS__=" \t\n"
+        # context marker for profile scripting
+        IN_UWSM_ENV_PRELOADER=true
         """
     )
 
@@ -2507,7 +2510,7 @@ def prepare_env_gen_sh(random_mark):
     shell_print_env = dedent(
         f"""
         printf "%s" "{random_mark}"
-        env -0
+        exec env -0
         """
     )
 
