@@ -240,16 +240,21 @@ https://github.com/minego/uwsm.nix
 </details>
 
 Runtime dependencies:
-- `waitpid` (from `util-linux` or `util-linux-extra` package)
-- `whiptail` (optional, for `select` feature, from `whiptail` or `libnewt` package)
-- a dmenu-like menu (optional, for `uuctl` script), supported:
-    - fuzzel
-    - wofi
-    - rofi
-    - tofi
-    - bemenu
-    - wmenu
-    - dmenu
+- python modules:
+    - xdg (pyxdg)
+    - dbus (dbus_python)
+- `waitpid` (optional, but recommended for resources; from `util-linux` or
+  `util-linux-extra` package)
+- `whiptail` (optional, for `select` feature; from `whiptail` or `libnewt`
+   package)
+- a dmenu-like menu (optional; for `uuctl` script), supported:
+    - `fuzzel`
+    - `wofi`
+    - `rofi`
+    - `tofi`
+    - `bemenu`
+    - `wmenu`
+    - `dmenu`
 
 ### 2. Service startup notification and vars set by compositor
 
