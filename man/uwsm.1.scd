@@ -69,7 +69,7 @@ In XDG config hierarchy:
 
 ## Login Sequence Integration
 
-*uwsm* can be launched by using conditional _exec_ in shell profile to replace
+*uwsm* can be launched by using conditional *exec* in shell profile to replace
 login shell (see _Shell Profile Integration_ section).
 
 Alternatively "*uwsm start* ..." command can be put into wayland session's
@@ -105,7 +105,8 @@ for all templated units.
 At the stage of *graphical-session-pre.target* environment is
 sourced from shell profile and from uwsm environment _files_. The delta is
 exported to systemd and dbus activation environments by environment preloader
-service and is marked for cleanup at shutdown stage.
+service and is marked for cleanup at shutdown stage. Preloader shell context
+for convenience has *IN_UWSM_ENV_PRELOADER* var set to *true*.
 
 At the stage of *graphical-session.target* the main compositor unit is started.
 

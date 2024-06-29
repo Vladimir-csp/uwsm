@@ -70,7 +70,7 @@ Currently included:
 Idempotently (well, best-effort-idempotently) handles environment.
 </summary>
 
-- On startup environment is prepared by:
+- On startup a specialized unit prepares environment by:
   - sourcing shell profile
   - sourcing `uwsm-env`, `uwsm-env-${desktop}` files from each dir of reversed
     `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}` (in increasing priority), where
@@ -85,6 +85,15 @@ Idempotently (well, best-effort-idempotently) handles environment.
   - comparing environment before and after preparation procedures
   - boolean operations with predefined lists
   - manually exported vars by `uwsm finalize` action
+
+Summary of where to put a user-level var:
+- For entire user's context: define in `${XDG_CONFIG_HOME}/environment.d/*.conf` (see `man 5 environment.d`)
+- For login session context: export in `~/.profile` (may have caveats, see your shell's manual)
+- For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm-env`
+- For uwsm-managed graphical session of specific compositor: export in `${XDG_CONFIG_HOME}/uwsm-env-${desktop}`
+
+Also for convenience environment preloader defines `IN_UWSM_ENV_PRELOADER=true`
+variable, which can be probed from shell profile to do things conditionally.
 
 </details>
 
@@ -450,7 +459,7 @@ login shell.
 `exec` in shell profile causes `uwsm` to replace login shell, binding it to
 user's login session.
 
-#### From display manager
+#### From a display manager
 
 To launch uwsm from a display/login manager, `uwsm` can be used inside desktop
 entries. Example `/usr/local/share/wayland-sessions/my-compositor.desktop`:
