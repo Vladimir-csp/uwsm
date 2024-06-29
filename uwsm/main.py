@@ -2060,6 +2060,14 @@ class Args:
         parsers["may_start_verbosity"].add_argument(
             "-q", action="store_true", dest="quiet", help="Do not show anything."
         )
+        parsers["may_start"].add_argument(
+            "-g",
+            type=int,
+            dest="gst_seconds",
+            metavar="S",
+            default=60,
+            help="Seconds to wait for graphical.target in queue (default: 60; 0 or less disables check).",
+        )
 
         # aux subcommand
         parsers["aux"] = parsers["main_subparsers"].add_parser(
@@ -4059,19 +4067,63 @@ def main():
                 )
 
         # check for graphical target
-        try:
-            bus_system = DbusInteractions("system")
-            print_debug("bus_system initial", bus_system)
-            units = bus_system.list_units_by_patterns(
-                ["active", "activating"], ["graphical.target"]
-            )
-            print_debug("graphical.target units", units)
-            if len(units) < 1:
-                dealbreakers.append("System has not reached graphical.target")
-        except Exception as caught_exception:
-            print_error("Could not check if graphical.target is reached!")
-            print_error(caught_exception)
-            sys.exit(1)
+        if Args.parsed.gst_seconds > 0:
+            try:
+                bus_system = DbusInteractions("system")
+                print_debug("bus_system initial", bus_system)
+
+                # initial check
+                units = bus_system.list_units_by_patterns(
+                    ["active", "activating"], ["graphical.target"]
+                )
+                print_debug("graphical.target units", units)
+
+                if len(units) < 1:
+                    # check if graphical.target is queued for startup,
+                    # wait if it is, recheck when it leaves queue.
+                    gst_seen_in_queue = False
+                    spacer = ""
+                    for attempt in range(Args.parsed.gst_seconds, -1, -1):
+                        jobs = (
+                            (str(unit), str(state))
+                            for _, unit, state, _, _, _ in bus_system.list_systemd_jobs()
+                        )
+                        print_debug("system jobs", jobs)
+                        if ("graphical.target", "start") in jobs:
+                            gst_seen_in_queue = True
+                            if (
+                                not Args.parsed.quiet
+                                and attempt == Args.parsed.gst_seconds
+                            ):
+                                print_normal(
+                                    f"graphical.target is queued for start, waiting for {Args.parsed.gst_seconds}s...",
+                                )
+                            elif not Args.parsed.quiet and (
+                                attempt % 10 == 0 or attempt == 15 or attempt < 10
+                            ):
+                                print_normal(f"{spacer}{attempt}", end="")
+                                spacer = " "
+                            if attempt != 0:
+                                time.sleep(1)
+                        else:
+                            break
+
+                    if not Args.parsed.quiet and gst_seen_in_queue:
+                        print_normal("")
+
+                    # recheck graphical.target
+                    units = bus_system.list_units_by_patterns(
+                        ["active", "activating"], ["graphical.target"]
+                    )
+                    print_debug("graphical.target units", units)
+                    if len(units) < 1:
+                        if not Args.parsed.quiet and gst_seen_in_queue:
+                            print_warning("Timed out.")
+                        dealbreakers.append("System has not reached graphical.target")
+            except Exception as caught_exception:
+                print_error("Could not check if graphical.target is reached!")
+                print_error(caught_exception)
+                sys.exit(1)
 
         if dealbreakers:
             if Args.parsed.verbose or (
