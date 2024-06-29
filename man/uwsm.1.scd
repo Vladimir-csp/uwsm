@@ -182,10 +182,13 @@ general is in active or activating state.
 
 *may-start*:
 
-	*uwsm* check may-start [-h] [-v|-q] [_N_ ...]
+	*uwsm* check may-start [-h] [-g [_S_]] [-v|-q] [_N_ ...]
 
-|[     *-v*
-:< show all failed tests
+|[     *-g* _S_
+:< wait _S_ seconds for graphical.target in queue (default: 60; 0 or
+   less disables check).
+|      *-v*
+:  show all failed tests
 |      *-q*
 :  be quiet
 |      _N_ ...
