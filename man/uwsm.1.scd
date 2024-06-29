@@ -260,10 +260,13 @@ For running by a compositor on startup.
 	*uwsm* finalize [-h] [_VAR_NAME_ ...]
 
 Exports *WAYLAND_DISPLAY*, *DISPLAY* and any defined vars mentioned by names
-in arguments. Sends startup notification for the unit to systemd user manager.
+in arguments or in *UWSM_FINALIZE_VARNAMES* variable. Then sends startup
+notification for the unit to systemd user manager.
 
 *This is required* to be run by compositor, otherwise *wayland-session@.service*
 unit will terminate due to startup timeout.
+
+*UWSM_FINALIZE_VARNAMES* variable can be prefilled by plugins.
 
 ## stop
 

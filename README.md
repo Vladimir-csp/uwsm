@@ -240,8 +240,8 @@ https://github.com/minego/uwsm.nix
 </details>
 
 Runtime dependencies:
-- `waitpid` (`util-linux` or `util-linux-extra` package)
-- `whiptail` (optional, for `select` feature, `whiptail` or `libnewt` package)
+- `waitpid` (from `util-linux` or `util-linux-extra` package)
+- `whiptail` (optional, for `select` feature, from `whiptail` or `libnewt` package)
 - a dmenu-like menu (optional, for `uuctl` script), supported:
     - fuzzel
     - wofi
@@ -263,7 +263,8 @@ Details
 
 - It fills systemd and dbus environments with essential vars set by compositor:
   `WAYLAND_DISPLAY`, `DISPLAY`
-- Any additional vars can be given as arguments by name.
+- Any additional vars can be given as arguments by name or listed in
+ `UWSM_FINALIZE_VARNAMES` var, which is also pre-filled by plugins.
 - Undefined vars are silently ignored.
 - Any exported variables are also added to cleanup list.
 - If environment export is successful, it signals compositor service readiness,
@@ -272,7 +273,8 @@ Details
 
 </details>
 
-Example snippet for sway config:
+Example snippet for sway config (these vars are already covered by sway plugin
+by adding them to `UWSM_FINALIZE_VARNAMES` var, listed here just for clearness):
 
 `exec exec uwsm finalize SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME`
 
@@ -595,7 +597,7 @@ Those variable names, plus `varnames.always_cleanup` minus
 started state. Activation environments will also need to receive essential
 variables like `WAYLAND_DISPLAY` to launch graphical applications successfully.
 
-`uwsm finalize [VAR [VAR2...]]` runs:
+`uwsm finalize [VAR [VAR2...]]` essentially performs action analogous to:
 
 ```
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
@@ -603,7 +605,9 @@ systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
 systemd-notify --ready
 ```
 
-The first two together might be an overkill.
+(`dbus-update-activation-environment` is skpped for `dbus-broker`)
+
+Additional variable names are taken from `UWSM_FINALIZE_VARNAMES` var.
 
 Only defined variables are used. Variables that are not blacklisted by
 `varnames.never_cleanup` set are also added to cleanup list in runtime dir.
