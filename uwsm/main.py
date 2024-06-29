@@ -30,6 +30,7 @@ import traceback
 import stat
 from typing import List, Callable
 from urllib import parse as urlparse
+from select import select
 
 from xdg import BaseDirectory
 from xdg.util import which
@@ -1412,6 +1413,12 @@ def generate_units():
             """
         ),
     )
+    # for bindpid use lightweight waitpid binary if available,
+    # otherwise use aux waitpid shim
+    if which("waitpid"):
+        bindpid_cmd = "waitpid -e"
+    else:
+        bindpid_cmd = "uwsm aux waitpid"
     update_unit(
         "wayland-session-bindpid@.service",
         dedent(
@@ -1426,7 +1433,7 @@ def generate_units():
             OnFailure=wayland-session-shutdown.target
             [Service]
             Type=exec
-            ExecStart=waitpid -e %i
+            ExecStart={bindpid_cmd} %i
             Restart=no
             SyslogIdentifier={BIN_NAME}_bindpid
             Slice=background.slice
@@ -2129,6 +2136,21 @@ class Args:
                   stop	daemon is stopped\n
                 """
             ),
+        )
+        parsers["waitpid"] = parsers["aux_subparsers"].add_parser(
+            "waitpid",
+            formatter_class=HelpFormatterNewlines,
+            help="Waits for a PID to exit (for use in wayland-session-bindpid@.service).",
+            description=(
+                "Exits successfully when a process by given PID ends, or if it does not exist. "
+                "Used in wayland-session-bindpid@.service as a shim for waitpid if it is unavailable."
+            ),
+        )
+        parsers["waitpid"].add_argument(
+            "pid",
+            type=int,
+            metavar="PID",
+            help="PID to wait for",
         )
 
         if custom_args is None:
@@ -3996,7 +4018,9 @@ def main():
     #### FINALIZE
     elif Args.parsed.mode == "finalize":
         try:
-            finalize(Args.parsed.env_names + os.getenv('UWSM_FINALIZE_VARNAMES', '').split())
+            finalize(
+                Args.parsed.env_names + os.getenv("UWSM_FINALIZE_VARNAMES", "").split()
+            )
         except Exception as caught_exception:
             print_error(caught_exception, notify=1)
 
@@ -4145,7 +4169,7 @@ def main():
 
     #### AUX
     elif Args.parsed.mode == "aux":
-        manager_pid = int(os.getenv("MANAGERPID", ""))
+        manager_pid = int(os.getenv("MANAGERPID", "0"))
         ppid = int(os.getppid())
         print_debug(f"manager_pid: {manager_pid}, ppid: {ppid}")
         if not manager_pid or manager_pid != ppid:
@@ -4188,3 +4212,13 @@ def main():
             except Exception as caught_exception:
                 print_error(caught_exception)
                 sys.exit(1)
+
+        elif Args.parsed.aux_action == "waitpid":
+            try:
+                pid_fd = os.pidfd_open(Args.parsed.pid)
+            except ProcessLookupError:
+                print_normal(f"Process with PID {Args.parsed.pid} not found.")
+                sys.exit(0)
+            select([pid_fd], [], [])
+            print_normal(f"Process with PID {Args.parsed.pid} has ended.")
+            sys.exit(0)
