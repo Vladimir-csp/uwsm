@@ -23,6 +23,8 @@ Depends:
 Recommends:
  whiptail,
  fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu
+Suggests:
+ dbus-broker
 Description: Universal Wayland Session Manager
  Provides graphical session with environment management, XDG autostart, and
  clean shutdown by wrapping standalone Wayland compositors into a set of systemd
