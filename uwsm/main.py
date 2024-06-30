@@ -1346,6 +1346,8 @@ def generate_units():
             CollectMode=inactive-or-failed
             OnFailure=wayland-session-shutdown.target
             OnSuccess=wayland-session-shutdown.target
+            OnFailureJobMode=replace-irreversibly
+            OnSuccessJobMode=replace-irreversibly
             [Service]
             Type=oneshot
             RemainAfterExit=yes
@@ -1378,6 +1380,8 @@ def generate_units():
             CollectMode=inactive-or-failed
             OnFailure=wayland-session-shutdown.target
             OnSuccess=wayland-session-shutdown.target
+            OnFailureJobMode=replace-irreversibly
+            OnSuccessJobMode=replace-irreversibly
             [Service]
             # awaits for 'systemd-notify --ready' from compositor child
             # should be issued by '{BIN_NAME} finalize'
@@ -1431,6 +1435,8 @@ def generate_units():
             CollectMode=inactive-or-failed
             OnSuccess=wayland-session-shutdown.target
             OnFailure=wayland-session-shutdown.target
+            OnFailureJobMode=replace-irreversibly
+            OnSuccessJobMode=replace-irreversibly
             [Service]
             Type=exec
             ExecStart={bindpid_cmd} %i
