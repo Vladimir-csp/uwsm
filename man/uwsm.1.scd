@@ -58,6 +58,10 @@ In XDG config hierarchy:
 :< (*true*|*false*)
 | 
 :  Put compositor unit in *session.slice*
+|  *UWSM_FINALIZE_VARNAMES*
+:  (whitespace-separated names of env vars)
+| 
+:  Additional variables for "*uwsm finalize*"
 |  *UWSM_APP_UNIT_TYPE*
 :  (*service*|*scope*)
 | 
