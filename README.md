@@ -554,24 +554,26 @@ Basic set of generated units:
   - `app-@autostart.service.d/slice-tweak.conf` - assigns XDG autostart apps to
     `app-graphical.slice`
 - shutdown and cleanup units
-  - `wayland-session-shutdown.target` - conflicts with operational units.
-    Triggered by the end of `wayland-wm*.service` units for more robust cleanup,
-    including on failures. But can also be called manually for shutdown.
   - `wayland-session-bindpid@.service` - starts `waitpid` utility for a given
     PID. Invokes `wayland-session-shutdown.target` when deactivated.
-    Started by `uwsm start`.
+    `uwsm start` starts this unit pointing to itself just before replacing
+    itself with `systemctl` unit startup command.
+  - `wayland-session-shutdown.target` - conflicts with operational units.
+    Triggered by deactivation of `wayland-wm*@*.service` and
+    `wayland-session-bindpid@*.service` units, both successful or failed. But
+    can also be called manually for shutdown.
 
 After units are generated, compositor can be started by:
 `systemctl --user start wayland-wm@${compositor}.service`
 
 But this would run it completely disconnected from a login session or any
 process that started it. To fix that use `wayland-session-bindpid@.service` to
-track PID of login shell and stop graphical session when it exits:
+track PID of login shell (`$$`) and stop graphical session when it exits:
 
 `systemctl --user start wayland-session-bindpid@$$.service`
 
-Add `--wait` to hold the terminal until session ends, `exec` it to bind to login
-session:
+Add `--wait` to hold the terminal until session ends, `exec` it to replace login
+shell with `systemctl` invocation reusing its PID:
 
 `exec systemctl --user start --wait wayland-wm@${compositor}.service`
 
@@ -615,7 +617,7 @@ systemd-notify --ready
 Additional variable names are taken from `UWSM_FINALIZE_VARNAMES` var.
 
 Only defined variables are used. Variables that are not blacklisted by
-`varnames.never_cleanup` set are also added to cleanup list in runtime dir.
+`varnames.never_cleanup` set are also added to cleanup list in the runtime dir.
 
 ### Stop
 
@@ -625,8 +627,10 @@ stopped by systemd.
 
 Wildcard `systemctl --user stop "wayland-wm@*.service"` will also work.
 
-If start command was run with `exec` from login shell or `.profile`, this stop
-command also doubles as a logout command.
+Or activate shutdown target: `systemctl --user start wayland-session-shutdown.target`
+
+If an instance of `wayland-session-bindpid@.service` is active and pointing to a
+PID in login session, this stop command also doubles as a logout command.
 
 When `wayland-wm-env@${compositor}.service` is stopped, `uwsm aux cleanup-env`
 is launched. It looks for **any** cleanup files (`env_names_for_cleanup_*`) in
@@ -653,18 +657,31 @@ conditions are a recommendation:
 ```
 MY_COMPOSITOR=sway
 if [ "${0}" != "${0#-}" ] &&
+   ! systemctl --user is-active -q wayland-wm@*.service &&
    [ "$XDG_VTNR" = "1" ] &&
-   systemctl is-active -q graphical.target &&
-   ! systemctl --user is-active -q wayland-wm@*.service
+   {
+       # wait while graphical.target is in startup queue
+       while case "$(systemctl list-jobs --plain --no-legend --full graphical.target)" in
+       *start*) true ;; *) false ;; esac; do
+         sleep 1
+       done
+       systemctl is-active -q graphical.target
+   }
 then
+    # generate units
     uwsm start -o ${MY_COMPOSITOR}
-    trap "if systemctl --user is-active -q wayland-wm@${MY_COMPOSITOR}.service ; then systemctl --user --stop wayland-wm@${MY_COMPOSITOR}.service ; fi" INT EXIT HUP TERM
+    # bind wayland session to login shell PID $$
     echo Starting ${MY_COMPOSITOR} compositor
-    systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service &
-    wait
-    exit
+    systemctl --user start wayland-session-bindpid@$$.service &&
+    exec systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service
 fi
 ```
+
+`uwsm start` also has a mechanism that holds the login session open until the
+compositor unit is deactivated. It works by forking a process immune to `TERM`
+and `HUP` signals inside login session. This process finds compositor unit's
+`MainPID` and waits until it ends. This mechanism would be too complicated to
+replicate in shell for purposes of this demonstration.
 
 </details>
 
@@ -737,6 +754,8 @@ quirks__my_cool_wm() {
   # or set a var to modify what sourcing uwsm-env, uwsm-env-${__WM_ID__}
   # in the next stage will do
   ...
+  # add a var to be exported by uwsm finalize:
+  UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES:+ }ANOTHER_VAR1 ANOTHER_VAR2"
 }
 
 in_each_config_dir_reversed__my_cool_wm() {
