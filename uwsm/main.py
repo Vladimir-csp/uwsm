@@ -3859,6 +3859,18 @@ def stop_wm():
     return True
 
 
+def waitpid(pid: int):
+    "Waits for given PID to exit"
+    try:
+        pid_fd = os.pidfd_open(pid)
+    except ProcessLookupError:
+        print_normal(f"Process with PID {pid} not found.")
+        return
+    select([pid_fd], [], [])
+    print_normal(f"Process with PID {pid} has ended.")
+    return
+
+
 def main():
     "UWSM main entrypoint"
 
@@ -3981,6 +3993,70 @@ def main():
                 check=True,
             )
             print_debug(sprc)
+
+            # fork out a process that will hold session scope open
+            # until compositor unit is stopped
+            proc = os.fork()
+            if proc == 0:
+                # ignore HUP and TERM
+                signal.signal(signal.SIGHUP, signal.SIG_IGN)
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+                # 5 seconds should be more than enough to wait for compositor activation
+                # 0.5s between 10 attempts
+                counter = 10
+                bus_session = DbusInteractions("session")
+                print_debug("bus_session holder fork", bus_session)
+                for attempt in range(10, -1, -1):
+                    if attempt == 0:
+                        print_warning(
+                            f"Timed out waiting for activation of wayland-wm@{CompGlobals.id_unit_string}.service"
+                        )
+                        sys.exit(1)
+
+                    time.sleep(0.5)
+                    print_debug(f"holder attempt {attempt}")
+
+                    # query systemd dbus for active matching units
+                    units = bus_session.list_units_by_patterns(
+                        ["active", "activating"],
+                        [f"wayland-wm@{CompGlobals.id_unit_string}.service"],
+                    )
+                    print_debug("holder units", units)
+                    if len(units) > 0:
+                        break
+
+                # Strangely, MainPID unit property is not accessible via DBus.
+                # systemctl to the rescue!
+                sprc = subprocess.run(
+                    [
+                        "systemctl",
+                        "--user",
+                        "show",
+                        "--property",
+                        "MainPID",
+                        "--value",
+                        f"wayland-wm@{CompGlobals.id_unit_string}.service",
+                    ],
+                    check=True,
+                    text=True,
+                    capture_output=True,
+                )
+                cpid = sprc.stdout.strip()
+                if not cpid or not cpid.isnumeric():
+                    print_warning(
+                        f"Could not get MainPID of wayland-wm@{CompGlobals.id_unit_string}.service"
+                    )
+                    sys.exit(1)
+
+                print_normal(f"Holding until PID {cpid} exits")
+                # use lightweight waitpid if available
+                if which("waitpid"):
+                    os.execlp("waitpid", "waitpid", "-e", cpid)
+                else:
+                    waitpid(int(cpid))
+                    sys.exit(0)
+                # end of fork
 
             # replace ourselves with systemctl
             # this will start the main compositor unit
@@ -4220,11 +4296,5 @@ def main():
                 sys.exit(1)
 
         elif Args.parsed.aux_action == "waitpid":
-            try:
-                pid_fd = os.pidfd_open(Args.parsed.pid)
-            except ProcessLookupError:
-                print_normal(f"Process with PID {Args.parsed.pid} not found.")
-                sys.exit(0)
-            select([pid_fd], [], [])
-            print_normal(f"Process with PID {Args.parsed.pid} has ended.")
+            waitpid(Args.parsed.pid)
             sys.exit(0)
