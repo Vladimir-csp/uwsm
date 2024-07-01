@@ -1,6 +1,6 @@
 project(
   'uwsm',
-  version: '0.16.1',
+  version: '0.16.2',
   license: 'MIT',
 )
 
