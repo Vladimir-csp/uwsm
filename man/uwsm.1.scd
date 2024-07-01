@@ -388,7 +388,7 @@ when logged in on VT 1:
 
 ```
 	if uwsm may-start && uwsm select; then
-		exec uwsm start default
+		exec systemd-cat -t uwsm-start uwsm start default
 	fi
 ```
 
@@ -396,15 +396,18 @@ This just starts a specific compositor depending on foreground VT:
 
 ```
 	if uwsm may-start 1; then
-		exec uwsm start sway.desktop
+		exec systemd-cat -t uwsm-start uwsm start sway.desktop
 	elif uwsm may-start 2; then
-		exec uwsm start labwc.desktop
+		exec systemd-cat -t uwsm-start uwsm start labwc.desktop
 	fi
 ```
 
 Using "*uwsm may-start*" as a condition is *essential*, not only to prevent
 accidental startup attempts where they are not expected, but also since startup
 involves sourcing shell profile, which might lead to nasty loops.
+
+*systemd-cat -t uwsm-start* runs the command given to it with its stdout
+connected to the systemd journal, tagged with identifier "uwsm-start".
 
 *exec* allows uwsm to replace login shell in order to properly bind to user
 session and handle session termination.
