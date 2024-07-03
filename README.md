@@ -281,7 +281,7 @@ Details
 Example snippet for sway config (these vars are already covered by sway plugin
 by adding them to `UWSM_FINALIZE_VARNAMES` var, listed here just for clearness):
 
-`exec exec uwsm finalize SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME`
+`exec uwsm finalize SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME`
 
 ### 3. Applications and Slices
 
@@ -352,19 +352,19 @@ Launch
 [proposed](https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/3)
 default terminal:
 
-`bindsym --to-code $mod+t exec exec uwsm app -T`
+`bindsym --to-code $mod+t exec uwsm app -T`
 
 Fuzzel has a very handy launch-prefix option:
 
-`bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='uwsm app --' --log-no-syslog --log-level=warning`
+`bindsym --to-code $mod+r exec fuzzel --launch-prefix='uwsm app --' --log-no-syslog --log-level=warning`
 
 Launch SpaceFM via a desktop entry:
 
-`bindsym --to-code $mod+e exec exec uwsm app spacefm.desktop`
+`bindsym --to-code $mod+e exec uwsm app spacefm.desktop`
 
 Featherpad desktop entry has "standalone-window" action:
 
-`bindsym --to-code $mod+n exec exec uwsm app featherpad.desktop:standalone-window`
+`bindsym --to-code $mod+n exec uwsm app featherpad.desktop:standalone-window`
 
 Unit type of launched apps can be controlled by `-t service|scope` argument or
 setting its default via `UWSM_APP_UNIT_TYPE` env var.
