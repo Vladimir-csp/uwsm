@@ -737,7 +737,7 @@ def get_default_comp_entry():
 
 
 def save_default_comp_entry(default):
-    "Gets saves compositor Desktop Entry ID from {BIN_NAME}-default-id file in config hierarchy"
+    "Saves compositor Desktop Entry ID to {BIN_NAME}-default-id file in config hierarchy"
     if "dry_run" not in Args.parsed or not Args.parsed.dry_run:
         if not os.path.isdir(BaseDirectory.xdg_config_home):
             os.mkdir(BaseDirectory.xdg_config_home)
@@ -754,11 +754,6 @@ def select_comp_entry(default="", just_confirm=False):
     Uses whiptail to select among "wayland-sessions" Desktop Entries.
     Takes a "default" to preselect, "just_confirm" flag to return a found default right away
     """
-
-    if not which("whiptail"):
-        raise FileNotFoundError(
-            '"whiptail" is not in PATH, "select" and "default" are not supported'
-        )
 
     choices_raw: List[tuple[str]] = []
     choices: List[str] = []
@@ -834,6 +829,7 @@ def select_comp_entry(default="", just_confirm=False):
 
     # drop default if not among choices
     if default and default not in choices[::2]:
+        print_warning(f"Default \"{default}\" was not found in wayland-sessions.")
         default = ""
 
     # just spit out default if requested and found
@@ -842,7 +838,15 @@ def select_comp_entry(default="", just_confirm=False):
             if choice == default:
                 return choice
 
-    # no default default here, fail on noninteractive terminal
+    # no default default here
+
+    # fail on missing whiptail
+    if not which("whiptail"):
+        raise FileNotFoundError(
+            '"whiptail" is not in PATH, "select" feature is not supported!'
+        )
+
+    # fail on noninteractive terminal
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         io = []
         if not sys.stdin.isatty():
