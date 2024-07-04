@@ -35,7 +35,7 @@ Uses systemd units and dependencies for startup, operation, and shutdown.
   [structure](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
   of `graphical-session-pre.target`, `graphical-session.target`,
   `xdg-desktop-autostart.target`.
-- Aadds custom nested slices `app-graphical.slice`,
+- Adds custom nested slices `app-graphical.slice`,
   `background-graphical.slice`, `session-graphical.slice` to put apps in and
   terminate them cleanly on exit.
 - Provides convenient way of
@@ -453,21 +453,22 @@ if uwsm check may-start && uwsm select; then
 fi
 ```
 
-`check may-start` checker subcommand, among other things, **screens for being in
-interactive login shell, which is essential**, since profile sourcing can
-otherwise lead to nasty loops.
+`uwsm check may-start` checker subcommand, among other things, **screens for
+being in interactive login shell, which is essential**, since profile sourcing
+can otherwise lead to nasty loops.
 
-`select` shows whiptail menu to select default desktop entry from
-`wayland-sessions`. At this point one can cancel and continue to the normal
-login shell.
+`uwsm start select` shows whiptail menu to select default desktop entry from
+`wayland-sessions` directories. At this point one can cancel and continue with
+the normal login shell.
 
-`systemd-cat -t uwsm_start […]` runs the command given to it with its stdout
-and stderr connected to the systemd journal, tagged with identifier `uwsm_start`.
+`exec` in shell profile causes `uwsm` (via `systemd-cat`) to replace login
+shell, binding it to user's login session.
 
-`start default` launches the previously selected default compositor.
+`systemd-cat -t uwsm_start` part is optional, it executes the command given to
+it (`uwsm`) with its stdout and stderr connected to the systemd journal, tagged
+with identifier `uwsm_start`. Otherwise it might be hard to see the output.
 
-`exec` in shell profile causes `uwsm` (via `systemd-cat`) to replace login shell,
-binding it to user's login session.
+`uwsm start default` launches the previously selected default compositor.
 
 #### From a display manager
 

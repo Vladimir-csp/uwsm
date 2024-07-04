@@ -402,18 +402,18 @@ This just starts a specific compositor depending on foreground VT:
 	fi
 ```
 
-Using "*uwsm may-start*" as a condition is *essential*, not only to prevent
-accidental startup attempts where they are not expected, but also since startup
-involves sourcing shell profile, which might lead to nasty loops.
+Using "*uwsm check may-start*" as a condition is *essential*, not only to
+prevent accidental startup attempts where they are not expected, but also since
+startup involves sourcing shell profile, which might lead to nasty loops.
 
-"*systemd-cat -t uwsm-start*" runs the command given to it with its stdout
-and stderr connected to the systemd journal, tagged with identifier "uwsm_start".
-See _systemd-cat_(1) for more options.
+See _check_ subcommand section for info on *may-start* checker.
 
 *exec* allows uwsm to replace login shell in order to properly bind to user
 session and handle session termination.
 
-See _check_ subcommand section for info on *check may-start*.
+"*systemd-cat -t uwsm_start*" (optional) executes the command given to it
+(*uwsm*) with its stdout and stderr connected to the systemd journal, tagged
+with identifier "uwsm_start". See _systemd-cat(1)_ for more options.
 
 # USE INSIDE DESKTOP ENTRY
 
