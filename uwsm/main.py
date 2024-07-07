@@ -2049,7 +2049,7 @@ class Args:
             help="Checks for start conditions",
             description="Checks whether it is OK to launch a wayland session.",
             epilog=dedent(
-                f"""
+                """
                 Conditions:\n
                   - Running from login shell\n
                   - System is at graphical.target\n
