@@ -1,6 +1,6 @@
 project(
   'uwsm',
-  version: '0.16.3',
+  version: run_command('sh', 'version.sh', check: true).stdout().strip(),
   license: 'MIT',
 )
 

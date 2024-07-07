@@ -207,6 +207,8 @@ Provides helpers and tools for various operations.
 
 ### 1. Building and installing
 
+Checkout the last version-tagged commit. Untagged commits are WIP.
+
 <details><summary>
 Building and installing the python project directly.
 </summary>
@@ -226,6 +228,9 @@ project (see _helpers and tools_ spoiler in
 Building and installing a deb package.
 </summary>
 
+Read and run `./build-deb.sh -i`
+
+Alternatively, 
 ```
 IFS='()' read -r _ current_version _ < debian/changelog
 sudo apt install devscripts
