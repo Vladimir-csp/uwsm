@@ -3446,7 +3446,7 @@ def app_daemon():
     while True:
         # create both pipes right away and make sure they always exist
         fifo_in_path = create_fifo("uwsm-app-daemon-in")
-        fifo_out_path = create_fifo("uwsm-app-daemon-out")
+        _ = create_fifo("uwsm-app-daemon-out")
 
         # argparse exit workaround: read previous wrong args and send error message
         if os.path.isfile(error_flag_path):
@@ -4008,7 +4008,6 @@ def main():
 
                 # 5 seconds should be more than enough to wait for compositor activation
                 # 0.5s between 10 attempts
-                counter = 10
                 bus_session = DbusInteractions("session")
                 print_debug("bus_session holder fork", bus_session)
                 for attempt in range(10, -1, -1):
@@ -4081,11 +4080,10 @@ def main():
     #### STOP
     elif Args.parsed.mode == "stop":
         try:
-            stop_result = stop_wm()
+            stop_wm()
             stop_rc = 0
         except Exception as caught_exception:
             print_error(caught_exception)
-            stop_result = False
             stop_rc = 1
 
         # Args.parsed.remove_units is False when not given, None if given without argument
