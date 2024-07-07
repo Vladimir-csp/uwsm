@@ -920,7 +920,7 @@ def set_systemd_vars(vars_dict: dict):
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
     # check what dbus service is running
-    # if it is not dbus-broker, also set dbus environmetn vars
+    # if it is not dbus-broker, also set dbus environment vars
     dbus_unit = bus_session.get_unit_property("dbus.service", "Id")
     print_debug("dbus.service Id", dbus_unit)
     if dbus_unit != "dbus-broker.service":
