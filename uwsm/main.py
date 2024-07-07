@@ -543,7 +543,7 @@ def entry_parser_session(entry_id, entry_path):
     "parser for wayland-sessions entries, returns ('append', (entry_id, entry))"
     try:
         entry = DesktopEntry(entry_path)
-    except:
+    except Exception:
         print_debug(f"failed parsing {entry_path}, skipping")
         return ("drop", None)
     try:
@@ -566,10 +566,10 @@ def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action
         return ("drop", None)
     try:
         entry = DesktopEntry(entry_path)
-    except:
+    except Exception as caught_exception:
         raise RuntimeError(
             f'Failed to parse entry "{match_entry_id}" from "{entry_path}"'
-        )
+        ) from caught_exception
 
     check_entry_basic(entry, match_entry_action)
 
@@ -600,7 +600,7 @@ def entry_parser_terminal(
         return ("drop", (None, None, None))
     try:
         entry = DesktopEntry(entry_path)
-    except:
+    except Exception:
         print_debug("failed to parse entry")
         Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
@@ -611,7 +611,7 @@ def entry_parser_terminal(
             print_debug("not a TerminalEmulator")
             Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
             return ("drop", (None, None, None))
-    except:
+    except Exception:
         print_debug("failed to get Categories")
         Terminal.neg_cache.update({entry_path: os.path.getmtime(entry_path)})
         return ("drop", (None, None, None))
@@ -994,7 +994,7 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     if category == "runtime":
         try:
             unit_path = BaseDirectory.get_runtime_dir(strict=True)
-        except:
+        except Exception:
             pass
         if not unit_path:
             print_error("Fatal: empty or undefined XDG_RUNTIME_DIR!")
@@ -1673,7 +1673,7 @@ def remove_units(only=None) -> None:
                             )
                             print_debug(f"found {mark_attr}")
                             break
-            except:
+            except Exception:
                 pass
 
     for file_path in unit_files:
@@ -3134,10 +3134,10 @@ def app(
         if main_arg.path:
             try:
                 entry = DesktopEntry(main_arg.path)
-            except:
+            except Exception as caught_exception:
                 raise RuntimeError(
                     f'Failed to parse entry "{main_arg.entry_id}" from "{main_arg.path}"!'
-                )
+                ) from caught_exception
             check_entry_basic(entry, main_arg.entry_action)
 
         # find entry by id
