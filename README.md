@@ -1,8 +1,11 @@
 # Universal Wayland Session Manager
 
-Provides graphical session with environment management, XDG autostart support,
-and clean shutdown by wrapping standalone Wayland compositors into a set of
-systemd units.
+Wraps standalone Wayland compositors into a set of Systemd units on the fly.
+This provides robust session management including environment, XDG autostart
+support, bi-directional binding with login session, and clean shutdown.
+
+For compositors this is an opportunity to offload Systemd integration and
+session/XDG autostart management in Systemd-managed environments.
 
 > [!IMPORTANT]
 > This project is currently in a stable phase with a slow-burning refactoring.
@@ -50,6 +53,16 @@ Systemd units are treated with hierarchy and universality in mind.
 - Templated units with specifiers.
 - Named from common to specific where possible.
 - Allowing for high-level `name-.d` drop-ins.
+
+</details>
+
+<details><summary>
+Bi-directional bind between login session and graphical session.
+</summary>
+
+Using `waitpid` utility (or a built-in shim) together with native systemd
+mechanisms, uwsm binds lifetime of a login session (`session-N.scope` system
+unit) to graphical session (a set of user units) and vice versa.
 
 </details>
 
@@ -178,7 +191,8 @@ Provides helpers and tools for various operations.
   integration into login shell profile)
 - `uwsm app`: for launching applications as scopes or services in proper slices
   - desktop entries or plain executables are supported
-  - support for launching a terminal/in terminal (proposed xdg-terminal-exec)
+  - support for launching a terminal/in terminal
+    ([proposed xdg-terminal-exec](https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/3))
   - flexible unit metadata support
 - `uwsm-app`: a simple and fast shell client to app-daemon feature of uwsm, a
   drop-in replacement of `uwsm app`. The daemon (started on-demand) handles
