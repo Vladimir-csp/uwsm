@@ -7,6 +7,10 @@ if scdoc.found()
     'uwsm-plugins.3.scd',
   ]
 
+  if get_option('fumon').allowed()
+    man_files = man_files + ['fumon.1.scd']
+  endif
+
   foreach filename : man_files
     topic = filename.split('.')[-3].split('/')[-1]
     section = filename.split('.')[-2]

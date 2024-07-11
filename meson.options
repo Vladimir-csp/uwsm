@@ -26,6 +26,12 @@ option(
   description: 'install uuctl',
 )
 option(
+  'fumon',
+  type: 'feature',
+  value: 'disabled',
+  description: 'install fumon',
+)
+option(
   'uwsm-app',
   type: 'feature',
   value: 'disabled',

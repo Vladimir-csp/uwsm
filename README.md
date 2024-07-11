@@ -199,7 +199,8 @@ Provides helpers and tools for various operations.
   finding requested desktop entries, parsing and generation of commands for
   client to execute. This avoids the overhead of repeated python startup and
   increases app launch speed.
-- `uuctl`: a graphical tool for managing user units (uses dmenu-like menus).
+- `uuctl`: graphical (via dmenu-like menus) tool for managing user units.
+- `fumon`: background service for notifying about failed units
 
 </details>
 
@@ -214,12 +215,12 @@ Building and installing the python project directly.
 </summary>
 
 ```
-meson setup --prefix=/usr/local -Duuctl=enabled -Duwsm-app=enabled build
+meson setup --prefix=/usr/local -Duuctl=enabled -Dfumon=enabled -Duwsm-app=enabled build
 meson install -C build
 ```
 
-The example enables optional tools `uuctl` and `uwsm-app` available in this
-project (see _helpers and tools_ spoiler in
+The example enables optional tools `uuctl`, `fumon`, and `uwsm-app` available in
+this project (see _helpers and tools_ spoiler in
 [concepts section](#concepts-and-features) above).
 
 </details>

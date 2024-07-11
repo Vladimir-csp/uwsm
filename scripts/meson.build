@@ -7,8 +7,21 @@ if get_option('uuctl').allowed()
   )
   install_data(
     'uuctl.desktop',
-    rename: 'uuctl.desktop',
     install_dir: join_paths(get_option('datadir'), 'applications'),
+    install_mode: 'rw-r--r--',
+  )
+endif
+
+if get_option('fumon').allowed()
+  install_data(
+    'fumon.sh',
+    rename: 'fumon',
+    install_dir: get_option('bindir'),
+    install_mode: 'rwxr-xr-x',
+  )
+  install_data(
+    'fumon.service',
+    install_dir: join_paths(get_option('prefix'), 'lib/systemd/user'),
     install_mode: 'rw-r--r--',
   )
 endif

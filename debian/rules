@@ -10,7 +10,11 @@ override_dh_auto_configure:
 		--prefix=$(PREFIX) \
 		-Dlicensedir=$(PREFIX)/share/doc/uwsm \
 		-Duuctl=enabled \
+		-Dfumon=enabled \
 		-Duwsm-app=enabled
 
 override_dh_python3:
 	dh_python3 --depends=pyxdg --depends=dbus-python $(PREFIX)/share/uwsm/modules
+
+override_dh_installsystemduser:
+	dh_installsystemduser --no-enable fumon.service
