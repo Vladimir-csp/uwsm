@@ -274,6 +274,8 @@ Runtime dependencies:
     - `bemenu`
     - `wmenu`
     - `dmenu`
+- `notify-send` (optional, for feedback messages; `libnotify-bin` or `libnotify`
+  package)
 
 ### 2. Service startup notification and vars set by compositor
 

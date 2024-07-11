@@ -22,7 +22,8 @@ Depends:
  util-linux-extra
 Recommends:
  whiptail,
- fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu
+ fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu,
+ libnotify-bin
 Suggests:
  dbus-broker
 Description: Universal Wayland Session Manager
