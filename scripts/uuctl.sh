@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# Control user units via dmenu-like menus
+#
 # Part of UWSM, but does not depend on it.
 # https://github.com/Vladimir-csp/uwsm
 # https://gitlab.freedesktop.org/Vladimir-csp/uwsm
@@ -168,9 +170,9 @@ EOF
 UNIT=$(
 	echo "${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${INACTIVE_UNITS}" | "$@" "Select Service: "
 ) || cancel_exit
-UNIT=${UNIT##* }
 STATE=${UNIT##* (}
 STATE=${STATE%%) *}
+UNIT=${UNIT##* }
 
 report "$UNIT"
 
@@ -201,42 +203,111 @@ esac
 
 # compose actions
 ACTIONS=''
-for ACTION in start stop reload restart reset-failed enable disable freeze thaw mask unmask; do
+DISABLE_ACTIONS=''
+ENABLE_ACTIONS=''
+for ACTION in start stop reload restart kill reset-failed enable disable freeze thaw mask unmask; do
 	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
 	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
-	# skip various combinations
+	## skip various combinations
+	# actions unsuited for scopes
 	start+*+type:scope+* | restart+*+type:scope+* | reload+*+type:scope+* | enable+*+type:scope+* | disable+*+type:scope+*) continue ;;
+	# start for active, reloading, can not start, masked
 	start+*+as:activ* | start+*+as:reloading+* | start+*+cstart:no+* | start+*+ufs:masked+*) continue ;;
+	# stop for inactive, deactivating, can not stop, masked
 	stop+*+as:failed+* | stop+*+as:inactive+* | stop+*+as:deactivating+* | stop+*+cstop:no+* | stop+*+ufs:masked+*) continue ;;
+	# kill for inactive or masked
+	kill+*+as:failed+* | kill+*+as:inactive+* | kill+*+ufs:masked+*) continue ;;
 	# strictly speaking, restarting a stopped unit is valid, but exclude it anyway
 	restart+*+as:failed+* | restart+*+as:inactive+* | restart+*+as:deactivating+* | restart+*+ufs:masked+*) continue ;;
+	# reload for inactive or can not reload
 	reload+*+as:failed+* | reload+*+as:inactive+* | reload+*+as:deactivating+* | reload+*+creload:no+*) continue ;;
+	# reset-failed for not failed
 	reset-failed+*+as:[!f][!a][!i]*) continue ;;
+	# freeze for can not freeze, frozen, inactive, masked
 	freeze+*+cfreeze:no+* | freeze+*+fs:frozen+* | freeze+*+as:failed+* | freeze+*+as:inactive+* | freeze+*+as:deactivating+* | freeze+*+ufs:masked+*) continue ;;
+	# thaw for not frozen
 	thaw+*+fs:[!f][!r][!o]*) continue ;;
+	# mask for masked, active
 	mask+*+ufs:masked+* | mask+*+as:activ* | mask+*+as:reloading+*) continue ;;
+	# unmask for not masked
 	unmask+*+ufs:[!m][!a][!s][!k][!e][!d]*) continue ;;
+	# enable for empty install, generated, enabled, masked
 	enable+*+install:+* | enable+*+ufs:generated+* | enable+*+ufs:enabled+* | enable+*+ufs:runtime-enabled+* | enable+*+ufs:masked+*) continue ;;
+	# disable for generated, transient
 	disable+*+ufs:generated+* | disable+*+ufs:transient+*) continue ;;
-	# special handling of some surviving actions
-	disable+*+ufs:runtime-enabled+*+as:activ* | disable+*+ufs:runtime-enabled+*+as:reloading*) ACTIONS="${ACTIONS}${ACTIONS:+$N}disable --runtime${N}disable --runtime --now" ;;
-	disable+*+ufs:runtime-enabled+*) ACTIONS="${ACTIONS}${ACTIONS:+$N}disable --runtime" ;;
-	disable+*+as:activ* | disable+*+as:reloading*) ACTIONS="${ACTIONS}${ACTIONS:+$N}disable${N}disable --now" ;;
-	enable+*+as:activ* | enable+*+as:reloading*) ACTIONS="${ACTIONS}${ACTIONS:+$N}enable${N}enable --runtime" ;;
-	enable+*) ACTIONS="${ACTIONS}${ACTIONS:+$N}enable${N}enable --now${N}enable --runtime${N}enable --runtime --now" ;;
-	# another skip, has to be down here
+	## special handling of some surviving actions
+	disable+*+ufs:runtime-enabled+*+as:activ* | disable+*+ufs:runtime-enabled+*+as:reloading*)
+		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime${N}disable --runtime --now"
+		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
+		;;
+	disable+*+ufs:runtime-enabled+*)
+		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime"
+		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
+		;;
+	disable+*+as:activ* | disable+*+as:reloading*)
+		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable${N}disable --now"
+		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
+		;;
+	enable+*+as:activ* | enable+*+as:reloading*)
+		ENABLE_ACTIONS="${ENABLE_ACTIONS}${ENABLE_ACTIONS:+$N}enable${N}enable --runtime"
+		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
+		;;
+	enable+*)
+		ENABLE_ACTIONS="${ENABLE_ACTIONS}${ENABLE_ACTIONS:+$N}enable${N}enable --now${N}enable --runtime${N}enable --runtime --now"
+		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
+		;;
+	## another skip, has to be down here, disable for not enabled
 	disable+*+ufs:[!e][!n][!a][!b][!l][!e][!d]*) continue ;;
-	# generic add surviving action
+	## generic add surviving action
 	*) ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}" ;;
 	esac
 done
 
 # select action
 ACTION=$(
-	printf '%s' "$ACTIONS" | "$@" "${DESCRIPTION#*=} (${STATE}): "
+	"$@" "${DESCRIPTION#*=} (${STATE}): " <<- EOF
+		$ACTIONS
+	EOF
 ) || cancel_exit
 
 report "$ACTION"
+
+# additional selections
+case "$ACTION" in
+enable)
+	if [ -n "$ENABLE_ACTIONS" ]; then
+		ACTION=$(
+			"$@" "Select enable action for ${DESCRIPTION#*=}: " <<- EOF
+				$ENABLE_ACTIONS
+			EOF
+		) || cancel_exit
+	fi
+	;;
+disable)
+	if [ -n "$DISABLE_ACTIONS" ]; then
+		ACTION=$(
+			"$@" "Select disable action for ${DESCRIPTION#*=}: " <<- EOF
+				$DISABLE_ACTIONS
+			EOF
+		) || cancel_exit
+	fi
+	;;
+kill)
+	SIGNAL=$(
+		"$@" "Select signal for ${DESCRIPTION#*=}: " <<- EOF
+			SIGTERM
+			SIGHUP
+			SIGINT
+			SIGUSR1
+			SIGUSR2
+			SIGABRT
+			SIGKILL
+		EOF
+	) || cancel_exit
+	report "$SIGNAL"
+	ACTION="kill --signal=$SIGNAL"
+	;;
+esac
 
 # apply selected action
 if command -v notify-send > /dev/null; then
@@ -247,13 +318,13 @@ if command -v notify-send > /dev/null; then
 	)
 	RC="$?"
 	if [ "$RC" = "0" ] && [ -z "$ERR" ]; then
-		AST="${ACTION} successful"
+		AST="${ACTION%% *} request successful"
 		URG=normal
 	elif [ "$RC" = "0" ]; then
-		AST="${ACTION} probably successful"
+		AST="${ACTION%% *} request probably successful"
 		URG=normal
 	else
-		AST="${ACTION} failed (RC $RC)"
+		AST="${ACTION%% *} failed (RC $RC)"
 		URG=critical
 	fi
 	notify-send -a "$SELF" -u "$URG" "$AST" "${UNIT}${ERR:+:$N}${ERR}"
