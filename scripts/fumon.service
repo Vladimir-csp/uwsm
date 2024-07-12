@@ -1,12 +1,12 @@
 [Unit]
 Description=Failed unit monitor
 Documentation=man:fumon(1) man:busctl(1)
-PartOf=graphical-session.target
+Requisite=graphical-session.target
 After=graphical-session.target
 
 [Service]
 Type=exec
-ExecCondition=which notify-send
+ExecCondition=sh -c "command -v notify-send > /dev/null"
 ExecStart=fumon
 Restart=on-failure
 Slice=background-graphical.slice
