@@ -1343,7 +1343,7 @@ def generate_units():
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Environment preloader for %I
-            Documentation=man:uwsm(1) man:systemd.service(7)
+            Documentation=man:uwsm(1)
             BindsTo=wayland-session-pre@%i.target
             Before=wayland-session-pre@%i.target
             StopWhenUnneeded=yes
@@ -1371,7 +1371,7 @@ def generate_units():
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Main service for %I
-            Documentation=man:uwsm(1) man:systemd.service(7)
+            Documentation=man:uwsm(1)
             BindsTo=wayland-session@%i.target
             Before=wayland-session@%i.target
             Requires=wayland-wm-env@%i.service graphical-session-pre.target
@@ -1408,7 +1408,7 @@ def generate_units():
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Fast application argument generator
-            Documentation=man:uwsm(1) man:systemd.service(7)
+            Documentation=man:uwsm(1)
             BindsTo=graphical-session.target
             CollectMode=inactive-or-failed
             [Service]
@@ -1435,7 +1435,7 @@ def generate_units():
             [Unit]
             X-UWSM-ID=GENERIC
             Description=Bind graphical session to PID %i
-            Documentation=man:uwsm(1) man:systemd.service(7)
+            Documentation=man:uwsm(1)
             CollectMode=inactive-or-failed
             OnSuccess=wayland-session-shutdown.target
             OnFailure=wayland-session-shutdown.target
