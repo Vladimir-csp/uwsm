@@ -28,19 +28,19 @@ conf.set('PROJECT_VERSION', PROJECT_VERSION)
 conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
 conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
 conf.set('PYTHON_BIN', PYTHON_BIN)
-conf.set('BIN_NAME', UWSM_BIN_NAME)
+conf.set('BIN_NAME', 'uwsm')
 conf.set(
   'BIN_PATH',
   join_paths(
     get_option('prefix'),
     get_option('bindir'),
-    UWSM_BIN_NAME,
+    'uwsm',
   ),
 )
 
 wrapper_file = configure_file(
   input: 'wrapper.py.in',
-  output: UWSM_BIN_NAME,
+  output: 'uwsm',
   configuration: conf,
   install: true,
   install_dir: get_option('bindir'),

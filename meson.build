@@ -44,11 +44,6 @@ if PYTHON_BIN == ''
   PYTHON_BIN = PYTHON_PROG.full_path()
 endif
 
-UWSM_BIN_NAME = get_option('uwsm-bin-name')
-if UWSM_BIN_NAME == ''
-  UWSM_BIN_NAME = meson.project_name()
-endif
-
 COPY_TO_SUBDIR_SCRIPT = '''
 import os
 import sys

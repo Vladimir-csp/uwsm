@@ -15,11 +15,6 @@ option(
   description: 'path to the python binary',
 )
 option(
-  'uwsm-bin-name',
-  type: 'string',
-  description: 'name of the uwsm executable',
-)
-option(
   'uuctl',
   type: 'feature',
   value: 'disabled',

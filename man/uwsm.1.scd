@@ -352,7 +352,7 @@ One command is received per write+close.
 
 The first argument determines the behavior:
 
-- *app*	the rest is processed the same as in "{BIN_NAME} app"
+- *app*	the rest is processed the same as in "uwsm app"
 - *ping*	just "pong" is returned\n
 - *stop*	daemon is stopped\n
 

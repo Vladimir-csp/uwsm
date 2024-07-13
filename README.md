@@ -13,10 +13,6 @@ session/XDG autostart management in Systemd-managed environments.
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
 
-> [!IMPORTANT]
-> `uwsm-bin-name` build option is considered deprecated and will be removed in
-> future versions.
-
 > [!NOTE]
 > It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
