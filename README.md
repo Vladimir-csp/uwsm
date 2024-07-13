@@ -21,7 +21,7 @@ session/XDG autostart management in Systemd-managed environments.
 > environment management and allows proper cleanup. The separate activation
 > environment of the reference D-Bus implementation doesn't allow unsetting
 > vars, so they're set to an empty string instead, as a best effort cleanup. The
-> only way to properly clean up in this case is to run
+> only way to properly clean up the environment in this case is to run
 > `loginctl terminate-user ""`.
 
 ## Concepts and features
@@ -53,7 +53,7 @@ Systemd units are treated with hierarchy and universality in mind.
 </details>
 
 <details><summary>
-Bi-directional bind between login session and graphical session.
+Bi-directional binding between login session and graphical session.
 </summary>
 
 Using `waitpid` utility (or a built-in shim) together with native systemd
@@ -419,6 +419,10 @@ Optional parameters to provide more metadata:
 
 Arguments and metadata are stored in specifier unit drop-ins if needed.
 
+`uwsm start ...` command will wait until graphical session ends, also holding
+open the login session it resides in. Graphical session will also deactivate if
+process that started it ends.
+
 <details><summary>
 Some details
 </summary>
@@ -430,11 +434,11 @@ uwsm start [-[a|e]D DesktopName1[:DesktopMame2:...]] [-N Name] [-C "Compositor d
 If `${compositor}` is a desktop entry ID, `uwsm` will get desktop entry from
 `wayland-sessions` data hierarchy, `Exec` will be used for command line, and
 `DesktopNames` will fill `$XDG_CURRENT_DESKTOP`, `Name` and `Comment` will go to
-units' descriptons.
+units' description.
 
-Arguments provided on command line are appended to the command line of session
-desktop entry (unlike application entries), no argument processing is done
-(Please
+Arguments provided on command line are appended to the command line from
+session's desktop entry (unlike application entries), no argument processing is
+done (Please
 [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose) if
 you encounter any wayland-sessions desktop entry with `%`-fields which would
 require this behavior to be altered).
@@ -453,10 +457,17 @@ There is also a separate `select` action (`uwsm select`) that only selects and
 saves default `${compositor}` and does nothing else, which is handy for seamless
 shell profile integration.
 
-</details>
+Things `uwsm start ...` will do:
+- Prepare unit structure in runtime directory.
+- Fork a process protected from `TERM` and `HUP` signals that will find future
+  compositor unit's `MainPID` and wait for it to end, ensuring login session is
+  kept open until graphical session ends.
+- Start `wayland-session-bindpid@.service` unit pointing to `uwsm`'s own PID to
+  rig graphical session shutdown in case `uwsm` (or login session) ends.
+- Finally, replace itself with `systemctl` command which will actually start the
+  compositor unit and wait while wayland session is running.
 
-When started, `uwsm` will wait while wayland session is running, and terminate
-session if is itself interrupted or terminated.
+</details>
 
 ### Where to launch from
 
