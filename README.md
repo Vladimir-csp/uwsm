@@ -24,6 +24,8 @@ session/XDG autostart management in Systemd-managed environments.
 > only way to properly clean up the environment in this case is to run
 > `loginctl terminate-user ""`.
 
+![uwsm select (via whiptail)](uwsm_select.png)
+
 ## Concepts and features
 
 <details><summary>
