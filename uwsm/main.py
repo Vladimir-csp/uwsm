@@ -758,9 +758,16 @@ def select_comp_entry(default="", just_confirm=False):
     choices_raw: List[tuple[str]] = []
     choices: List[str] = []
 
-    # fill choces list with [entry_id, description, comment]
-    for entry_id, entry in sorted(
-        find_entries("wayland-sessions", parser=entry_parser_session)
+    # Fill choces list with (entry_id, description, comment) tuples.
+    # Sort found entries by entry IDs without .desktop extension, to avoid
+    # '[_-]' vs '.' sorting issues.
+    for _, entry_id, entry in sorted(
+        [
+            (entry_id.removesuffix(".desktop"), entry_id, entry)
+            for entry_id, entry in find_entries(
+                "wayland-sessions", parser=entry_parser_session
+            )
+        ]
     ):
         name: str = entry.getName()
         generic_name: str = entry.getGenericName()
@@ -795,8 +802,7 @@ def select_comp_entry(default="", just_confirm=False):
     # find longest description
     description_length: int = 0
     for choice in choices_raw:
-        if len(choice[1]) > description_length:
-            description_length = len(choice[1])
+        description_length = max(description_length, len(choice[1]))
 
     # pretty format choices
     col_overhead = 10
@@ -829,7 +835,7 @@ def select_comp_entry(default="", just_confirm=False):
 
     # drop default if not among choices
     if default and default not in choices[::2]:
-        print_warning(f"Default \"{default}\" was not found in wayland-sessions.")
+        print_warning(f'Default "{default}" was not found in wayland-sessions.')
         default = ""
 
     # just spit out default if requested and found
