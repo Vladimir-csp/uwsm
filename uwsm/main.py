@@ -2633,8 +2633,13 @@ def prepare_env():
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
 
+    sh_path = which("sh")
+    if not sh_path:
+        print_error(f'"sh" is not in PATH!')
+        sys.exit(1)
+
     sprc = subprocess.run(
-        ["sh", "-"],
+        [sh_path, "-"],
         text=True,
         input=shell_code,
         capture_output=True,
