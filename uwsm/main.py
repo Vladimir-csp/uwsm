@@ -1429,10 +1429,12 @@ def generate_units():
     )
     # for bindpid use lightweight waitpid binary if available,
     # otherwise use aux waitpid shim
-    if which("waitpid"):
-        bindpid_cmd = "waitpid -e"
+    # Ensure that the binary can be found in the service file
+    waitpid_path = which("waitpid")
+    if waitpid_path:
+        bindpid_cmd = f"{waitpid_path} -e"
     else:
-        bindpid_cmd = "uwsm aux waitpid"
+        bindpid_cmd = f"{BIN_PATH} aux waitpid"
     update_unit(
         "wayland-session-bindpid@.service",
         dedent(
