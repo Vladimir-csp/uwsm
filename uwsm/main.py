@@ -1429,10 +1429,12 @@ def generate_units():
     )
     # for bindpid use lightweight waitpid binary if available,
     # otherwise use aux waitpid shim
-    if which("waitpid"):
-        bindpid_cmd = "waitpid -e"
+    # Ensure that the binary can be found in the service file
+    waitpid_path = which("waitpid")
+    if waitpid_path:
+        bindpid_cmd = f"{waitpid_path} -e"
     else:
-        bindpid_cmd = "uwsm aux waitpid"
+        bindpid_cmd = f"{BIN_PATH} aux waitpid"
     update_unit(
         "wayland-session-bindpid@.service",
         dedent(
@@ -2631,8 +2633,13 @@ def prepare_env():
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
 
+    sh_path = which("sh")
+    if not sh_path:
+        print_error(f'"sh" is not in PATH!')
+        sys.exit(1)
+
     sprc = subprocess.run(
-        ["sh", "-"],
+        [sh_path, "-"],
         text=True,
         input=shell_code,
         capture_output=True,
