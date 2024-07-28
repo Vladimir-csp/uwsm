@@ -519,7 +519,9 @@ Things to keep in mind:
 
 - For consistency, command line arguments should mirror the keys of the entry
 - Command in `Exec=` should start with `uwsm start`
-- It should not launch a desktop entry, only an executable.
+- It should not point to itself (as a combination of Desktop Entry ID and Action
+  ID)
+- It should not point to a Desktop Entry ID and Action ID that also uses `uwsm`
 
 Potentially such entries may be found and used by `uwsm` itself, i.e. in shell
 profile integration situation, or when launched manually. Following the
@@ -527,6 +529,10 @@ principles above ensures `uwsm` will properly recognize itself and parse
 requested arguments inside the entry without any side effects.
 
 Testing and feedback is needed.
+
+Aternatively, if a display manager supports wrapper commands/scripts, `uwsm`
+can be inserted there to receive either Entry and Action IDs, or parsed command
+line.
 
 ### How to stop
 

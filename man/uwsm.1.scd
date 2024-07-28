@@ -434,7 +434,9 @@ Things to keep in mind:
 
 - For consistency, command line arguments should mirror the keys of the entry
 - Command in *Exec=* should start with "*uwsm start*"
-- It should not launch a desktop entry, only an executable.
+- It should not point to itself (as a combination of Desktop Entry ID and Action
+  ID)
+- It should not point to a Desktop Entry ID and Action ID that also uses `uwsm`
 
 Potentially such entries may be found and used by *uwsm* itself, i.e. in shell
 profile integration situation, or when launched manually. Following the

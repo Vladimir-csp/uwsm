@@ -3634,6 +3634,7 @@ def fill_wm_globals():
         print_debug(
             f"self_name: {BIN_NAME}\nwm_cmdline[0]: {os.path.basename(CompGlobals.cmdline[0])}"
         )
+
         # if desktop entry uses us, deal with the other self.
         entry_uwsm_args = None
         if os.path.basename(CompGlobals.cmdline[0]) == BIN_NAME:
@@ -3656,9 +3657,10 @@ def fill_wm_globals():
                 print_debug("entry_uwsm_args.parsed", entry_uwsm_args.parsed)
 
                 # check for various incompatibilities
-                if MainArg(entry_uwsm_args.parsed.wm_cmdline[0]).entry_id is not None:
+                entry_main_arg = MainArg(entry_uwsm_args.parsed.wm_cmdline[0])
+                if entry_main_arg.entry_id is not None and (main_arg.entry_id, main_arg.entry_action) == (entry_main_arg.entry_id, entry_main_arg.entry_action):
                     raise ValueError(
-                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to a Desktop Entry "{entry_uwsm_args.parsed.wm_cmdline[0]}"!'
+                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to itself!'
                     )
                 if entry_uwsm_args.parsed.dry_run:
                     raise ValueError(
@@ -3674,6 +3676,37 @@ def fill_wm_globals():
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.parsed.desktop_names}"!'
                     )
+
+                # parse secondary entry
+                if entry_main_arg.entry_id is not None:
+                    # find and parse entry
+                    entries = find_entries(
+                        "wayland-sessions",
+                        parser=entry_parser_by_ids,
+                        parser_args={
+                            "match_entry_id": entry_main_arg.entry_id,
+                            "match_entry_action": entry_main_arg.entry_action,
+                        },
+                    )
+                    if not entries:
+                        raise FileNotFoundError(f'Could not find entry "{entry_main_arg.entry_id}"')
+
+                    entry = entries[0]
+
+                    print_debug("entry", entry)
+
+                    entry_dict = entry_action_keys(entry, entry_action=entry_main_arg.entry_action)
+
+                    # get Exec from entry as CompGlobals.cmdline
+                    entry_cmdline = shlex.split(entry_dict["Exec"])
+
+                    if os.path.basename(entry_cmdline[0]) == BIN_NAME:
+                        raise ValueError(
+                            f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to another Entry that also uses {BIN_NAME}!'
+                        )
+
+                    # combine Exec from secondary entry with arguments from primary entry
+                    entry_uwsm_args.parsed.wm_cmdline = entry_cmdline + entry_uwsm_args.parsed.wm_cmdline[1:]
 
                 # replace CompGlobals.cmdline with Args.parsed.wm_cmdline from entry
                 CompGlobals.cmdline = entry_uwsm_args.parsed.wm_cmdline
