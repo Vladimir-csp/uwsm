@@ -51,6 +51,8 @@ class CompGlobals:
     id: str = None
     # escaped string for unit specifier
     id_unit_string: str = None
+    # basename of cmdline[0]
+    bin_name: str = None
     # processed function-friendly cmdline[0]
     bin_id: str = None
     # XDG_CURRENT_DESKTOP list
@@ -424,7 +426,7 @@ class MainArg:
 
 
 def entry_action_keys(entry, entry_action=None):
-    "Extracts Name, Exec, Icon from entry with or without entry_action"
+    "Extracts Name, Exec, Icon from entry with or without entry_action, returns as dict"
     out = {"Name": entry.getName(), "Exec": entry.getExec(), "Icon": entry.getIcon()}
     if not entry_action:
         return out
@@ -1544,7 +1546,7 @@ def generate_units():
         wm_specific_service_data.append(
             dedent(
                 f"""
-                Description=Main service for {', '.join((s for s in (CompGlobals.name or CompGlobals.cmdline[0], CompGlobals.description) if s))}
+                Description=Main service for {', '.join((s for s in (CompGlobals.name or CompGlobals.bin_name, CompGlobals.description) if s))}
                 """
             )
         )
@@ -1553,13 +1555,21 @@ def generate_units():
     if CompGlobals.cli_desktop_names_exclusive:
         prepend: str = f" -eD \"{':'.join(CompGlobals.cli_desktop_names)}\""
     # desktop names differ from just executable name
-    elif CompGlobals.desktop_names != [CompGlobals.cmdline[0]]:
+    elif CompGlobals.desktop_names != [CompGlobals.bin_name]:
         prepend: str = f" -D \"{':'.join(CompGlobals.desktop_names)}\""
     else:
         prepend: str = ""
 
     # additional args were given on cli
     append: str = f" {shlex.join(CompGlobals.cli_args)}" if CompGlobals.cli_args else ""
+
+    # executable is given by path, hardcode the whole cmdline
+    if "/" in CompGlobals.cmdline[0]:
+        hardcode_exec = True
+        service_exec = f"{BIN_PATH} aux exec {shlex.join(CompGlobals.cmdline)}"
+    else:
+        hardcode_exec = False
+        service_exec = f'{BIN_PATH} aux exec "%I"{append}'
 
     if prepend or append:
         wm_specific_preloader_data.append(
@@ -1572,13 +1582,13 @@ def generate_units():
             )
         )
 
-    if append:
+    if hardcode_exec or append:
         wm_specific_service_data.append(
             dedent(
                 f"""
                 [Service]
                 ExecStart=
-                ExecStart={BIN_PATH} aux exec "%I"{append}
+                ExecStart={service_exec}
                 """
             )
         )
@@ -2610,7 +2620,7 @@ def prepare_env():
     """
 
     print_normal(
-        f"Preparing environment for {CompGlobals.name or CompGlobals.cmdline[0]}..."
+        f"Preparing environment for {CompGlobals.name or CompGlobals.bin_name}..."
     )
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
@@ -3578,6 +3588,7 @@ def fill_wm_globals():
       cli_args
       id
       id_unit_string
+      bin_name
       bin_id
       desktop_names
       cli_desktop_names
@@ -3589,33 +3600,21 @@ def fill_wm_globals():
     based on args or desktop entry
     """
 
-    CompGlobals.id = Args.parsed.wm_cmdline[0]
-
-    if not CompGlobals.id:
+    if not Args.parsed.wm_cmdline or not Args.parsed.wm_cmdline[0]:
         print_error("Compositor is not provided!")
         Args.parsers.start.print_help(file=sys.stderr)
         sys.exit(1)
 
-    # detect and parse desktop entry
-    main_arg = MainArg(CompGlobals.id)
-    if main_arg.path:
-        print_error(
-            f'Paths are not supported, only names or IDs, got: "{CompGlobals.id}"!'
-        )
-        Args.parsers.start.print_help(file=sys.stderr)
-        sys.exit(1)
-
-    if not Val.wm_id.search(CompGlobals.id):
-        print_error(
-            f'"{CompGlobals.id}" does not conform to "^[a-zA-Z0-9_.-]+$" pattern!'
-        )
-        sys.exit(1)
-
-    # escape CompGlobals.id for systemd
-    CompGlobals.id_unit_string = simple_systemd_escape(CompGlobals.id, start=False)
+    # detect and parse executable/desktop entry
+    main_arg = MainArg(Args.parsed.wm_cmdline[0])
 
     if main_arg.entry_id:
-        print_debug(f"Compositor ID is a Desktop Entry: {CompGlobals.id}")
+        print_debug(f"Main arg is a Desktop Entry: {Args.parsed.wm_cmdline[0]}")
+
+        if main_arg.entry_action:
+            CompGlobals.id = f"{main_arg.entry_id}:{main_arg.entry_action}"
+        else:
+            CompGlobals.id = main_arg.entry_id
 
         # find and parse entry
         entries = find_entries(
@@ -3637,14 +3636,15 @@ def fill_wm_globals():
 
         # get Exec from entry as CompGlobals.cmdline
         CompGlobals.cmdline = shlex.split(entry_dict["Exec"])
+        CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
         print_debug(
-            f"self_name: {BIN_NAME}\nwm_cmdline[0]: {os.path.basename(CompGlobals.cmdline[0])}"
+            f"self_name: {BIN_NAME}", f"bin_name: {CompGlobals.bin_name}"
         )
 
         # if desktop entry uses us, deal with the other self.
         entry_uwsm_args = None
-        if os.path.basename(CompGlobals.cmdline[0]) == BIN_NAME:
+        if CompGlobals.bin_name == BIN_NAME:
             try:
                 if (
                     "start" not in CompGlobals.cmdline
@@ -3665,7 +3665,10 @@ def fill_wm_globals():
 
                 # check for various incompatibilities
                 entry_main_arg = MainArg(entry_uwsm_args.parsed.wm_cmdline[0])
-                if entry_main_arg.entry_id is not None and (main_arg.entry_id, main_arg.entry_action) == (entry_main_arg.entry_id, entry_main_arg.entry_action):
+                if entry_main_arg.entry_id is not None and (
+                    main_arg.entry_id,
+                    main_arg.entry_action,
+                ) == (entry_main_arg.entry_id, entry_main_arg.entry_action):
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME} that points to itself!'
                     )
@@ -3696,13 +3699,17 @@ def fill_wm_globals():
                         },
                     )
                     if not entries:
-                        raise FileNotFoundError(f'Could not find entry "{entry_main_arg.entry_id}"')
+                        raise FileNotFoundError(
+                            f'Could not find entry "{entry_main_arg.entry_id}"'
+                        )
 
                     entry = entries[0]
 
                     print_debug("entry", entry)
 
-                    entry_dict = entry_action_keys(entry, entry_action=entry_main_arg.entry_action)
+                    entry_dict = entry_action_keys(
+                        entry, entry_action=entry_main_arg.entry_action
+                    )
 
                     # get Exec from entry as CompGlobals.cmdline
                     entry_cmdline = shlex.split(entry_dict["Exec"])
@@ -3713,10 +3720,13 @@ def fill_wm_globals():
                         )
 
                     # combine Exec from secondary entry with arguments from primary entry
-                    entry_uwsm_args.parsed.wm_cmdline = entry_cmdline + entry_uwsm_args.parsed.wm_cmdline[1:]
+                    entry_uwsm_args.parsed.wm_cmdline = (
+                        entry_cmdline + entry_uwsm_args.parsed.wm_cmdline[1:]
+                    )
 
                 # replace CompGlobals.cmdline with Args.parsed.wm_cmdline from entry
                 CompGlobals.cmdline = entry_uwsm_args.parsed.wm_cmdline
+                CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
             except Exception as caught_exception:
                 print_error(caught_exception)
@@ -3782,7 +3792,7 @@ def fill_wm_globals():
                         else []
                     )
                     + entry.get("DesktopNames", list=True)
-                    + [CompGlobals.cmdline[0]]
+                    + [CompGlobals.bin_name]
                     + (
                         sane_split(entry_uwsm_args.parsed.desktop_names, ":")
                         if entry_uwsm_args is not None
@@ -3792,14 +3802,14 @@ def fill_wm_globals():
                 )
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
-            # fill name and description with fallbacks from: CLI, nested CLI, Entry
+            # fill name and description with fallbacks from: CLI, nested CLI, Entry (without action)
             if Args.parsed.wm_name:
                 CompGlobals.name = Args.parsed.wm_name
             elif entry_uwsm_args is not None and entry_uwsm_args.parsed.wm_name:
                 CompGlobals.name = entry_uwsm_args.parsed.wm_name
             else:
                 CompGlobals.name = " - ".join(
-                    n for n in (entry_dict["Name"], entry.getGenericName()) if n
+                    n for n in (entry.getName(), entry.getGenericName()) if n
                 )
 
             if Args.parsed.wm_comment:
@@ -3810,7 +3820,9 @@ def fill_wm_globals():
                 CompGlobals.description = entry.getComment()
 
     else:
-        print_debug(f"Compositor ID is an executable: {CompGlobals.id}")
+        print_debug(f"Main arg is an executable: {Args.parsed.wm_cmdline[0]}")
+
+        CompGlobals.id = os.path.basename(main_arg.executable)
 
         # check exec
         if not which(CompGlobals.id):
@@ -3818,6 +3830,7 @@ def fill_wm_globals():
             sys.exit(1)
 
         CompGlobals.cmdline = Args.parsed.wm_cmdline
+        CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
         # this does not happen in aux exec mode
         if "desktop_names" in Args.parsed:
@@ -3831,15 +3844,25 @@ def fill_wm_globals():
                         if not is_active()
                         else []
                     )
-                    + [CompGlobals.cmdline[0]]
+                    + [CompGlobals.bin_name]
                     + sane_split(Args.parsed.desktop_names, ":")
                 )
             CompGlobals.name = Args.parsed.wm_name
             CompGlobals.description = Args.parsed.wm_comment
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
+    if not Val.wm_id.search(CompGlobals.id):
+        print_error(
+            f'"{CompGlobals.id}" does not conform to "{Val.wm_id.pattern}" pattern!'
+        )
+        sys.exit(1)
+
+    # escape CompGlobals.id for systemd
+    CompGlobals.id_unit_string = simple_systemd_escape(CompGlobals.id, start=False)
+
     # fill cli-exclusive vars for reproduction in unit drop-ins
     CompGlobals.cli_args = Args.parsed.wm_cmdline[1:]
+
     # this does not happen in aux exec mode
     if "desktop_names" in Args.parsed:
         CompGlobals.cli_desktop_names = sane_split(Args.parsed.desktop_names, ":")
@@ -3861,7 +3884,7 @@ def fill_wm_globals():
 
     # id for functions and env loading
     CompGlobals.bin_id = re.sub(
-        "(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", CompGlobals.cmdline[0]
+        "(^[^a-zA-Z]|[^a-zA-Z0-9_])+", "_", CompGlobals.bin_name
     ).lower()
 
     return True

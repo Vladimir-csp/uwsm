@@ -589,9 +589,9 @@ Basic set of generated units:
   - `background-graphical.slice`
   - `session-graphical.slice`
 - tweaks
-  - `wayland-wm-env@${compositor}.service.d/custom.conf`,
-    `wayland-wm@${compositor}.service.d/custom.conf` - if arguments and/or
-    various names were given on command line, they go here.
+  - `wayland-wm-env@${compositor}.service.d/50_custom.conf`,
+    `wayland-wm@${compositor}.service.d/50_custom.conf` - if arguments and/or
+    various names, path to executable were given on command line, they go here.
   - `app-@autostart.service.d/slice-tweak.conf` - assigns XDG autostart apps to
     `app-graphical.slice`
 - shutdown and cleanup units
