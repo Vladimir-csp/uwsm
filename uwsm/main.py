@@ -412,10 +412,17 @@ class MainArg:
             + ")"
         )
 
+    def check_exec(self):
+        "Checks if executable is reachable and executable"
+        if self.executable is None:
+            raise ValueError(f'Argument is not an executable: {self}')
+        if not which(self.executable):
+            raise FileNotFoundError(f'"{self.executable}" not found or is not executable!')
+
     def check_path(self):
-        "Checks if exists and has appropriate permissions. No path is OK."
+        "Checks if path exists and has appropriate permissions."
         if self.path is None:
-            return
+            raise ValueError(f'Argument is not a path: {self}')
         if not os.path.isfile(self.path):
             raise FileNotFoundError(f'Path "{self.path}" does not exist!')
         if not os.access(self.path, os.R_OK):
@@ -3147,14 +3154,14 @@ def app(
 
     print_debug("main_arg", main_arg)
 
-    if main_arg.path:
+    if main_arg.path is not None:
         main_arg.check_path()
 
-    if main_arg.entry_id:
+    if main_arg.entry_id is not None:
         print_debug("main_arg:", main_arg)
 
         # if given as a path, try parsing and checking entry directly
-        if main_arg.path:
+        if main_arg.path is not None:
             try:
                 entry = DesktopEntry(main_arg.path)
             except Exception as caught_exception:
@@ -3581,7 +3588,7 @@ def create_fifo(path):
     return fifo_path
 
 
-def fill_wm_globals():
+def fill_comp_globals():
     """
     Fills vars in CompGlobals:
       cmdline
@@ -3608,29 +3615,45 @@ def fill_wm_globals():
     # detect and parse executable/desktop entry
     main_arg = MainArg(Args.parsed.wm_cmdline[0])
 
-    if main_arg.entry_id:
+    if main_arg.path is not None:
+        main_arg.check_path()
+
+    if main_arg.entry_id is not None:
         print_debug(f"Main arg is a Desktop Entry: {Args.parsed.wm_cmdline[0]}")
+
+        if main_arg.path is not None:
+
+            # directly parse and check entry
+            try:
+                entry = DesktopEntry(main_arg.path)
+            except Exception as caught_exception:
+                raise RuntimeError(
+                    f'Failed to parse entry "{main_arg.entry_id}" from "{main_arg.path}"!'
+                ) from caught_exception
+            check_entry_basic(entry, main_arg.entry_action)
+
+        else:
+
+            # find and parse entry
+            entries = find_entries(
+                "wayland-sessions",
+                parser=entry_parser_by_ids,
+                parser_args={
+                    "match_entry_id": main_arg.entry_id,
+                    "match_entry_action": main_arg.entry_action,
+                },
+            )
+            if not entries:
+                raise FileNotFoundError(f'Could not find entry "{main_arg.entry_id}"')
+
+            entry = entries[0]
+
+        print_debug("entry", entry)
 
         if main_arg.entry_action:
             CompGlobals.id = f"{main_arg.entry_id}:{main_arg.entry_action}"
         else:
             CompGlobals.id = main_arg.entry_id
-
-        # find and parse entry
-        entries = find_entries(
-            "wayland-sessions",
-            parser=entry_parser_by_ids,
-            parser_args={
-                "match_entry_id": main_arg.entry_id,
-                "match_entry_action": main_arg.entry_action,
-            },
-        )
-        if not entries:
-            raise FileNotFoundError(f'Could not find entry "{CompGlobals.id}"')
-
-        entry = entries[0]
-
-        print_debug("entry", entry)
 
         entry_dict = entry_action_keys(entry, entry_action=main_arg.entry_action)
 
@@ -3822,13 +3845,12 @@ def fill_wm_globals():
     else:
         print_debug(f"Main arg is an executable: {Args.parsed.wm_cmdline[0]}")
 
+        if main_arg.path is None:
+            main_arg.check_exec()
+        else:
+            main_arg.check_path()
+
         CompGlobals.id = os.path.basename(main_arg.executable)
-
-        # check exec
-        if not which(CompGlobals.id):
-            print_error(f'"{CompGlobals.id}" is not in PATH!')
-            sys.exit(1)
-
         CompGlobals.cmdline = Args.parsed.wm_cmdline
         CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
@@ -3992,7 +4014,7 @@ def main():
                 sys.exit(1)
 
         try:
-            fill_wm_globals()
+            fill_comp_globals()
 
             print_normal(
                 dedent(
@@ -4330,7 +4352,7 @@ def main():
             sys.exit(1)
 
         if Args.parsed.aux_action == "prepare-env":
-            fill_wm_globals()
+            fill_comp_globals()
             try:
                 prepare_env()
                 sys.exit(0)
@@ -4353,7 +4375,7 @@ def main():
                     print_error(caught_exception)
                     sys.exit(1)
         elif Args.parsed.aux_action == "exec":
-            fill_wm_globals()
+            fill_comp_globals()
             print_debug(CompGlobals.cmdline)
             print_normal(f"Starting: {shlex.join(CompGlobals.cmdline)}...")
             os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
