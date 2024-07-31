@@ -1573,18 +1573,20 @@ def generate_units():
     # executable is given by path, hardcode the whole cmdline
     if "/" in CompGlobals.cmdline[0]:
         hardcode_exec = True
+        preloader_exec = f"{BIN_PATH} aux prepare-env{prepend} {shlex.join(CompGlobals.cmdline)}"
         service_exec = f"{BIN_PATH} aux exec {shlex.join(CompGlobals.cmdline)}"
     else:
         hardcode_exec = False
+        preloader_exec = f"{BIN_PATH} aux prepare-env{prepend} \"%I\"{append}"
         service_exec = f'{BIN_PATH} aux exec "%I"{append}'
 
-    if prepend or append:
+    if hardcode_exec or prepend or append:
         wm_specific_preloader_data.append(
             dedent(
                 f"""
                 [Service]
                 ExecStart=
-                ExecStart={BIN_PATH} aux prepare-env{prepend} "%I"{append}
+                ExecStart={preloader_exec}
                 """
             )
         )
