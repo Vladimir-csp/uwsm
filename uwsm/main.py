@@ -43,13 +43,13 @@ from uwsm.dbus import *
 
 class CompGlobals:
     "Compositor global vars"
-    # Full final compositor cmdline (list)
+    # Full final compositor cmdline
     cmdline: List[str] = []
-    # Compositor arguments that were given on CLI
+    # Compositor arguments that were given on CLI (without arg 0)
     cli_args: List[str] = []
-    # Internal compositor ID (first of cli args)
+    # Internal compositor ID (basename of the arg 0)
     id: str = None
-    # escaped string for unit specifier
+    # escaped id string for unit specifier
     id_unit_string: str = None
     # basename of cmdline[0]
     bin_name: str = None
@@ -1538,24 +1538,15 @@ def generate_units():
         )
     ]
 
-    # name is given
-    if CompGlobals.name:
-        wm_specific_preloader_data.append(
-            dedent(
-                f"""
-                Description=Environment preloader for {CompGlobals.name}
-                """
-            )
-        )
-
     # name or description is given
     if CompGlobals.name or CompGlobals.description:
+        description_substring: str = ', '.join((s for s in (CompGlobals.name or CompGlobals.bin_name, CompGlobals.description) if s))
+        wm_specific_preloader_data.append(
+            f"Description=Environment preloader for {description_substring}"
+        )
+
         wm_specific_service_data.append(
-            dedent(
-                f"""
-                Description=Main service for {', '.join((s for s in (CompGlobals.name or CompGlobals.bin_name, CompGlobals.description) if s))}
-                """
-            )
+            f"Description=Main service for {description_substring}"
         )
 
     # exclusive desktop names were given on command line
@@ -3678,7 +3669,7 @@ def fill_comp_globals():
                     raise ValueError(
                         f'Entry "{CompGlobals.id}" uses {BIN_NAME}, but the second argument "{CompGlobals.cmdline[1]}" is not "start"!'
                     )
-                # cut ourselves from cmdline
+                # cut ourselves from cmdline to reparse the rest
                 CompGlobals.cmdline = CompGlobals.cmdline[1:]
 
                 print_normal(
@@ -3764,9 +3755,8 @@ def fill_comp_globals():
 
         print_debug("CompGlobals.cmdline", CompGlobals.cmdline)
 
-        # use existence of Args.parsed.desktop_names as a condition
-        # because this does not happen in aux exec mode
-        if "desktop_names" in Args.parsed:
+        # this excludes aux exec mode
+        if Args.parsed.mode == 'start' or (Args.parsed.mode == 'aux' and Args.parsed.aux_action == 'prepare-env'):
             # check desktop names
             if Args.parsed.desktop_names and not Val.dn_colon.search(
                 Args.parsed.desktop_names
@@ -3856,8 +3846,8 @@ def fill_comp_globals():
         CompGlobals.cmdline = Args.parsed.wm_cmdline
         CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
-        # this does not happen in aux exec mode
-        if "desktop_names" in Args.parsed:
+        # this excludes aux exec mode
+        if Args.parsed.mode == 'start' or (Args.parsed.mode == 'aux' and Args.parsed.aux_action == 'prepare-env'):
             # fill other data
             if Args.parsed.desktop_names_exclusive:
                 CompGlobals.desktop_names = sane_split(Args.parsed.desktop_names, ":")
