@@ -415,14 +415,16 @@ class MainArg:
     def check_exec(self):
         "Checks if executable is reachable and executable"
         if self.executable is None:
-            raise ValueError(f'Argument is not an executable: {self}')
+            raise ValueError(f"Argument is not an executable: {self}")
         if not which(self.executable):
-            raise FileNotFoundError(f'"{self.executable}" not found or is not executable!')
+            raise FileNotFoundError(
+                f'"{self.executable}" not found or is not executable!'
+            )
 
     def check_path(self):
         "Checks if path exists and has appropriate permissions."
         if self.path is None:
-            raise ValueError(f'Argument is not a path: {self}')
+            raise ValueError(f"Argument is not a path: {self}")
         if not os.path.isfile(self.path):
             raise FileNotFoundError(f'Path "{self.path}" does not exist!')
         if not os.access(self.path, os.R_OK):
@@ -1540,7 +1542,16 @@ def generate_units():
 
     # name or description is given
     if CompGlobals.name or CompGlobals.description:
-        description_substring: str = ', '.join((s for s in (CompGlobals.name or CompGlobals.bin_name, CompGlobals.description) if s))
+        description_substring: str = ", ".join(
+            (
+                s
+                for s in (
+                    CompGlobals.name or CompGlobals.bin_name,
+                    CompGlobals.description,
+                )
+                if s
+            )
+        )
         wm_specific_preloader_data.append(
             f"Description=Environment preloader for {description_substring}"
         )
@@ -1564,11 +1575,13 @@ def generate_units():
     # executable is given by path, hardcode the whole cmdline
     if "/" in CompGlobals.cmdline[0]:
         hardcode_exec = True
-        preloader_exec = f"{BIN_PATH} aux prepare-env{prepend} {shlex.join(CompGlobals.cmdline)}"
+        preloader_exec = (
+            f"{BIN_PATH} aux prepare-env{prepend} {shlex.join(CompGlobals.cmdline)}"
+        )
         service_exec = f"{BIN_PATH} aux exec {shlex.join(CompGlobals.cmdline)}"
     else:
         hardcode_exec = False
-        preloader_exec = f"{BIN_PATH} aux prepare-env{prepend} \"%I\"{append}"
+        preloader_exec = f'{BIN_PATH} aux prepare-env{prepend} "%I"{append}'
         service_exec = f'{BIN_PATH} aux exec "%I"{append}'
 
     if hardcode_exec or prepend or append:
@@ -3654,9 +3667,7 @@ def fill_comp_globals():
         CompGlobals.cmdline = shlex.split(entry_dict["Exec"])
         CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
-        print_debug(
-            f"self_name: {BIN_NAME}", f"bin_name: {CompGlobals.bin_name}"
-        )
+        print_debug(f"self_name: {BIN_NAME}", f"bin_name: {CompGlobals.bin_name}")
 
         # if desktop entry uses us, deal with the other self.
         entry_uwsm_args = None
@@ -3756,7 +3767,9 @@ def fill_comp_globals():
         print_debug("CompGlobals.cmdline", CompGlobals.cmdline)
 
         # this excludes aux exec mode
-        if Args.parsed.mode == 'start' or (Args.parsed.mode == 'aux' and Args.parsed.aux_action == 'prepare-env'):
+        if Args.parsed.mode == "start" or (
+            Args.parsed.mode == "aux" and Args.parsed.aux_action == "prepare-env"
+        ):
             # check desktop names
             if Args.parsed.desktop_names and not Val.dn_colon.search(
                 Args.parsed.desktop_names
@@ -3847,7 +3860,9 @@ def fill_comp_globals():
         CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
         # this excludes aux exec mode
-        if Args.parsed.mode == 'start' or (Args.parsed.mode == 'aux' and Args.parsed.aux_action == 'prepare-env'):
+        if Args.parsed.mode == "start" or (
+            Args.parsed.mode == "aux" and Args.parsed.aux_action == "prepare-env"
+        ):
             # fill other data
             if Args.parsed.desktop_names_exclusive:
                 CompGlobals.desktop_names = sane_split(Args.parsed.desktop_names, ":")
@@ -4083,21 +4098,40 @@ def main():
 
             # fork out a process that will hold session scope open
             # until compositor unit is stopped
-            proc = os.fork()
-            if proc == 0:
+            mainpid = os.getpid()
+            childpid = os.fork()
+            if childpid == 0:
                 # ignore HUP and TERM
                 signal.signal(signal.SIGHUP, signal.SIG_IGN)
                 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
-                # 5 seconds should be more than enough to wait for compositor activation
-                # 0.5s between 10 attempts
+                # 15 seconds should be more than enough to wait for compositor activation
+                # 10 second unit timeout plus 5 on possible overhead
+                # Premature exit is covered explicitly
+                # 0.5s between 30 attempts
                 bus_session = DbusInteractions("session")
                 print_debug("bus_session holder fork", bus_session)
-                for attempt in range(10, -1, -1):
+                for attempt in range(30, -1, -1):
+                    # if parent process exits at this stage, silently exit
+                    try:
+                        os.kill(mainpid, 0)
+                    except ProcessLookupError:
+                        print_debug(
+                            "holder exiting due to premature parent process end"
+                        )
+                        sys.exit(0)
+
+                    # timed out
                     if attempt == 0:
                         print_warning(
                             f"Timed out waiting for activation of wayland-wm@{CompGlobals.id_unit_string}.service"
                         )
+                        try:
+                            print_debug("killing main process from holder")
+                            os.kill(mainpid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            print_debug("main process already absent")
+                            pass
                         sys.exit(1)
 
                     time.sleep(0.5)
@@ -4142,7 +4176,7 @@ def main():
                 else:
                     waitpid(int(cpid))
                     sys.exit(0)
-                # end of fork
+            # end of fork
 
             # replace ourselves with systemctl
             # this will start the main compositor unit
