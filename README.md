@@ -123,7 +123,7 @@ Can work with Desktop entries from `wayland-sessions` in XDG data hierarchy and/
   - Optional interactive selector (requires whiptail), choice is saved in
     `${XDG_CONFIG_HOME}/uwsm-default-id`
   - Desktop entry
-    [actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html)
+    [actions](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
     are supported
 - Be launched via a Desktop entry by a login/display manager.
 
@@ -350,16 +350,16 @@ To launch an app inside one of those slices, use:
 `uwsm app [-s a|b|s|custom.slice] [-t scope|service] -- your_app [with args]`
 
 Launching desktop entries via a
-[valid ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s02.html#desktop-file-id)
+[valid ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/file-naming.html#desktop-file-id)
 is also supported, (optionally with an
-[action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s11.html)
+[action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
 appended via ':'):
 
 `uwsm app [-s a|b|s|custom.slice] [-t scope|service] -- your_app.desktop[:action] [with args]`
 
 In this case args must be supported by the entry or its selected action
 according to
-[XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s07.html).
+[XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/latest).
 
 Specifying paths to executables or desktop entry files is also supported.
 
@@ -407,9 +407,9 @@ Always use `--` to disambiguate command line if any dashed arguments are
 intended for launched compositor.
 
 `${compositor}` can be an executable or a valid
-[desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s02.html#desktop-file-id)
+[desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/file-naming.html#desktop-file-id)
 (optionally with an
-[action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/ar01s11.html)
+[action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
 appended via ':'), or one of special values: `select|default`
 
 Optional parameters to provide more metadata:
@@ -448,7 +448,7 @@ require this behavior to be altered).
 If you want to customize compositor execution provided with a desktop entry,
 copy it to `~/.local/share/wayland-sessions/` and change to your liking,
 including adding
-[actions](https://specifications.freedesktop.org/desktop-entry-spec/1.5/ar01s11.html).
+[actions](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
 
 If `${compositor}` is `select` or `default`, `uwsm` invokes a menu to select
 desktop entries available in `wayland-sessions` data hierarchy (including their
