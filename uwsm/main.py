@@ -1553,11 +1553,11 @@ def generate_units():
             )
         )
         wm_specific_preloader_data.append(
-            f"Description=Environment preloader for {description_substring}"
+            f"Description=Environment preloader for {description_substring}\n"
         )
 
         wm_specific_service_data.append(
-            f"Description=Main service for {description_substring}"
+            f"Description=Main service for {description_substring}\n"
         )
 
     # preloader exec needs desktop names, ID and the first argument
@@ -1572,8 +1572,10 @@ def generate_units():
     # finish preloader exec with ID and non-standard first argument
     if preloader_exec or Args.parsed.hardcode or os.path.isabs(CompGlobals.cmdline[0]):
         preloader_exec.extend(["--", "%I"])
+        # save absolute path
         if os.path.isabs(CompGlobals.cmdline[0]):
             preloader_exec.append(CompGlobals.cmdline[0])
+        # force absolute path
         elif Args.parsed.hardcode:
             exec_path = which(CompGlobals.cmdline[0])
             if not exec_path:
@@ -1603,7 +1605,7 @@ def generate_units():
                 f"""
                 [Service]
                 ExecStart=
-                ExecStart={shlex.join(preloader_exec_base + preloader_exec)}
+                ExecStart={shlex.join(preloader_exec_base + preloader_exec)}\n
                 """
             )
         )
@@ -1614,7 +1616,7 @@ def generate_units():
                 f"""
                 [Service]
                 ExecStart=
-                ExecStart={shlex.join(service_exec_base + service_exec)}
+                ExecStart={shlex.join(service_exec_base + service_exec)}\n
                 """
             )
         )
@@ -1890,32 +1892,37 @@ class Args:
                 """
             ),
         )
-        use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", "false")
-        if use_session_slice not in ("true", "false"):
+        use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", None)
+        if use_session_slice in ("true", "false"):
+            use_session_slice = {"true": True, "false": False}[use_session_slice]
+        elif use_session_slice is None:
+            pass
+        else:
             print_warning(
-                f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to "false".'
+                f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to soft "false".'
             )
-            use_session_slice = "false"
+            use_session_slice = None
         parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_slice"].add_argument(
             "-S",
             action="store_true",
             dest="use_session_slice",
-            default=use_session_slice == "true",
-            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'true' else ''}.",
+            default=use_session_slice,
+            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == True else ''}.",
         )
         parsers["start_slice"].add_argument(
             "-A",
             action="store_false",
             dest="use_session_slice",
-            default=use_session_slice == "true",
-            help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == 'false' else ''}.",
+            default=use_session_slice,
+            help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == False else ' (default)' if use_session_slice is None else ''}.",
         )
         parsers["start"].add_argument(
             "-F",
             action="store_true",
             dest="hardcode",
-            help="Hardcode resulting command line to unit drop-in.",
+            default=False,
+            help="Hardcode resulting command line (with path) to unit drop-ins.",
         )
         parsers["start"].add_argument(
             "-o",
@@ -3823,6 +3830,8 @@ def fill_comp_globals():
                         )
 
                     # combine Exec from secondary entry with arguments from primary entry
+                    # TODO: either drop this behavior, or add support for % fields
+                    # not that wayland session entries will ever use them
                     entry_uwsm_args.parsed.wm_cmdline = (
                         entry_cmdline + entry_uwsm_args.parsed.wm_cmdline[1:]
                     )
@@ -3921,6 +3930,16 @@ def fill_comp_globals():
                 CompGlobals.description = entry_uwsm_args.parsed.wm_comment
             elif entry.getComment():
                 CompGlobals.description = entry.getComment()
+
+            # inherit slice argument
+            if entry_uwsm_args is not None and Args.parsed.use_session_slice is None:
+                print_debug("inherited use_session_slice", entry_uwsm_args.parsed.use_session_slice)
+                Args.parsed.use_session_slice = entry_uwsm_args.parsed.use_session_slice
+
+            # inherit hardcode argument
+            if entry_uwsm_args is not None and entry_uwsm_args.parsed.hardcode:
+                print_debug("inherited hardcode", entry_uwsm_args.parsed.hardcode)
+                Args.parsed.hardcode = True
 
     elif main_arg.executable is not None:
         print_debug(f"Main arg is an executable: {main_arg.executable}")
