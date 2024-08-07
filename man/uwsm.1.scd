@@ -214,8 +214,10 @@ them.
 	*uwsm* start [-h] [-D _name_[:_name_...]] [-a|-e] [-N _Name_] [-C _Comment_]
 	\[-S|-A] [-o] [-n] -- _compositor_ [_args_ ...]
 
-|[     *-D* _name_[:_name_...]
-:< Names to fill *XDG_CURRENT_DESKTOP* with
+|[     *-F*
+:< Hardcode mode, always write command line to unit drop-ins and use full paths.
+|      *-D* _name_[:_name_...]
+:  Names to fill *XDG_CURRENT_DESKTOP* with
    (:-separated). Existing var content is a starting point if no active
    session is running.
 |      *-a*
@@ -245,6 +247,8 @@ either one of:
 	- *select* - invoke menu to select compositor.
 	- *default* - run previously selected compositor (or select if no
 	  selection was saved).
+
+If given as path, hardcode mode will be used implicitly.
 
 Always use "*--*" to disambiguate dashed arguments intended for compositor
 itself.

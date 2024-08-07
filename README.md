@@ -120,7 +120,7 @@ Can work with Desktop entries from `wayland-sessions` in XDG data hierarchy and/
     - `Name` and `Comment` for unit `Description`
   - Entries can be overridden, masked or added in
     `${XDG_DATA_HOME}/wayland-sessions/`
-  - Optional interactive selector (requires whiptail), choice is saved in
+  - Optional interactive selector (requires `whiptail`), choice is saved in
     `${XDG_CONFIG_HOME}/uwsm-default-id`
   - Desktop entry
     [actions](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
@@ -412,6 +412,11 @@ intended for launched compositor.
 [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
 appended via ':'), or one of special values: `select|default`
 
+If `${compositor}` is given as a path, or `-F` option is given, "hardcode" mode
+is engaged: the resulting command line will always be written to unit drop-ins
+and contain full path to executable as seen by `uwsm start`. Path to executable
+will also be written if encountered in a desktop entry's `Exec`.
+
 Optional parameters to provide more metadata:
 
 - `-[a|e]D DesktopName1[:DesktopMame2:...]`: append (`-a`) or exclusively set
@@ -430,11 +435,11 @@ Some details
 </summary>
 
 ```
-uwsm start [-[a|e]D DesktopName1[:DesktopMame2:...]] [-N Name] [-C "Compositor description"] -- ${compositor} [with "any complex" --arguments]
+uwsm start [-[a|e]D DesktopName1[:DesktopMame2:...]] [-N Name] [-C "Compositor description"] [-F] -- ${compositor} [with "any complex" --arguments]
 ```
 
-If `${compositor}` is a desktop entry ID, `uwsm` will get desktop entry from
-`wayland-sessions` data hierarchy, `Exec` will be used for command line, and
+If `${compositor}` is a desktop entry ID, `uwsm` will find it in
+`wayland-sessions` data hierarchy. `Exec` will be used for command line, and
 `DesktopNames` will fill `$XDG_CURRENT_DESKTOP`, `Name` and `Comment` will go to
 units' description.
 
