@@ -1515,12 +1515,14 @@ def generate_units():
     )
 
     # compositor-specific additions from cli or desktop entry via drop-ins
+    # paths
     wm_specific_preloader = (
         f"wayland-wm-env@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
     )
     wm_specific_service = (
         f"wayland-wm@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
     )
+    # initial data as lists for later joining
     wm_specific_preloader_data = [
         dedent(
             f"""
@@ -1569,37 +1571,14 @@ def generate_units():
     # desktop names differ from just executable name
     elif CompGlobals.desktop_names != [CompGlobals.bin_name]:
         preloader_exec.extend(["-D", ":".join(CompGlobals.desktop_names)])
-    # finish preloader exec with ID and non-standard first argument
-    if preloader_exec or Args.parsed.hardcode or os.path.isabs(CompGlobals.cmdline[0]):
+    # finish preloader exec with ID...
+    if preloader_exec or os.path.isabs(CompGlobals.cmdline[0]):
         preloader_exec.extend(["--", "%I"])
-        # save absolute path
+        # and absolute first argument
         if os.path.isabs(CompGlobals.cmdline[0]):
             preloader_exec.append(CompGlobals.cmdline[0])
-        # force absolute path
-        elif Args.parsed.hardcode:
-            exec_path = which(CompGlobals.cmdline[0])
-            if not exec_path:
-                raise RuntimeError(f'Could not find "{CompGlobals.cmdline[0]}" in PATH')
-            preloader_exec.append(exec_path)
 
-    # service exec needs ID and command line
-    service_exec_base = [BIN_PATH, "aux", "exec", "--", "%I"]
-    service_exec = []
-
-    # hardcode is requested or executable is given by path, hardcode the whole cmdline
-    if Args.parsed.hardcode or os.path.isabs(CompGlobals.cmdline[0]):
-        # write absolute path if hardcode is requested
-        if Args.parsed.hardcode and not os.path.isabs(CompGlobals.cmdline[0]):
-            exec_path = which(CompGlobals.cmdline[0])
-            if not exec_path:
-                raise RuntimeError(f'Could not find "{CompGlobals.cmdline[0]}" in PATH')
-            CompGlobals.cmdline[0] = exec_path
-        service_exec.extend(CompGlobals.cmdline)
-    # append cli args with empty first argument
-    elif CompGlobals.cli_args:
-        service_exec.extend([""] + CompGlobals.cli_args)
-
-    if preloader_exec:
+        # append to string list
         wm_specific_preloader_data.append(
             dedent(
                 f"""
@@ -1610,6 +1589,18 @@ def generate_units():
             )
         )
 
+    # service exec needs ID and command line
+    service_exec_base = [BIN_PATH, "aux", "exec", "--", "%I"]
+    service_exec = []
+
+    # hardcode is requested or executable is given by path, hardcode the whole cmdline
+    if os.path.isabs(CompGlobals.cmdline[0]):
+        service_exec.extend(CompGlobals.cmdline)
+    # append cli args with empty first argument
+    elif CompGlobals.cli_args:
+        service_exec.extend([""] + CompGlobals.cli_args)
+
+    # append to string list
     if service_exec:
         wm_specific_service_data.append(
             dedent(
@@ -1793,6 +1784,7 @@ class Args:
                   - Executable name\n
                   - Desktop Entry ID (optionally with ":"-delimited action ID)\n
                   - Special value "select" or "default"\n
+                If given as path, hardcode mode is implied.\n
                 """
             ),
         )
@@ -3664,6 +3656,10 @@ def fill_comp_globals():
         # The first argument contains ID and is the main compositor argument
         CompGlobals.id = os.path.basename(Args.parsed.wm_cmdline[0])
         main_arg = MainArg(Args.parsed.wm_cmdline[0])
+        if main_arg.path is not None:
+            # force hardcode mode
+            print_debug("hardcode mode due to main argument being a path")
+            Args.parsed.hardcode = True
     elif Args.parsed.mode == "aux":
         # ID is explicit
         CompGlobals.id = Args.parsed.wm_id
@@ -3933,13 +3929,23 @@ def fill_comp_globals():
 
             # inherit slice argument
             if entry_uwsm_args is not None and Args.parsed.use_session_slice is None:
-                print_debug("inherited use_session_slice", entry_uwsm_args.parsed.use_session_slice)
+                print_debug(
+                    "inherited use_session_slice",
+                    entry_uwsm_args.parsed.use_session_slice,
+                )
                 Args.parsed.use_session_slice = entry_uwsm_args.parsed.use_session_slice
 
             # inherit hardcode argument
-            if entry_uwsm_args is not None and entry_uwsm_args.parsed.hardcode:
+            if Args.parsed.mode == 'start' and entry_uwsm_args is not None and entry_uwsm_args.parsed.hardcode:
                 print_debug("inherited hardcode", entry_uwsm_args.parsed.hardcode)
                 Args.parsed.hardcode = True
+
+        # reparse and check resulting main arg
+        main_arg = MainArg(CompGlobals.cmdline[0])
+        if main_arg.path is None:
+            main_arg.check_exec()
+        else:
+            main_arg.check_path()
 
     elif main_arg.executable is not None:
         print_debug(f"Main arg is an executable: {main_arg.executable}")
@@ -3952,7 +3958,7 @@ def fill_comp_globals():
         # fill cmdline from parsed cmdline if not already filled
         if not CompGlobals.cmdline:
             CompGlobals.cmdline = Args.parsed.wm_cmdline
-        # in aux it or its first might be empty, which means ID is the executable
+        # in aux cmdline or its first item might be empty, which means ID is the executable
         if not CompGlobals.cmdline:
             CompGlobals.cmdline = [main_arg.executable]
         elif not CompGlobals.cmdline[0]:
@@ -3982,6 +3988,18 @@ def fill_comp_globals():
 
     else:
         raise ValueError("Could not determine or parse main argument")
+
+    # main_arg should not be an entry after all this parsing
+    if main_arg.entry_id is not None:
+        raise RuntimeError(f"Could not parse {main_arg} down to executable!")
+
+    # Canonicalize to absolute path if in hardcode mode
+    # or in case path for some reason is relative
+    # Path in main_arg object is already normalized
+    if Args.parsed.mode == 'start' and (Args.parsed.hardcode or main_arg.path is not None):
+        canon_arg = os.path.abspath(main_arg.path or which(main_arg.executable))
+        print_debug("normalized", CompGlobals.cmdline[0], canon_arg)
+        CompGlobals.cmdline[0] = os.path.abspath(canon_arg)
 
     # fill cli-exclusive compositor arguments for reproduction in unit drop-ins
     CompGlobals.cli_args = Args.parsed.wm_cmdline[1:]
