@@ -11,4 +11,4 @@ Exec=kanshi
 StartupNotify=false
 Terminal=false
 Icon=display
-OnlyShowIn=wlroots
+OnlyShowIn=wlroots;Hyprland

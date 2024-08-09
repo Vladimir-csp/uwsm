@@ -11,4 +11,4 @@ Exec=waybar
 StartupNotify=false
 Terminal=false
 #Icon=
-OnlyShowIn=wlroots
+OnlyShowIn=wlroots;Hyprland

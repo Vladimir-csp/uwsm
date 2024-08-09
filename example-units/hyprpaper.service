@@ -1,0 +1,19 @@
+[Unit]
+Description=Hyprpaper wallpaper utility for Hyprland
+Documentation=https://github.com/hyprwm/hyprpaper
+# order startup after WM
+After=graphical-session.target
+
+[Service]
+Type=exec
+# Repurpose XDG Autostart filtering
+ExecCondition=/lib/systemd/systemd-xdg-autostart-condition "Hyprland" ""
+ExecStart=hyprpaper
+Restart=on-failure
+Slice=background-graphical.slice
+
+[Install]
+# Get started via specific WMs
+WantedBy=graphical-session.target
+# Alternatively can be wanted by specific WMs
+#WantedBy=wayland-wm@hyprland.desktop.service

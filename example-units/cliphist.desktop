@@ -11,4 +11,4 @@ Exec=wl-paste --watch cliphist store -max-items 10
 StartupNotify=false
 Terminal=false
 Icon=clipboard
-OnlyShowIn=wlroots
+OnlyShowIn=wlroots;Hyprland
