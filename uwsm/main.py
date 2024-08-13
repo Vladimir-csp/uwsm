@@ -1404,7 +1404,7 @@ def generate_units():
             OnFailureJobMode=replace-irreversibly
             OnSuccessJobMode=replace-irreversibly
             [Service]
-            # awaits for 'systemd-notify --ready' from compositor child
+            # awaits for ready state notification from compositor's child
             # should be issued by '{BIN_NAME} finalize'
             Type=notify
             NotifyAccess=all

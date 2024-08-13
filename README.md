@@ -198,7 +198,8 @@ Provides helpers and tools for various operations.
   client to execute. This avoids the overhead of repeated python startup and
   increases app launch speed.
 - `uuctl`: graphical (via dmenu-like menus) tool for managing user units.
-- `fumon`: background service for notifying about failed units
+- `fumon`: background service for notifying about failed units (disabled by
+  default, enable with systemctl)
 
 </details>
 
