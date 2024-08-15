@@ -95,6 +95,7 @@ class Varnames:
     always_export = {
         "XDG_SESSION_ID",
         "XDG_SESSION_TYPE",
+        "XDG_BACKEND",
         "XDG_VTNR",
         "XDG_CURRENT_DESKTOP",
         "XDG_SESSION_DESKTOP",
@@ -108,6 +109,7 @@ class Varnames:
         "WAYLAND_DISPLAY",
         "XDG_SESSION_ID",
         "XDG_SESSION_TYPE",
+        "XDG_BACKEND",
         "XDG_VTNR",
         "XDG_CURRENT_DESKTOP",
         "XDG_SESSION_DESKTOP",
@@ -2592,6 +2594,7 @@ def prepare_env_gen_sh(random_mark):
         export XDG_MENU_PREFIX="${__WM_FIRST_DESKTOP_NAME__}-"
 
         export XDG_SESSION_TYPE="wayland"
+        export XDG_BACKEND="wayland"
 
         #### apply quirks
         if type "quirks_${__WM_BIN_ID__}" >/dev/null 2>&1; then
