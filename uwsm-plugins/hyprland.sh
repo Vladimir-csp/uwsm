@@ -17,6 +17,10 @@ quirks_hyprland() {
 	# So some autostarted units may not get custom vars
 	export HYPRLAND_NO_SD_NOTIFY=1
 
+	# Disable Hyprland's own activation environment management, supported since:
+	# https://github.com/hyprwm/Hyprland/commit/682b30fba89c043e86d9c96bdb8df133c1683054
+	export HYPRLAND_NO_SD_VARS=1
+
 	# mark additional vars for export on finalize
 	UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES+: }HYPRLAND_INSTANCE_SIGNATURE HYPRLAND_CMD XCURSOR_SIZE XCURSOR_THEME"
 	export UWSM_FINALIZE_VARNAMES
