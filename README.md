@@ -251,10 +251,10 @@ https://aur.archlinux.org/packages/uwsm
 </details>
 
 <details><summary>
-Nix flake/derivation.
+NixOS package.
 </summary>
 
-https://github.com/minego/uwsm.nix
+https://github.com/NixOS/nixpkgs/tree/master/pkgs/by-name/uw/uwsm/package.nix
 
 </details>
 
@@ -354,7 +354,7 @@ Launching desktop entries via a
 [valid ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/file-naming.html#desktop-file-id)
 is also supported, (optionally with an
 [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
-appended via ':'):
+appended via `:`):
 
 `uwsm app [-s a|b|s|custom.slice] [-t scope|service] -- your_app.desktop[:action] [with args]`
 
@@ -547,12 +547,14 @@ Either of:
 - `loginctl terminate-user ""` (this ends all login sessions and units of
   current user, good for resetting everything, including runtime units,
   environments, etc.)
-- `loginctl terminate-sesion "$XDG_SESSION_ID"` (this ends current login
-  session, uwsm in this session will bring down graphical session units before
-  exiting. Empty argument will only work if loginctl is called from session
-  scope itself)
+- `loginctl terminate-sesion "$XDG_SESSION_ID"` (this ends login session
+  that uwsm was launched in, special unit `wayland-session-bindpid@.service`
+  waiting for the former login shell process will exit and bring down graphical
+  session units. Empty argument will only work if loginctl is called from within
+  login session scope itself, so variable should be used when calling from
+  graphical session units)
 - `uwsm stop` (brings down graphical session units. Login session will end if
-  `uwsm start` replaces login shell)
+  `uwsm start` replaced login shell)
 - `systemctl --user stop wayland-wm@*.service` (effectively the same as previous
   one)
 
