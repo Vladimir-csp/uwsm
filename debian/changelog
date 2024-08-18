@@ -1,5 +1,5 @@
-uwsm (0.18.1-1~local0) UNRELEASED; urgency=medium
+uwsm (0.18.2-1~local0) UNRELEASED; urgency=medium
 
   * Upstream build.
 
- -- Vladimir-csp <4061903+Vladimir-csp@users.noreply.github.com>  Fri, 16 Aug 2024 11:33:05 +0300
+ -- Vladimir-csp <4061903+Vladimir-csp@users.noreply.github.com>  Sun, 18 Aug 2024 16:00:03 +0300
