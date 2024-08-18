@@ -669,6 +669,7 @@ def find_entries(
     parser: Callable = None,
     parser_args: dict = None,
     reject_pmt: dict = None,
+    reject_ids: List[str] = None,
 ):
     """
     Takes data hierarchy subpath and optional arg parser
@@ -676,7 +677,9 @@ def find_entries(
     Return is expected to be (action, data)
     action: what to do with the data: append|extend|return|drop(or anything else)
     By default returns list of tuples [(entry_id, entry_path)],
-    otherwise returns whatever parser tells in a list
+    otherwise returns whatever parser tells in a list.
+    reject_pmt is a mapping of path to mtime for quick rejection
+    reject_id is a list of entry ids for quick rejection
     """
     seen_ids = set()
     results = []
@@ -701,11 +704,17 @@ def find_entries(
                     and entry_path in reject_pmt
                     and os.path.getmtime(entry_path) == reject_pmt[entry_path]
                 ):
-                    print_debug(f"rejected {entry_path} by negative cache")
+                    print_debug(f"rejected {entry_path} by path to mtime mapping")
                     continue
 
                 # get proper entry id relative to data_dir with path delimiters replaced by '-'
                 entry_id = os.path.relpath(entry_path, data_dir).replace("/", "-")
+
+                # quick reject on reject_ids list
+                if reject_ids and entry_id in reject_ids:
+                    print_debug(f"rejected {entry_path} by id list")
+                    continue
+
                 # get only valid IDs
                 if not Val.entry_id.search(entry_id):
                     continue
@@ -3065,6 +3074,8 @@ def find_terminal_entry():
     "Finds default terminal entry, returns tuple of (entry object, entry_id, entry_action) or (None, None, None)"
 
     terminal_entries = []
+    excluded_terminal_entries = []
+    unexcluded_terminal_entries = []
 
     ## read configs, compose preferred terminal entry list
     # iterate config dirs
@@ -3082,14 +3093,50 @@ def find_terminal_entry():
                     for line in [line.strip() for line in terminal_list.readlines()]:
                         if not line or line.startswith("#"):
                             continue
-                        arg = MainArg(line)
+                        if line.startswith("-"):
+                            fbcontrol = -1
+                            line = line[1:]
+                        elif line.startswith("+"):
+                            fbcontrol = 1
+                            line = line[1:]
+                        else:
+                            fbcontrol = 0
+                        # be relaxed about line parsing
+                        # only valid entry.desktop[:action] lines are of interest
+                        try:
+                            arg = MainArg(line)
+                        except:
+                            continue
+                        if not arg.entry_id or arg.path:
+                            continue
                         if (
-                            arg.entry_id
-                            and not arg.path
+                            fbcontrol == 0
                             and (arg.entry_id, arg.entry_action) not in terminal_entries
                         ):
                             print_debug(f"got terminal entry {line}")
                             terminal_entries.append((arg.entry_id, arg.entry_action))
+                        elif (
+                            fbcontrol == -1
+                            and not arg.entry_action
+                            and arg.entry_id
+                            not in excluded_terminal_entries
+                            + unexcluded_terminal_entries
+                        ):
+                            print_debug(f"got fallback exclusion for {line}")
+                            excluded_terminal_entries.append(arg.entry_id)
+                        elif (
+                            fbcontrol == 1
+                            and not arg.entry_action
+                            and arg.entry_id
+                            not in excluded_terminal_entries
+                            + unexcluded_terminal_entries
+                        ):
+                            print_debug(f"got fallback exclusion protection for {line}")
+                            unexcluded_terminal_entries.append(arg.entry_id)
+                        else:
+                            print_debug(
+                                f"ignored line { {-1: '-', 0: '', 1: '+'}[fbcontrol] }{line}"
+                            )
             except FileNotFoundError:
                 pass
             except Exception as caught_exception:
@@ -3126,7 +3173,10 @@ def find_terminal_entry():
 
     # process all apps, find applicable terminal
     found_terminal_entries = find_entries(
-        "applications", parser=entry_parser_terminal, reject_pmt=Terminal.neg_cache
+        "applications",
+        parser=entry_parser_terminal,
+        reject_pmt=Terminal.neg_cache,
+        reject_ids=excluded_terminal_entries,
     )
     if found_terminal_entries:
         terminal_entry, terminal_entry_id, _ = found_terminal_entries[0]
@@ -3939,7 +3989,11 @@ def fill_comp_globals():
                 Args.parsed.use_session_slice = entry_uwsm_args.parsed.use_session_slice
 
             # inherit hardcode argument
-            if Args.parsed.mode == 'start' and entry_uwsm_args is not None and entry_uwsm_args.parsed.hardcode:
+            if (
+                Args.parsed.mode == "start"
+                and entry_uwsm_args is not None
+                and entry_uwsm_args.parsed.hardcode
+            ):
                 print_debug("inherited hardcode", entry_uwsm_args.parsed.hardcode)
                 Args.parsed.hardcode = True
 
@@ -3999,7 +4053,9 @@ def fill_comp_globals():
     # Canonicalize to absolute path if in hardcode mode
     # or in case path for some reason is relative
     # Path in main_arg object is already normalized
-    if Args.parsed.mode == 'start' and (Args.parsed.hardcode or main_arg.path is not None):
+    if Args.parsed.mode == "start" and (
+        Args.parsed.hardcode or main_arg.path is not None
+    ):
         canon_arg = os.path.abspath(main_arg.path or which(main_arg.executable))
         print_debug("normalized", CompGlobals.cmdline[0], canon_arg)
         CompGlobals.cmdline[0] = os.path.abspath(canon_arg)
