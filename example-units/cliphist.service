@@ -8,7 +8,7 @@ After=graphical-session.target
 Type=exec
 # Repurpose XDG Autostart filtering
 ExecCondition=/lib/systemd/systemd-xdg-autostart-condition "wlroots:sway:Wayfire:labwc:Hyprland" ""
-ExecStart=wl-paste --watch cliphist store -max-items 10
+ExecStart=wl-paste --watch cliphist -max-items 10 store
 Restart=on-failure
 Slice=app-graphical.slice
 
