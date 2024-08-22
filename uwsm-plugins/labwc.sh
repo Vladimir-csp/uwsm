@@ -39,6 +39,9 @@ quirks_labwc() {
 		systemctl --user daemon-reload
 	fi
 
+	# disable labwc own activation environment management
+	export LABWC_UPDATE_ACTIVATION_ENV=0
+
 	# mark additional vars for export on finalize
 	UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES+: }LABWC_PID XCURSOR_SIZE XCURSOR_THEME"
 	export UWSM_FINALIZE_VARNAMES
