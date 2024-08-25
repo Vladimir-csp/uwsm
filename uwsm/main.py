@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 # Universal Wayland Desktop Session Manager
 https://github.com/Vladimir-csp/uwsm
