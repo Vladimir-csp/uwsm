@@ -205,7 +205,7 @@ esac
 ACTIONS=''
 DISABLE_ACTIONS=''
 ENABLE_ACTIONS=''
-for ACTION in start stop reload restart kill reset-failed enable disable freeze thaw mask unmask; do
+for ACTION in start reload restart stop kill reset-failed enable disable freeze thaw mask unmask; do
 	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
 	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
 	## skip various combinations
