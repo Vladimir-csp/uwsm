@@ -1,6 +1,6 @@
 [Unit]
-Description=Kanshi Wayland output manager
-Documentation=man:kanshi(1) man:kanshi(5)
+Description=Sway idle and locking handler
+Documentation=man:swayidle(1)
 # order startup after WM
 After=graphical-session.target
 
@@ -8,8 +8,8 @@ After=graphical-session.target
 Type=exec
 # Repurpose XDG Autostart filtering
 ExecCondition=/lib/systemd/systemd-xdg-autostart-condition "wlroots:sway:Wayfire:labwc:Hyprland" ""
-ExecStart=/usr/bin/kanshi
-ExecReload=kill -SIGHUP $MAINPID
+# assuming configuration file is used
+ExecStart=swayidle
 Restart=on-failure
 Slice=background-graphical.slice
 

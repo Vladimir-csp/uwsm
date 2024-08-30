@@ -1,6 +1,6 @@
 [Unit]
 Description=Highly customizable Wayland bar for Sway and Wlroots based compositors.
-Documentation=https://github.com/Alexays/Waybar/wiki/
+Documentation=man:waybar(5)
 # order startup after WM
 After=graphical-session.target
 

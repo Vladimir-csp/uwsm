@@ -1,6 +1,6 @@
 [Unit]
 Description=Hyprpaper wallpaper utility for Hyprland
-Documentation=https://github.com/hyprwm/hyprpaper
+Documentation=man:hyprpaper(1)
 # order startup after WM
 After=graphical-session.target
 

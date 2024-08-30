@@ -4,10 +4,11 @@ example_files = [
   'hyprpaper.service',
   'kanshi.desktop',
   'kanshi.service',
+  'swayidle.service',
   'uu2gslice.sh',
   'waybar.desktop',
-  'waybar_override.conf',
   'waybar.service',
+  'waybar_override.conf',
 ]
 
 install_data(example_files, install_dir: PKG_DOC_DIR / 'example-units')
