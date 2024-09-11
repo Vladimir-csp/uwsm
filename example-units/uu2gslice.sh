@@ -51,6 +51,8 @@ reset)
 *)
 	echo "Assigning '$UNIT' to '$SLICE'"
 	systemctl --user edit --stdin --drop-in graphical-slice.conf "$UNIT" <<- EOF
+		[Unit]
+		After=graphical-session.target
 		[Service]
 		Slice=$SLICE
 	EOF
