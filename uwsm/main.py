@@ -1404,7 +1404,7 @@ def generate_units():
             Before=wayland-session@%i.target
             Requires=wayland-wm-env@%i.service graphical-session-pre.target
             After=wayland-wm-env@%i.service graphical-session-pre.target
-            Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target
+            Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target wayland-waitwd.service
             Before=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target app-graphical.slice background-graphical.slice session-graphical.slice
             PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
             # dirty fix of xdg-desktop-portal-gtk.service shudown
@@ -1425,6 +1425,31 @@ def generate_units():
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
             Slice={wayland_wm_slice}
+            """
+        ),
+    )
+    update_unit(
+        "wayland-waitwd.service",
+        dedent(
+            f"""
+            # injected by {BIN_NAME}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            Description=Wait for WAYLAND_DISPLAY to appear
+            Documentation=man:uwsm(1)
+            Before=graphical-session.target
+            After=graphical-session-pre.target
+            CollectMode=inactive-or-failed
+            OnFailure=wayland-session-shutdown.target
+            OnFailureJobMode=replace-irreversibly
+            [Service]
+            Type=oneshot
+            RemainAfterExit=no
+            ExecStart={BIN_PATH} aux waitwd
+            Restart=no
+            TimeoutStartSec=12
+            SyslogIdentifier={BIN_NAME}_waitwd
+            Slice=background.slice
             """
         ),
     )
@@ -2242,6 +2267,16 @@ class Args:
             metavar="PID",
             help="PID to wait for",
         )
+        parsers["waitwd"] = parsers["aux_subparsers"].add_parser(
+            "waitwd",
+            formatter_class=HelpFormatterNewlines,
+            help="Waits for WAYLAND_DESKTOP variable to appear in activation environment.",
+            description=(
+                "Exits successfully when WAYLAND_DESKTOP appears in activation environment. "
+                "Times out at around 12 seconds. "
+                "Used in wayland-session-waitwd@.service to delay graphical-session.target if the var is missing."
+            ),
+        )
 
         if custom_args is None:
             # store args globally
@@ -2277,11 +2312,12 @@ def finalize(additional_vars=None):
         )
         sys.exit(1)
     export_vars = {}
+    export_vars_names = []
     for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(set(additional_vars)):
         value = os.getenv(var, None)
-        if value is not None:
+        if value is not None and var not in export_vars_names:
             export_vars.update({var: value})
-    export_vars_names = sorted(export_vars.keys())
+            export_vars_names.append(var)
 
     # get id of active or activating compositor
     wm_id = get_active_wm_id()
@@ -4588,5 +4624,25 @@ def main():
                 sys.exit(1)
 
         elif Args.parsed.aux_action == "waitpid":
-            waitpid(Args.parsed.pid)
-            sys.exit(0)
+            try:
+                waitpid(Args.parsed.pid)
+                sys.exit(0)
+            except Exception as caught_exception:
+                print_error(caught_exception)
+                sys.exit(1)
+
+        elif Args.parsed.aux_action == "waitwd":
+            try:
+                bus_session = DbusInteractions("session")
+                for attempt in range(1, 21):
+                    aenv_varnames = bus_session.get_systemd_vars().keys()
+                    if "WAYLAND_DISPLAY" in aenv_varnames:
+                        print_ok("WAYLAND_DISPLAY appeared in activation environment")
+                        sys.exit(0)
+                    time.sleep(0.5)
+                print_error(
+                    "Timed aout waiting for WAYLAND_DISPLAY in activation environment!"
+                )
+                sys.exit(1)
+            except Exception as caught_exception:
+                print_error(caught_exception)
