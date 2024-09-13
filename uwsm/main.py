@@ -3246,7 +3246,11 @@ def app(
         terminal_cmdline = shlex.split(
             entry_action_keys(Terminal.entry, Terminal.entry_action_id)["Exec"]
         )
-        if Terminal.entry.hasKey("ExecArg"):
+        if Terminal.entry.hasKey("TerminalArgExec"):
+            terminal_execarg = Terminal.entry.get("TerminalArgExec")
+        elif Terminal.entry.hasKey("X-TerminalArgExec"):
+            terminal_execarg = Terminal.entry.get("X-TerminalArgExec")
+        elif Terminal.entry.hasKey("ExecArg"):
             terminal_execarg = Terminal.entry.get("ExecArg")
         elif Terminal.entry.hasKey("X-ExecArg"):
             terminal_execarg = Terminal.entry.get("X-ExecArg")
