@@ -1092,11 +1092,14 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Preparation for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
+            Requires=wayland-wm-env@%i.service
             BindsTo=graphical-session-pre.target
             Before=graphical-session-pre.target
             PropagatesStopTo=graphical-session-pre.target
             Conflicts=wayland-session-shutdown.target
             Before=wayland-session-shutdown.target
+            RefuseManualStart=yes
+            RefuseManualStop=yes
             StopWhenUnneeded=yes
             """
         ),
@@ -1110,7 +1113,8 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
-            Requires=wayland-session-pre@%i.target
+            Requires=wayland-session-pre@%i.target wayland-wm@%i.service
+            Wants=wayland-waitenv.service
             After=graphical-session-pre.target
             BindsTo=graphical-session.target
             Before=graphical-session.target
@@ -1131,6 +1135,7 @@ def generate_units():
             Description=XDG Autostart for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
             Requisite=wayland-session@%i.target
+            PartOf=graphical-session.target
             After=graphical-session.target
             BindsTo=xdg-desktop-autostart.target
             Before=xdg-desktop-autostart.target
@@ -1179,6 +1184,8 @@ def generate_units():
             OnFailureJobMode=replace-irreversibly
             Conflicts=wayland-session-shutdown.target
             Before=wayland-session-shutdown.target
+            RefuseManualStart=yes
+            RefuseManualStop=yes
             StopWhenUnneeded=yes
             CollectMode=inactive-or-failed
             [Service]
@@ -1201,13 +1208,12 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Main service for %I
             Documentation=man:uwsm(1)
+            Requires=wayland-session-pre@%i.target
             BindsTo=wayland-session@%i.target
             Before=wayland-session@%i.target
             PropagatesStopTo=wayland-session@%i.target
-            Requires=wayland-wm-env@%i.service
             After=graphical-session-pre.target
-            Wants=wayland-session-xdg-autostart@%i.target wayland-waitenv.service
-            Before=wayland-session-xdg-autostart@%i.target
+            Wants=wayland-session-xdg-autostart@%i.target
             OnSuccess=wayland-session-shutdown.target
             OnSuccessJobMode=replace-irreversibly
             OnFailure=wayland-session-shutdown.target
@@ -1529,6 +1535,7 @@ def generate_units():
             """
         ),
     )
+
 
 def remove_units(only=None) -> None:
     """
