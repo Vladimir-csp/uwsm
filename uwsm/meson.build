@@ -94,6 +94,7 @@ uwsm_sources = [
   '__init__.py',
   'main.py',
   'dbus.py',
+  'misc.py',
   params_file,
 ]
 

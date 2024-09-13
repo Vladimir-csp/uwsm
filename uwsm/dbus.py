@@ -1,4 +1,5 @@
 import dbus
+from uwsm.misc import print_debug
 
 
 class DbusInteractions:
@@ -7,6 +8,7 @@ class DbusInteractions:
     def __init__(self, dbus_level: str):
         "Takes dbus_level as 'system' or 'session'"
         if dbus_level in ["system", "session"]:
+            print_debug("initiate dbus interaction", dbus_level)
             self.dbus_level = dbus_level
             self.dbus_objects = {}
             if "bus" not in self.dbus_objects:
