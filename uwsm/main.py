@@ -1404,7 +1404,7 @@ def generate_units():
             Before=wayland-session@%i.target
             Requires=wayland-wm-env@%i.service graphical-session-pre.target
             After=wayland-wm-env@%i.service graphical-session-pre.target
-            Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target wayland-waitwd.service
+            Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target wayland-waitenv.service
             Before=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target app-graphical.slice background-graphical.slice session-graphical.slice
             PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
             # dirty fix of xdg-desktop-portal-gtk.service shudown
@@ -1429,13 +1429,13 @@ def generate_units():
         ),
     )
     update_unit(
-        "wayland-waitwd.service",
+        "wayland-waitenv.service",
         dedent(
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
-            Description=Wait for WAYLAND_DISPLAY to appear
+            Description=Wait for WAYLAND_DISPLAY and other variables
             Documentation=man:uwsm(1)
             Before=graphical-session.target
             After=graphical-session-pre.target
@@ -1445,10 +1445,10 @@ def generate_units():
             [Service]
             Type=oneshot
             RemainAfterExit=no
-            ExecStart={BIN_PATH} aux waitwd
+            ExecStart={BIN_PATH} aux waitenv
             Restart=no
             TimeoutStartSec=12
-            SyslogIdentifier={BIN_NAME}_waitwd
+            SyslogIdentifier={BIN_NAME}_waitenv
             Slice=background.slice
             """
         ),
@@ -2267,15 +2267,21 @@ class Args:
             metavar="PID",
             help="PID to wait for",
         )
-        parsers["waitwd"] = parsers["aux_subparsers"].add_parser(
-            "waitwd",
+        parsers["waitenv"] = parsers["aux_subparsers"].add_parser(
+            "waitenv",
             formatter_class=HelpFormatterNewlines,
-            help="Waits for WAYLAND_DESKTOP variable to appear in activation environment.",
+            help="Waits for WAYLAND_DISPLAY (and optionally other vars) to appear in systemd user manager environment.",
             description=(
-                "Exits successfully when WAYLAND_DESKTOP appears in activation environment. "
-                "Times out at around 12 seconds. "
-                "Used in wayland-session-waitwd@.service to delay graphical-session.target if the var is missing."
+                "Exits successfully when WAYLAND_DISPLAY (and optionally other vars) appears in systemd user manager activation environment."
             ),
+            epilog="Also waits for vars listed in whitespace-separated UWSM_WAIT_VARNAMES environment var.",
+        )
+        parsers["waitenv"].add_argument(
+            "env_names",
+            type=list,
+            nargs="*",
+            metavar="VAR_NAME",
+            help="Names of additional variables to wait for",
         )
 
         if custom_args is None:
@@ -4182,6 +4188,39 @@ def waitpid(pid: int):
     return
 
 
+def waitenv(varnames: List[str] = None, timeout=12, step=0.5):
+    "Waits for varnames to appear in activation environment"
+    if varnames is None:
+        varnames = ["WAYLAND_DISPLAY"]
+    else:
+        varnames = filter_varnames(varnames)
+    varnames_set = set(varnames)
+    varnames_exist_set = set()
+    bus_session = DbusInteractions("session")
+    start_ts = time.time()
+    for attempt in range(1, int(timeout // step) + 1):
+        aenv_varnames_set = set(bus_session.get_systemd_vars().keys())
+        if varnames_set.issubset(aenv_varnames_set):
+            print_ok(
+                f"All variables appeared in activation environment:\n  {', '.join(varnames)}"
+            )
+            return
+        varnames_appeared_set = varnames_set.intersection(aenv_varnames_set).difference(
+            varnames_exist_set
+        )
+        if varnames_appeared_set:
+            varnames_exist_set.update(varnames_appeared_set)
+            print_normal(
+                f"Variables appeared in activation environment:\n  {', '.join(varnames_appeared_set)}\nStill waiting for:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
+            )
+        if time.time() - start_ts > timeout:
+            break
+        time.sleep(step)
+    raise TimeoutError(
+        f"Timed out waiting for variables in activation environment:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
+    )
+
+
 def main():
     "UWSM main entrypoint"
 
@@ -4631,18 +4670,14 @@ def main():
                 print_error(caught_exception)
                 sys.exit(1)
 
-        elif Args.parsed.aux_action == "waitwd":
+        elif Args.parsed.aux_action == "waitenv":
             try:
-                bus_session = DbusInteractions("session")
-                for attempt in range(1, 21):
-                    aenv_varnames = bus_session.get_systemd_vars().keys()
-                    if "WAYLAND_DISPLAY" in aenv_varnames:
-                        print_ok("WAYLAND_DISPLAY appeared in activation environment")
-                        sys.exit(0)
-                    time.sleep(0.5)
-                print_error(
-                    "Timed aout waiting for WAYLAND_DISPLAY in activation environment!"
+                waitenv(
+                    varnames=["WAYLAND_DISPLAY"]
+                    + Args.parsed.env_names
+                    + os.getenv("UWSM_WAIT_VARNAMES", "").split()
                 )
-                sys.exit(1)
+                sys.exit(0)
             except Exception as caught_exception:
                 print_error(caught_exception)
+                sys.exit(1)
