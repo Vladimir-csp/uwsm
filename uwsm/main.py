@@ -1288,11 +1288,12 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Preparation for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
-            Requires=basic.target
-            StopWhenUnneeded=yes
             BindsTo=graphical-session-pre.target
             Before=graphical-session-pre.target
             PropagatesStopTo=graphical-session-pre.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
+            StopWhenUnneeded=yes
             """
         ),
     )
@@ -1305,12 +1306,14 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
-            Requires=wayland-session-pre@%i.target graphical-session-pre.target
-            After=wayland-session-pre@%i.target graphical-session-pre.target
-            StopWhenUnneeded=yes
+            Requires=wayland-session-pre@%i.target
+            After=graphical-session-pre.target
             BindsTo=graphical-session.target
             Before=graphical-session.target
             PropagatesStopTo=graphical-session.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
+            StopWhenUnneeded=yes
             """
         ),
     )
@@ -1323,12 +1326,14 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=XDG Autostart for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
-            Requires=wayland-session@%i.target graphical-session.target
-            After=wayland-session@%i.target graphical-session.target
-            StopWhenUnneeded=yes
+            Requisite=wayland-session@%i.target
+            After=graphical-session.target
             BindsTo=xdg-desktop-autostart.target
             Before=xdg-desktop-autostart.target
             PropagatesStopTo=xdg-desktop-autostart.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
+            StopWhenUnneeded=yes
             """
         ),
     )
@@ -1342,17 +1347,6 @@ def generate_units():
             Description=Shutdown graphical session units
             Documentation=man:uwsm(1) man:systemd.special(7)
             DefaultDependencies=no
-            Conflicts=app-graphical.slice
-            After=app-graphical.slice
-            Conflicts=background-graphical.slice
-            After=background-graphical.slice
-            Conflicts=session-graphical.slice
-            After=session-graphical.slice
-            Conflicts=xdg-desktop-autostart.target
-            After=xdg-desktop-autostart.target
-            # dirty fix of xdg-desktop-portal-gtk.service shudown
-            Conflicts=xdg-desktop-portal-gtk.service
-            After=xdg-desktop-portal-gtk.service
             Conflicts=graphical-session.target
             After=graphical-session.target
             Conflicts=graphical-session-pre.target
@@ -1374,12 +1368,15 @@ def generate_units():
             Documentation=man:uwsm(1)
             BindsTo=wayland-session-pre@%i.target
             Before=wayland-session-pre@%i.target
+            PropagatesStopTo=wayland-session-pre@%i.target
+            OnSuccess=wayland-session-shutdown.target
+            OnSuccessJobMode=replace-irreversibly
+            OnFailure=wayland-session-shutdown.target
+            OnFailureJobMode=replace-irreversibly
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
             StopWhenUnneeded=yes
             CollectMode=inactive-or-failed
-            OnFailure=wayland-session-shutdown.target
-            OnSuccess=wayland-session-shutdown.target
-            OnFailureJobMode=replace-irreversibly
-            OnSuccessJobMode=replace-irreversibly
             [Service]
             Type=oneshot
             RemainAfterExit=yes
@@ -1402,18 +1399,18 @@ def generate_units():
             Documentation=man:uwsm(1)
             BindsTo=wayland-session@%i.target
             Before=wayland-session@%i.target
-            Requires=wayland-wm-env@%i.service graphical-session-pre.target
-            After=wayland-wm-env@%i.service graphical-session-pre.target
-            Wants=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target wayland-waitenv.service
-            Before=wayland-session-xdg-autostart@%i.target xdg-desktop-autostart.target app-graphical.slice background-graphical.slice session-graphical.slice
-            PropagatesStopTo=app-graphical.slice background-graphical.slice session-graphical.slice
-            # dirty fix of xdg-desktop-portal-gtk.service shudown
-            PropagatesStopTo=xdg-desktop-portal-gtk.service
-            CollectMode=inactive-or-failed
-            OnFailure=wayland-session-shutdown.target
+            PropagatesStopTo=wayland-session@%i.target
+            Requires=wayland-wm-env@%i.service
+            After=graphical-session-pre.target
+            Wants=wayland-session-xdg-autostart@%i.target wayland-waitenv.service
+            Before=wayland-session-xdg-autostart@%i.target
             OnSuccess=wayland-session-shutdown.target
-            OnFailureJobMode=replace-irreversibly
             OnSuccessJobMode=replace-irreversibly
+            OnFailure=wayland-session-shutdown.target
+            OnFailureJobMode=replace-irreversibly
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
+            CollectMode=inactive-or-failed
             [Service]
             # awaits for ready state notification from compositor's child
             # should be issued by '{BIN_NAME} finalize'
@@ -1442,6 +1439,9 @@ def generate_units():
             CollectMode=inactive-or-failed
             OnFailure=wayland-session-shutdown.target
             OnFailureJobMode=replace-irreversibly
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
+            CollectMode=inactive-or-failed
             [Service]
             Type=oneshot
             RemainAfterExit=no
@@ -1462,7 +1462,10 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Fast application argument generator
             Documentation=man:uwsm(1)
-            BindsTo=graphical-session.target
+            PartOf=graphical-session.target
+            After=graphical-session.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
             CollectMode=inactive-or-failed
             [Service]
             Type=exec
@@ -1491,11 +1494,13 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=Bind graphical session to PID %i
             Documentation=man:uwsm(1)
-            CollectMode=inactive-or-failed
             OnSuccess=wayland-session-shutdown.target
+            OnSuccessJobMode=replace-irreversibly
             OnFailure=wayland-session-shutdown.target
             OnFailureJobMode=replace-irreversibly
-            OnSuccessJobMode=replace-irreversibly
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
+            CollectMode=inactive-or-failed
             [Service]
             Type=exec
             ExecStart={bindpid_cmd} %i
@@ -1518,6 +1523,8 @@ def generate_units():
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
             After=graphical-session.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
             """
         ),
     )
@@ -1532,6 +1539,8 @@ def generate_units():
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
             After=graphical-session.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
             """
         ),
     )
@@ -1546,6 +1555,8 @@ def generate_units():
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
             After=graphical-session.target
+            Conflicts=wayland-session-shutdown.target
+            Before=wayland-session-shutdown.target
             """
         ),
     )
@@ -1670,52 +1681,50 @@ def generate_units():
         # remove customization tweak
         remove_unit(wm_specific_service)
 
-    # tweaks
+    ## tweaks
     update_unit(
         "app-@autostart.service.d/slice-tweak.conf",
         dedent(
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            # make autostart apps stoppable by target
-            #StopPropagatedFrom=xdg-desktop-autostart.target
-            PartOf=xdg-desktop-autostart.target
             X-UWSM-ID=GENERIC
+            # make autostart apps stoppable by target
+            PartOf=xdg-desktop-autostart.target
+            After=xdg-desktop-autostart.target
             [Service]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
             """
         ),
     )
-    # this does not work
-    # update_unit(
-    #     "xdg-desktop-portal-gtk.service.d/part-tweak.conf",
-    #     dedent(
-    #        f"""
-    #        # injected by {BIN_NAME}, do not edit
-    #        [Unit]
-    #        # make the same thing as -wlr portal to stop correctly
-    #        PartOf=graphical-session.target
-    #        After=graphical-session.target
-    #        ConditionEnvironment=WAYLAND_DISPLAY
-    #        X-UWSM-ID=GENERIC
-    #        """
-    #     )
-    # )
-    # this breaks xdg-desktop-portal-rewrite-launchers.service
-    # update_unit(
-    #     "xdg-desktop-portal-.service.d/slice-tweak.conf",
-    #     dedent(
-    #        f"""
-    #        # injected by {BIN_NAME}, do not edit
-    #        [Service]
-    #        # make xdg-desktop-portal-*.service implementations part of graphical scope
-    #        Slice=app-graphical.slice
-    #        X-UWSM-ID=GENERIC
-    #        """
-    #     )
-    # )
-
+    ## hotfix some portals
+    # upstream fix pending
+    update_unit(
+        "xdg-desktop-portal-gtk.service.d/order-tweak.conf",
+        dedent(
+            f"""
+            # injected by {BIN_NAME}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            PartOf=graphical-session.target
+            After=graphical-session.target
+            """
+        ),
+    )
+    # with kde portal is's complicated
+    update_unit(
+        "plasma-xdg-desktop-portal-kde.service.d/order-tweak.conf",
+        dedent(
+            f"""
+            # injected by {BIN_NAME}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            PartOf=graphical-session.target
+            After=graphical-session.target
+            """
+        ),
+    )
 
 def remove_units(only=None) -> None:
     """
