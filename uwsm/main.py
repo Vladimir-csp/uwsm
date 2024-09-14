@@ -1114,7 +1114,7 @@ def generate_units():
             Description=Session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
             Requires=wayland-session-pre@%i.target wayland-wm@%i.service
-            Wants=wayland-waitenv.service
+            Wants=wayland-waitenv.service wayland-session-xdg-autostart@%i.target
             After=graphical-session-pre.target
             BindsTo=graphical-session.target
             Before=graphical-session.target
@@ -1134,9 +1134,8 @@ def generate_units():
             X-UWSM-ID=GENERIC
             Description=XDG Autostart for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
-            Requisite=wayland-session@%i.target
             PartOf=graphical-session.target
-            After=graphical-session.target
+            After=wayland-session@%i.target graphical-session.target
             BindsTo=xdg-desktop-autostart.target
             Before=xdg-desktop-autostart.target
             PropagatesStopTo=xdg-desktop-autostart.target
@@ -1156,10 +1155,8 @@ def generate_units():
             Description=Shutdown graphical session units
             Documentation=man:uwsm(1) man:systemd.special(7)
             DefaultDependencies=no
-            Conflicts=graphical-session.target
-            After=graphical-session.target
-            Conflicts=graphical-session-pre.target
-            After=graphical-session-pre.target
+            Conflicts=graphical-session-pre.target graphical-session.target xdg-desktop-autostart.target
+            After=graphical-session-pre.target graphical-session.target xdg-desktop-autostart.target
             StopWhenUnneeded=yes
             """
         ),
@@ -1176,7 +1173,7 @@ def generate_units():
             Description=Environment preloader for %I
             Documentation=man:uwsm(1)
             BindsTo=wayland-session-pre@%i.target
-            Before=wayland-session-pre@%i.target
+            Before=wayland-session-pre@%i.target graphical-session-pre.target
             PropagatesStopTo=wayland-session-pre@%i.target
             OnSuccess=wayland-session-shutdown.target
             OnSuccessJobMode=replace-irreversibly
@@ -1210,10 +1207,9 @@ def generate_units():
             Documentation=man:uwsm(1)
             Requires=wayland-session-pre@%i.target
             BindsTo=wayland-session@%i.target
-            Before=wayland-session@%i.target
-            PropagatesStopTo=wayland-session@%i.target
-            After=graphical-session-pre.target
-            Wants=wayland-session-xdg-autostart@%i.target
+            Before=wayland-session@%i.target graphical-session.target
+            PropagatesStopTo=wayland-session@%i.target graphical-session.target
+            After=wayland-session-pre@%i.target graphical-session-pre.target
             OnSuccess=wayland-session-shutdown.target
             OnSuccessJobMode=replace-irreversibly
             OnFailure=wayland-session-shutdown.target
@@ -1499,7 +1495,7 @@ def generate_units():
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSM-ID=GENERIC
-            # make autostart apps stoppable by target
+            # make autostart apps stoppable/restartable by target
             PartOf=xdg-desktop-autostart.target
             After=xdg-desktop-autostart.target
             [Service]
@@ -4026,7 +4022,7 @@ def waitenv(varnames: List[str] = None, timeout=12, step=0.5):
         aenv_varnames_set = set(bus_session.get_systemd_vars().keys())
         if varnames_set.issubset(aenv_varnames_set):
             print_ok(
-                f"All variables appeared in activation environment:\n  {', '.join(varnames)}"
+                f"All expected variables appeared in activation environment:\n  {', '.join(varnames)}"
             )
             return
         varnames_appeared_set = varnames_set.intersection(aenv_varnames_set).difference(
@@ -4035,7 +4031,7 @@ def waitenv(varnames: List[str] = None, timeout=12, step=0.5):
         if varnames_appeared_set:
             varnames_exist_set.update(varnames_appeared_set)
             print_normal(
-                f"Variables appeared in activation environment:\n  {', '.join(varnames_appeared_set)}\nStill waiting for:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
+                f"Expected variables appeared in activation environment:\n  {', '.join(varnames_appeared_set)}\nStill expecting:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
             )
         if time.time() - start_ts > timeout:
             break
