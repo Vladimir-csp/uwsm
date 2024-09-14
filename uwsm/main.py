@@ -2129,10 +2129,9 @@ def finalize(additional_vars=None):
         additional_vars = []
 
     if not os.getenv("WAYLAND_DISPLAY", ""):
-        print_error(
+        raise ValueError(
             "WAYLAND_DISPLAY is not defined or empty. Are we being run by a wayland compositor or not?"
         )
-        sys.exit(1)
     export_vars = {}
     export_vars_names = []
     for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(set(additional_vars)):
@@ -2143,7 +2142,7 @@ def finalize(additional_vars=None):
 
     # get id of active or activating compositor
     wm_id = get_active_wm_id()
-    # get id ofactivating compositor for later decisions
+    # get id of activating compositor for later decisions
     activating_wm_id = get_active_wm_id(active=False, activating=True)
 
     if not isinstance(wm_id, str) or not wm_id:
@@ -2184,10 +2183,10 @@ def finalize(additional_vars=None):
 
     # if no prior failures and unit is in activating state, exec systemd-notify
     if activating_wm_id:
-        print_normal(f"Finalizing startup of {wm_id}.")
+        print_normal(f"Declaring unit for {wm_id} ready.")
         os.execlp("systemd-notify", "systemd-notify", "--ready")
     else:
-        print_normal(f"Wayland session for {wm_id} is already active.")
+        print_normal(f"Unit for {wm_id} is already active.")
         sys.exit(0)
 
     # we should not be here
@@ -4174,7 +4173,7 @@ def main():
                 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
                 # 15 seconds should be more than enough to wait for compositor activation
-                # 10 second unit timeout plus 5 on possible overhead
+                # 10 seconds unit timeout plus 5 on possible overhead
                 # Premature exit is covered explicitly
                 # 0.5s between 30 attempts
                 bus_session = DbusInteractions("session")
@@ -4469,10 +4468,39 @@ def main():
                     print_error(caught_exception)
                     sys.exit(1)
         elif Args.parsed.aux_action == "exec":
-            fill_comp_globals()
-            print_debug(CompGlobals.cmdline)
-            print_normal(f"Starting: {shlex.join(CompGlobals.cmdline)}...")
-            os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
+            try:
+                fill_comp_globals()
+                print_debug(CompGlobals.cmdline)
+                print_normal(f"Starting: {shlex.join(CompGlobals.cmdline)}...")
+
+                # fork out a process that will watch for expected variables
+                # in activation environment and signal unit readiness automatically
+                mainpid = os.getpid()
+                childpid = os.fork()
+                if childpid == 0:
+                    try:
+                        waitenv(
+                            varnames=["WAYLAND_DISPLAY"]
+                            + os.getenv("UWSM_WAIT_VARNAMES", "").split()
+                        )
+                        # just to be on the safe side if things are settling down
+                        time.sleep(0.2)
+
+                        if get_active_wm_unit(active=False, activating=True):
+                            print_normal(f"Declairng unit for {CompGlobals.id} ready.")
+                            os.execlp("systemd-notify", "systemd-notify", "--ready")
+                        else:
+                            print_normal(f"Unit for {CompGlobals.id} is already active.")
+                            sys.exit(0)
+                    except Exception as caught_exception:
+                        print_warning("Autoready: Failed", caught_exception)
+                        sys.exit(1)
+                    # end of fork
+                # execute compositor cmdline
+                os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
+            except Exception as caught_exception:
+                print_error(caught_exception)
+                sys.exit(1)
 
         elif Args.parsed.aux_action == "app-daemon":
             print_normal("Launching app daemon", file=sys.stderr)
