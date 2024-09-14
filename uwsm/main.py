@@ -547,15 +547,43 @@ def find_entries(
 
 
 def get_default_comp_entry():
-    "Gets compositor Desktop Entry ID from {BIN_NAME}-default-id file in config hierarchy"
-    for cmd_cache_file in BaseDirectory.load_config_paths(f"{BIN_NAME}-default-id"):
-        if os.path.isfile(cmd_cache_file):
+    "Gets compositor Desktop Entry ID from {BIN_NAME}/default-id file in config hierarchy and fallback system data hiearchy"
+    # TRANSITION: move config to subdir
+    # iterate over config paths + system data paths
+    extended_dirs = []
+    for config_dir in BaseDirectory.load_config_paths(""):
+        if os.path.isdir(config_dir):
+            extended_dirs.append(config_dir)
+    for config_dir in BaseDirectory.load_data_paths(""):
+        # skip one in XDG_DATA_HOME
+        if os.path.normpath(config_dir).startswith(
+            os.path.normpath(BaseDirectory.xdg_data_home)
+        ):
+            continue
+        if os.path.isdir(config_dir):
+            extended_dirs.append(config_dir)
+
+    for config_dir in extended_dirs:
+        old_config_file = os.path.join(config_dir, f"{BIN_NAME}-default-id")
+        config_file = os.path.join(config_dir, f"{BIN_NAME}/default-id")
+        if os.path.isfile(old_config_file):
+            if os.path.isfile(config_file):
+                print_warning(
+                    f'Encountered legacy config file "{old_config_file}" (ignored)!'
+                )
+                time.sleep(5)
+            # fallback to legacy if no new config
+            else:
+                print_warning(f'Using legacy config file "{old_config_file}"!')
+                time.sleep(5)
+                config_file = old_config_file
+
+        if os.path.isfile(config_file):
             try:
-                with open(cmd_cache_file, "r", encoding="UTF-8") as cmd_cache_file:
-                    for line in cmd_cache_file.readlines():
+                with open(config_file, "r", encoding="UTF-8") as config_file:
+                    for line in config_file.readlines():
                         if line.strip():
-                            wmid = line.strip()
-                            return wmid
+                            return line.strip()
             except Exception as caught_exception:
                 print_error(caught_exception)
                 continue
@@ -563,11 +591,13 @@ def get_default_comp_entry():
 
 
 def save_default_comp_entry(default):
-    "Saves compositor Desktop Entry ID to {BIN_NAME}-default-id file in config hierarchy"
+    "Saves compositor Desktop Entry ID to {BIN_NAME}/default-id file in config hierarchy"
     if "dry_run" not in Args.parsed or not Args.parsed.dry_run:
-        os.makedirs(BaseDirectory.xdg_config_home, exist_ok=True)
-        config = os.path.join(BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id")
-        with open(config, "w", encoding="UTF-8") as config:
+        config_file = os.path.join(
+            BaseDirectory.xdg_config_home, BIN_NAME, "default-id"
+        )
+        os.makedirs(os.path.dirname(config_file), exist_ok=True)
+        with open(config_file, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
             print_ok(f"Saved default compositor ID: {default}.")
     else:
@@ -1712,7 +1742,9 @@ class Args:
             epilog=dedent(
                 f"""
                 Entries are selected from "wayland-sessions" XDG data hierarchy.
-                Selection is saved to ${{XDG_CONFIG_HOME}}/{BIN_NAME}-default-id
+                Default selection is read from first encountered "{BIN_NAME}/default-id" file in
+                XDG Config hierarchy and system part of XDG Data hierarchy. When selected, choice is
+                saved to user part of XDG Config hierarchy ("${{XDG_CONFIG_HOME}}/{BIN_NAME}/default-id").
                 Nothing else is done.
                 """
             ),
@@ -2159,7 +2191,7 @@ def finalize(additional_vars=None):
     cleanup_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
         BIN_NAME,
-        f"env_cleanup_{wm_id}.list"
+        f"env_cleanup_{wm_id}.list",
     )
     if os.path.isfile(cleanup_file):
         with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
@@ -2375,6 +2407,11 @@ def prepare_env_gen_sh(random_mark):
         	printf '%s' "${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}"
         }
 
+        get_all_config_dirs_extended() {
+        	# returns whole XDG_CONFIG and system XDG_DATA hierarchies, :-delimited
+        	printf '%s' "${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}"
+        }
+
         in_each_config_dir() {
         	# called for each config dir (decreasing priority)
         	true
@@ -2388,10 +2425,32 @@ def prepare_env_gen_sh(random_mark):
         	__ENV_FILES__=''
         	for __DNLC__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
         		IFS="${__OIFS__}"
-        		__ENV_FILES__="${__SELF_NAME__}-env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
+        		# TRANSITION: move to subdir
+        		if [ -f "${1}/${__SELF_NAME__}-env-${__DNLC__}" ]; then
+        			if [ -f "${1}/${__SELF_NAME__}/env-${__DNLC__}" ]; then
+        				echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env-${__DNLC__}\" (ignored)!" >&2
+        				__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
+        			else
+        				echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env-${__DNLC__}\" (used)!" >&2
+        				__ENV_FILES__="${__SELF_NAME__}-env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
+        			fi
+        		else
+        			__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
+        		fi
         	done
         	# add common env file at the beginning
-        	__ENV_FILES__="${__SELF_NAME__}-env${__ENV_FILES__:+:}${__ENV_FILES__}"
+        	# TRANSITION: move to subdir
+        	if [ -f "${1}/${__SELF_NAME__}-env" ]; then
+        		if [ -f "${1}/${__SELF_NAME__}/env" ]; then
+        			echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env\" (ignored)!" >&2
+        			__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
+        		else
+        			echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env\" (used)!" >&2
+        			__ENV_FILES__="${__SELF_NAME__}-env${__ENV_FILES__:+:}${__ENV_FILES__}"
+        		fi
+        	else
+        		__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
+        	fi
         	unset __DNLC__
 
         	# load env file sequence from this config dir rung
@@ -2407,7 +2466,7 @@ def prepare_env_gen_sh(random_mark):
         process_config_dirs() {
         	# iterate over config dirs (decreasing importance) and call in_each_config_dir* functions
         	IFS=":"
-        	for __CONFIG_DIR__ in $(get_all_config_dirs); do
+        	for __CONFIG_DIR__ in $(get_all_config_dirs_extended); do
         		IFS="${__OIFS__}"
         		if type "in_each_config_dir_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         			"in_each_config_dir_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
@@ -2423,7 +2482,7 @@ def prepare_env_gen_sh(random_mark):
         process_config_dirs_reversed() {
         	# iterate over reverse config dirs (increasing importance) and call in_each_config_dir_reversed* functions
         	IFS=":"
-        	for __CONFIG_DIR__ in $(reverse "$(get_all_config_dirs)"); do
+        	for __CONFIG_DIR__ in $(reverse "$(get_all_config_dirs_extended)"); do
         		IFS="${__OIFS__}"
         		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
@@ -2716,14 +2775,15 @@ def cleanup_env():
     print_debug("bus_session initial", bus_session)
 
     cleanup_file_dir = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True),
-        BIN_NAME
+        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME
     )
     cleanup_files = []
 
     if os.path.isdir(cleanup_file_dir):
         for cleanup_file in os.listdir(cleanup_file_dir):
-            if not cleanup_file.startswith("env_cleanup_") or not cleanup_file.endswith(".list"):
+            if not cleanup_file.startswith("env_cleanup_") or not cleanup_file.endswith(
+                ".list"
+            ):
                 continue
             cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
             if os.path.isfile(cleanup_file):
@@ -3429,9 +3489,7 @@ def app_daemon():
     # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
     # crudely work around it
     error_flag_path = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True),
-        "uwsm",
-        "app_daemon_error"
+        BaseDirectory.get_runtime_dir(strict=True), "uwsm", "app_daemon_error"
     )
 
     def send_cmdline(args_in: List, args_out: str):
@@ -4087,7 +4145,9 @@ def main():
                     default_id, Args.parsed.wm_cmdline[0] == "default"
                 )
                 if select_wm_id:
-                    if select_wm_id != default_id:
+                    if select_wm_id == default_id:
+                        print_normal(f"Default compositor ID unchanged: {select_wm_id}.")
+                    else:
                         save_default_comp_entry(select_wm_id)
                     # update Args.parsed.wm_cmdline in place
                     Args.parsed.wm_cmdline = [select_wm_id]
@@ -4501,7 +4561,9 @@ def main():
                             print_normal(f"Declairng unit for {CompGlobals.id} ready.")
                             os.execlp("systemd-notify", "systemd-notify", "--ready")
                         else:
-                            print_normal(f"Unit for {CompGlobals.id} is already active.")
+                            print_normal(
+                                f"Unit for {CompGlobals.id} is already active."
+                            )
                             sys.exit(0)
                     except Exception as caught_exception:
                         print_warning("Autoready: Failed", caught_exception)
