@@ -565,8 +565,7 @@ def get_default_comp_entry():
 def save_default_comp_entry(default):
     "Saves compositor Desktop Entry ID to {BIN_NAME}-default-id file in config hierarchy"
     if "dry_run" not in Args.parsed or not Args.parsed.dry_run:
-        if not os.path.isdir(BaseDirectory.xdg_config_home):
-            os.mkdir(BaseDirectory.xdg_config_home)
+        os.makedirs(BaseDirectory.xdg_config_home, exist_ok=True)
         config = os.path.join(BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id")
         with open(config, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
@@ -2158,7 +2157,9 @@ def finalize(additional_vars=None):
 
     # append vars to cleanup file
     cleanup_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True), f"env_names_for_cleanup_{wm_id}"
+        BaseDirectory.get_runtime_dir(strict=True),
+        BIN_NAME,
+        f"env_cleanup_{wm_id}.list"
     )
     if os.path.isfile(cleanup_file):
         with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
@@ -2654,7 +2655,8 @@ def prepare_env():
     # first get exitsing vars if cleanup file already exists
     cleanup_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
-        f"env_names_for_cleanup_{CompGlobals.id}",
+        BIN_NAME,
+        f"env_cleanup_{CompGlobals.id}.list",
     )
     if os.path.isfile(cleanup_file):
         with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
@@ -2663,6 +2665,8 @@ def prepare_env():
             }
     else:
         current_cleanup_varnames = set()
+        # create uwsm subdir
+        os.makedirs(os.path.dirname(cleanup_file), exist_ok=True)
     # write cleanup file
     with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
         open_cleanup_file.write(
@@ -2698,7 +2702,7 @@ def prepare_env():
 
 def cleanup_env():
     """
-    takes var names from "${XDG_RUNTIME_DIR}/env_names_for_cleanup_*"
+    takes var names from "${XDG_RUNTIME_DIR}/uwsm/env_cleanup_*.list"
     union Varnames.always_cleanup,
     difference Varnames.never_cleanup,
     intersect actual systemd user manager varnames,
@@ -2711,15 +2715,20 @@ def cleanup_env():
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
 
-    cleanup_file_dir = BaseDirectory.get_runtime_dir(strict=True)
+    cleanup_file_dir = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True),
+        BIN_NAME
+    )
     cleanup_files = []
-    for cleanup_file in os.listdir(cleanup_file_dir):
-        if not cleanup_file.startswith("env_names_for_cleanup_"):
-            continue
-        cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
-        if os.path.isfile(cleanup_file):
-            print_normal(f'Found cleanup_file "{os.path.basename(cleanup_file)}".')
-            cleanup_files.append(cleanup_file)
+
+    if os.path.isdir(cleanup_file_dir):
+        for cleanup_file in os.listdir(cleanup_file_dir):
+            if not cleanup_file.startswith("env_cleanup_") or not cleanup_file.endswith(".list"):
+                continue
+            cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
+            if os.path.isfile(cleanup_file):
+                print_normal(f'Found cleanup_file "{os.path.basename(cleanup_file)}".')
+                cleanup_files.append(cleanup_file)
 
     if not cleanup_files:
         print_warning("No cleanup files found.")
@@ -3073,8 +3082,7 @@ def write_neg_cache(name: str, data: dict):
     neg_cache_path = os.path.join(BaseDirectory.xdg_cache_home, f"{BIN_NAME}-{name}")
     print_debug(f"writing cache {neg_cache_path} ({len(data)} items)")
     try:
-        if not os.path.isdir(BaseDirectory.xdg_cache_home):
-            os.mkdir(BaseDirectory.xdg_cache_home)
+        os.makedirs(BaseDirectory.xdg_cache_home, exist_ok=True)
         with open(neg_cache_path, "w", encoding="UTF-8") as neg_cache_file:
             for path, mtime in data.items():
                 neg_cache_file.write(f"{path};{mtime}\n")
@@ -3421,7 +3429,9 @@ def app_daemon():
     # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
     # crudely work around it
     error_flag_path = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True), "uwsm-app-daemon-error"
+        BaseDirectory.get_runtime_dir(strict=True),
+        "uwsm",
+        "app_daemon_error"
     )
 
     def send_cmdline(args_in: List, args_out: str):
@@ -3478,6 +3488,7 @@ def app_daemon():
             continue
 
         # argparse exit workaround: write command as error flag file
+        os.makedirs(os.path.dirname(error_flag_path), exist_ok=True)
         with open(error_flag_path, "w", encoding="UTF-8") as error_file:
             print_debug(f"writing {error_flag_path} in case of argparse exit")
             error_file.write(line.strip())
