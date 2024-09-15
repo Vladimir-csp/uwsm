@@ -4104,7 +4104,7 @@ def waitpid(pid: int):
     return
 
 
-def waitenv(varnames: List[str] = None, timeout=12, step=0.5):
+def waitenv(varnames: List[str] = None, timeout=10, step=0.5):
     "Waits for varnames to appear in activation environment"
     if varnames is None:
         varnames = ["WAYLAND_DISPLAY"]
@@ -4597,7 +4597,13 @@ def main():
                             + os.getenv("UWSM_WAIT_VARNAMES", "").split()
                         )
                         # just to be on the safe side if things are settling down
-                        time.sleep(0.2)
+                        settle_time = os.getenv("UWSM_WAIT_VARNAMES_SETTLETIME", "0.2")
+                        try:
+                            settle_time = float(settle_time)
+                        except:
+                            print_warning(f"\"UWSM_WAIT_VARNAMES_SETTLETIME\" contains invalid value \"{settle_time}\", using \"0.2\"")
+                            settle_time = 0.2
+                        time.sleep(settle_time)
 
                         # calculate environment delta and update cleanup list
                         env_post = filter_varnames(bus_session.get_systemd_vars())
@@ -4636,7 +4642,7 @@ def main():
                             )
                             sys.exit(0)
                     except Exception as caught_exception:
-                        print_warning("Autoready: Failed", caught_exception)
+                        print_warning("Autoready failed:\n", caught_exception)
                         sys.exit(1)
                     # end of fork
                 # execute compositor cmdline
@@ -4668,6 +4674,14 @@ def main():
                     + Args.parsed.env_names
                     + os.getenv("UWSM_WAIT_VARNAMES", "").split()
                 )
+                # just to be on the safe side if things are settling down
+                settle_time = os.getenv("UWSM_WAIT_VARNAMES_SETTLETIME", "0.2")
+                try:
+                    settle_time = float(settle_time)
+                except:
+                    print_warning(f"\"UWSM_WAIT_VARNAMES_SETTLETIME\" contains invalid value \"{settle_time}\", using \"0.2\"")
+                    settle_time = 0.2
+                time.sleep(settle_time)
                 sys.exit(0)
             except Exception as caught_exception:
                 print_error(caught_exception)
