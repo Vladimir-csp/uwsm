@@ -787,7 +787,7 @@ def reload_systemd():
     return True
 
 
-def set_systemd_vars(vars_dict: dict):
+def set_systemd_vars(vars_dict: dict, dbus_only=False):
     "Exports vars from given dict to systemd user manager"
 
     bus_session = DbusInteractions("session")
@@ -802,8 +802,15 @@ def set_systemd_vars(vars_dict: dict):
         )
         print_debug("sending to .UpdateActivationEnvironment", vars_dict)
         bus_session.set_dbus_vars(vars_dict)
+    else:
+        print_debug(
+            "dbus unit", dbus_unit, "skipped managing dbus activation environment"
+        )
 
-    bus_session.set_systemd_vars(vars_dict)
+    if not dbus_only:
+        bus_session.set_systemd_vars(vars_dict)
+    else:
+        print_debug("skipped managing systemd activation environment")
 
 
 def unset_systemd_vars(vars_list):
@@ -4617,6 +4624,8 @@ def main():
                         env_delta = dict(set(env_post.items()) - set(env_pre.items()))
 
                         if env_delta:
+                            # sync delta to dbus
+                            set_systemd_vars(env_delta, dbus_only=True)
                             try:
                                 append_to_cleanup_file(
                                     CompGlobals.id, env_delta, skip_always_cleanup=True, create=True
