@@ -13,6 +13,13 @@ session/XDG autostart management in Systemd-managed environments.
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
 
+> [!IMPORTANT]
+> Upcoming v0.19.0 consolidates various resources (config, environment, and
+> runtime files) into `uwsm` subdirs. Warnings will be issued for encountered old
+> paths, and v0.20.0 will drop them. Please migrate.
+> Also v0.19.0 will introduce automatic finalization mechanism. It will remove
+> the necessity to run `uwsm finalize` in compositors in some/lots of cases.
+
 > [!NOTE]
 > It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
@@ -83,9 +90,10 @@ Idempotently (well, best-effort-idempotently) handles environment.
 
 - On startup a specialized unit prepares environment by:
   - sourcing shell profile
-  - sourcing `uwsm-env`, `uwsm-env-${desktop}` files from each dir of reversed
-    `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}` (in increasing priority), where
-    `${desktop}` is each item of `${XDG_CURRENT_DESKTOP}`, lowercased
+  - sourcing `uwsm/env`, `uwsm/env-${desktop}` files from each dir of reversed
+    sequence `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}` (in
+    increasing priority), where `${desktop}` is each item of
+    `${XDG_CURRENT_DESKTOP}`, lowercased
 - Difference between environment state before and after preparation is exported
   into systemd user manager (and dbus activation environment if reference dbus
   implementation is used)
@@ -98,10 +106,13 @@ Idempotently (well, best-effort-idempotently) handles environment.
   - manually exported vars by `uwsm finalize` action
 
 Summary of where to put a user-level var:
-- For entire user's context: define in `${XDG_CONFIG_HOME}/environment.d/*.conf` (see `man 5 environment.d`)
-- For login session context: export in `~/.profile` (may have caveats, see your shell's manual)
-- For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm-env`
-- For uwsm-managed graphical session of specific compositor: export in `${XDG_CONFIG_HOME}/uwsm-env-${desktop}`
+- For entire user's context: define in `${XDG_CONFIG_HOME}/environment.d/*.conf`
+  (see `man 5 environment.d`)
+- For login session context: export in `~/.profile` (may have caveats, see your
+  shell's manual)
+- For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm/env`
+- For uwsm-managed graphical session of specific compositor: export in
+  `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`
 
 Also for convenience environment preloader defines `IN_UWSM_ENV_PRELOADER=true`
 variable, which can be probed from shell profile to do things conditionally.
@@ -121,7 +132,8 @@ Can work with Desktop entries from `wayland-sessions` in XDG data hierarchy and/
   - Entries can be overridden, masked or added in
     `${XDG_DATA_HOME}/wayland-sessions/`
   - Optional interactive selector (requires `whiptail`), choice is saved in
-    `${XDG_CONFIG_HOME}/uwsm-default-id`
+    `${XDG_CONFIG_HOME}/uwsm/default-id`, default is read from it, falling back
+    all the way through `${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}`
   - Desktop entry
     [actions](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
     are supported
@@ -171,7 +183,8 @@ wayland-wm-env@.service
 wayland-wm-env@${compositor}.service.d/50_custom.conf
 wayland-wm@.service
 wayland-wm@${compositor}.service.d/50_custom.conf
-wayland-session-bindpid@.target
+wayland-session-bindpid@.service
+wayland-session-waitenv.service
 ```
 
 See [Longer story](#longer-story-tour-under-the-hood) section below for
@@ -183,8 +196,9 @@ descriptions.
 Provides helpers and tools for various operations.
 </summary>
 
-- `uwsm finalize`: for finalizing service startup (compositor service unit uses
-  `Type=notify`) and exporting variables set by compositor
+- `uwsm finalize`: for explicitly exporting variables to activatoin environments
+  and signal compositor's unit readiness (compositor service unit uses
+  `Type=notify`)
 - `uwsm check may-start`: for checking conditions for launch at login (for
   integration into login shell profile)
 - `uwsm app`: for launching applications as scopes or services in proper slices
@@ -279,30 +293,92 @@ Runtime dependencies:
 
 ### 2. Service startup notification and vars set by compositor
 
-Ensure your compositor runs `uwsm finalize` command at the end of its startup.
-If compositor sets any useful environment variables, list their names as
-arguments.
+Potentially tricky part.
+
+TLDR; if your compositor puts `WAYLAND_DISPLAY` (and `DISPLAY` or any other
+important or useful variables) into activation environments, uwsm will make
+everything work automagically, proceed to section 3.
 
 <details><summary>
-Details
+If compositor does not do it, and startup times out in 10 seconds.
 </summary>
 
-- It fills systemd and dbus environments with essential vars set by compositor:
-  `WAYLAND_DISPLAY`, `DISPLAY`
-- Any additional vars can be given as arguments by name or listed in
- `UWSM_FINALIZE_VARNAMES` var, which is also pre-filled by plugins.
-- Undefined vars are silently ignored.
-- Any exported variables are also added to cleanup list.
-- If environment export is successful, it signals compositor service readiness,
-  so `graphical-session.target` can properly be declared reached. If this stage
-  fails, the compositor will be terminated in 10 seconds.
+Make compositor run `uwsm finalize` command at the end of its startup. It will
+deal with putting variables to activation environments in the best possible
+ways, mark them for cleanup, and signal unit readiness to systemd.
 
 </details>
 
+<details><summary>
+If compositor sets useful vars but they are missing from activation
+environments.
+</summary>
+
+Make compositor run `uwsm finalize` command (see previous spoiler). List
+variable names as arguments, or *append* them to whitespace-separated list in
+`UWSM_FINALIZE_VARNAMES` variable (do it beforehand, i.e. in env files or shell
+profile).
+
 Example snippet for sway config (these vars are already covered by sway plugin
-by adding them to `UWSM_FINALIZE_VARNAMES` var, listed here just for clearness):
+via `UWSM_FINALIZE_VARNAMES` var and listed here just for clearness):
 
 `exec exec uwsm finalize SWAYSOCK I3SOCK XCURSOR_SIZE XCURSOR_THEME`
+
+Undefined variables are silently ignored.
+
+</details>
+
+<details><summary>
+If compositor signals unit readiness prematurely or puts some vars into
+activation environments too late for downstream units to see.
+</summary>
+
+*Append* variable names to whitespace-separated list in `UWSM_WAIT_VARNAMES`
+variable (do it beforehand, i.e. in env files or shell profile).
+This will make uwsm delay graphical session startup until those vars appear
+in systemd activation environment (it also always waits for `WAYLAND_DISPLAY`).
+
+Combine this with making compositor run `uwsm finalize` command (see previous
+spoiler) to put more variables into activation environments and gain more
+control over this delay mechanism.
+
+Be aware that `uwsm finalize` skips undefined vars, so be sure that all
+vars listed listed in `UWSM_WAIT_VARNAMES` are really being set.
+
+You can also tweak `UWSM_WAIT_VARNAMES_SETTLETIME` (float, default: 0.2) to
+change pause duration after all expected vars are found.
+
+</details>
+
+<details><summary>
+Technical details
+</summary>
+
+Inside `wayland-wm@${compositor}.service` uwsm forks a process that probes
+systemd activation environment for `WAYLAND_DISPLAY` var and vars listed in
+`UWSM_WAIT_VARNAMES` variable (whitespace-separated). When all expected vars
+appear, it pauses for `UWSM_WAIT_VARNAMES_SETTLETIME` seconds (float, default:
+0.2) and signals unit readiness. It also appends cleanup list with delta
+between states of activation environment at unit startup time and end of settle
+pause.
+
+A separate unit, `wayland-session-waitenv.service` is launched alongside
+compositor, with similar ordering after `graphical-session-pre.target`, before
+`graphical-session.target`. It also waits for the same variables in the same
+manner, then successfully exits (or times out). Its job is to dealy
+`graphical-session.target` activation in case compositor signals its readiness
+prematurely. Or to fail startup if expected vars do not appear.
+
+`uwsm finalize` command fills systemd and dbus environments with essential vars
+set by compositor: `WAYLAND_DISPLAY`, `DISPLAY`. Any additional vars can be
+given as arguments by name or listed in `UWSM_FINALIZE_VARNAMES` var, which is
+also pre-filled by plugins. Dbus implementation quirks are handled. Undefined
+vars are silently ignored. Any exported variables are also added to cleanup
+list.
+
+Timeout for unit startup is 10 seconds.
+
+</details>
 
 ### 3. Applications and Slices
 
@@ -534,11 +610,15 @@ profile integration situation, or when launched manually. Following the
 principles above ensures `uwsm` will properly recognize itself and parse
 requested arguments inside the entry without any side effects.
 
-Testing and feedback is needed.
+Some display managers may fail to handle
+[quoting](https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html)
+correctly. Workaround in this case is to use single-word arguments.
 
 Aternatively, if a display manager supports wrapper commands/scripts, `uwsm`
-can be inserted there to receive either Entry and Action IDs, or parsed command
-line.
+can be inserted there to receive either Entry and Action IDs, or a parsed
+command line.
+
+Testing and feedback is needed.
 
 ### How to stop
 
@@ -634,39 +714,56 @@ startup, `uwsm aux prepare-env ${compositor}` is launched (with shared set of
 custom arguments).
 
 It runs shell code to prepare environment, that sources shell profile,
-`uwsm-env*` files, anything that plugins dictate. Environment state at the end
+`uwsm/env*` files, anything that plugins dictate. Environment state at the end
 of shell code is given back to the main process. `uwsm` is also smart enough to
 find login session associated with current TTY and set `$XDG_SESSION_ID`,
 `$XDG_VTNR`.
 
 The difference between initial env (that is the state of activation environment)
-and after all the sourcing and setting is done, plus `varnames.always_export`,
-minus `varnames.never_export`, is added to activation environment of systemd
+and after all the sourcing and setting is done, plus `Varnames.always_export`,
+minus `Varnames.never_export`, is added to activation environment of systemd
 user manager and dbus.
 
-Those variable names, plus `varnames.always_cleanup` minus
-`varnames.never_cleanup` are written to a cleanup list file in runtime dir.
+Those variable names, plus `Varnames.always_cleanup` minus
+`Varnames.never_cleanup` are written to a cleanup list file in runtime dir.
 
 ### Startup finalization
+
+This step is not needed if compositor at least puts `WAYLAND_DISPLAY` into
+systemd activation environment: uwsm will autodetect this and handle the rest.
+If something goes wrong, startup can be fixed by using combination of
+`uwsm finalize` command and configuration variables `UWSM_FINALIZE_VARNAMES`,
+`UWSM_WAIT_VARNAMES`, `UWSM_WAIT_VARNAMES_SETTLETIME`
 
 `wayland-wm@.service` uses `Type=notify` and waits for compositor to signal
 started state. Activation environments will also need to receive essential
 variables like `WAYLAND_DISPLAY` to launch graphical applications successfully.
 
-`uwsm finalize [VAR [VAR2...]]` essentially performs action analogous to:
+A forked process inside `wayland-wm@.service` waits for `WAYLAND_DISPLAY` and
+all vars mentioned in `UWSM_WAIT_VARNAMES`, then signals unit readiness. It
+also appends variable cleanup list with any delta it has seen since unit
+startup.
+
+Separate `wayland-session-waitenv.service` does the same waiting thing and
+either exits successfully allowing `graphical-session.target` to proceed, or
+times out, bringing everything down.
+
+`uwsm finalize [VAR [VAR2...]]` can be run by compositor, essentially it
+performs actions analogous to:
 
 ```
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
-systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR2...]]
+dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR3...]]
+systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR3...]]
 systemd-notify --ready
 ```
 
-(`dbus-update-activation-environment` is skpped for `dbus-broker`)
+(`dbus-update-activation-environment` action equivalent is redundant for
+`dbus-broker` and is skipped automatically)
 
 Additional variable names are taken from `UWSM_FINALIZE_VARNAMES` var.
 
 Only defined variables are used. Variables that are not blacklisted by
-`varnames.never_cleanup` set are also added to cleanup list in the runtime dir.
+`Varnames.never_cleanup` set are also added to cleanup list in the runtime dir.
 
 ### Stop
 
@@ -674,17 +771,20 @@ Just stop the main service:
 `systemctl --user stop "wayland-wm@${compositor}.service"`, everything else will
 stopped by systemd.
 
-Wildcard `systemctl --user stop "wayland-wm@*.service"` will also work.
+Wildcard `systemctl --user stop "wayland-wm@*.service"` will also work, as does
+stopping `wayland-session@*.target`
 
-Or activate shutdown target: `systemctl --user start wayland-session-shutdown.target`
+Or activate shutdown target:
+`systemctl --user start wayland-session-shutdown.target`
 
 If an instance of `wayland-session-bindpid@.service` is active and pointing to a
-PID in login session, this stop command also doubles as a logout command.
+PID in login session, any of the above stop commands also doubles as a logout
+command.
 
 When `wayland-wm-env@${compositor}.service` is stopped, `uwsm aux cleanup-env`
-is launched. It looks for **any** cleanup files (`env_names_for_cleanup_*`) in
-runtime dir. Listed variables, plus `varnames.always_cleanup` minus
-`varnames.never_cleanup` are emptied in dbus activation environment and unset
+is launched. It looks for **any** cleanup files (`uwsm/env_cleanup_*.list`) in
+runtime dir. Listed variables, plus `Varnames.always_cleanup` minus
+`Varnames.never_cleanup` are emptied in dbus activation environment and unset
 from systemd user manager environment.
 
 When no compositor is running, units can be removed (`-r`) by `uwsm stop -r`.
@@ -765,14 +865,14 @@ Variables available to plugins:
 Standard functions:
 
 - `load_wm_env` - standard function for loading env files
-- `process_config_dirs_reversed` - called by `load_wm_env`, iterates over
-  XDG_CONFIG hierarchy in reverse (increasing priority)
-- `in_each_config_dir_reversed` - called by `process_config_dirs_reversed` for
-  each config dir, loads `uwsm-env`, `uwsm-env-${desktop}` files
-- `process_config_dirs` - called by `load_wm_env`, iterates over XDG_CONFIG
-  hierarchy (decreasing priority)
+- `process_config_dirs` - called by `load_wm_env`, iterates over whole
+  XDG Config and system XDG Data hierarchies (decreasing priority)
 - `in_each_config_dir` - called by `process_config_dirs` for each config dir,
   does nothing ATM
+- `process_config_dirs_reversed` - called by `load_wm_env`, same as
+  `process_config_dirs`, but in reverse (increasing priority)
+- `in_each_config_dir_reversed` - called by `process_config_dirs_reversed` for
+  each config dir, loads `uwsm/env`, `uwsm/env-${desktop}` files
 - `source_file` - sources `$1` file, providing messages for log.
 
 See code inside `uwsm/main.py` for more auxillary funcions.
@@ -800,11 +900,13 @@ quirks__my_cool_wm() {
   export I_WANT_THIS_IN_SESSION=yes
   unset I_DO_NOT_WANT_THAT
   # or prepare a config for compositor
-  # or set a var to modify what sourcing uwsm-env, uwsm-env-${__WM_ID__}
+  # or set a var to modify what sourcing uwsm/env, uwsm/env-${__WM_ID__}
   # in the next stage will do
   ...
   # add a var to be exported by uwsm finalize:
   UWSM_FINALIZE_VARNAMES="${UWSM_FINALIZE_VARNAMES}${UWSM_FINALIZE_VARNAMES:+ }ANOTHER_VAR1 ANOTHER_VAR2"
+  # add a var to wait and depend on before graphical session:
+  UWSM_WAIT_VARNAMES="${UWSM_WAIT_VARNAMES}${UWSM_WAIT_VARNAMES:+ }ANOTHER_VAR1 ANOTHER_VAR2"
 }
 
 in_each_config_dir_reversed__my_cool_wm() {

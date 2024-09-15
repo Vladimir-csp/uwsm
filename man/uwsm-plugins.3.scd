@@ -47,19 +47,20 @@ It is used as plugin id and suffix in function names.
 
 *load\_wm\_env*
 	standard function for loading env files
+*process\_config\_dirs*
+	iterates over XDG Config hierarchy and system part of XDG Data hierarchy
+	(decreasing priority)
 *process\_config\_dirs\_reversed*
-	called by *load\_wm\_env*, iterates over XDG Config hierarchy
-	in reverse (increasing priority)
+	(called by *load\_wm\_env*), same as *process\_config\_dirs* but in
+	reverse (increasing priority)
 *in\_each\_config\_dir\_reversed*
 	called by *process\_config\_dirs\_reversed* for each config dir
-	as *$1*, loads *uwsm-env*, *uwsm-env-*_${desktop}_ files
-	*process\_config\_dirs* called by *load\_wm\_env*, iterates over
-	XDG Config hierarchy (decreasing priority)
+	as *$1*, loads *uwsm/env*, *uwsm/env-*_${desktop}_ files
 *in\_each\_config\_dir*
 	called by *process\_config\_dirs* for each config dir as *$1*,
 	does nothing ATM
 *source\_file*
-	sources *$1* file, providing messages for log.
+	sources *$1* file if exists, providing messages for log.
 
 See code inside *uwsm/main.py* for more auxillary funcions.
 
@@ -90,7 +91,7 @@ quirks__my_cool_wm() {
   export I_WANT_THIS_IN_SESSION=yes
   unset I_DO_NOT_WANT_THAT
   # or prepare a config for compositor
-  # or set a var to modify what sourcing uwsm-env, uwsm-env-${__WM_ID__}
+  # or set a var to modify what sourcing uwsm/env, uwsm/env-${__WM_ID__}
   # in the next stage will do
   ...
 }

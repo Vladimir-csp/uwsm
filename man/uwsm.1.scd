@@ -62,6 +62,15 @@ In XDG config hierarchy:
 :  (whitespace-separated names of env vars)
 | 
 :  Additional variables for "*uwsm finalize*"
+|  *UWSM_WAIT_VARNAMES*
+:  (whitespace-separated names of env vars)
+| 
+:  Variables to wait for in activation environemnt before proceeding to
+   graphical session (in addition to *WAYLAND_DISPLAY*)
+|  *UWSM_WAIT_VARNAMES_SETTLETIME*
+:  (float value)
+| 
+:  Seconds to pause after all expected vars found in activation environment
 |  *UWSM_APP_UNIT_TYPE*
 :  (*service*|*scope*)
 | 
@@ -102,6 +111,7 @@ A set of runtime units bound to standard user session targets is generated:
   *xdg-desktop-autostart.target*)
 - *wayland-session-shutdown.target* (conflicts with targets above for shutdown)
 - *wayland-session-bindpid@.service* (PID-tracking session killswitch)
+- *wayland-session-waitenv.service* (delays graphical session until vars appear)
 
 Compositor ID (Desktop Entry ID or executable name) becomes the specifier
 for all templated units.
@@ -112,13 +122,21 @@ exported to systemd and dbus activation environments by environment preloader
 service and is marked for cleanup at shutdown stage. Preloader shell context
 for convenience has *IN_UWSM_ENV_PRELOADER* var set to *true*.
 
-At the stage of *graphical-session.target* the main compositor unit is started.
+At the stage of *graphical-session.target* (before it) the main compositor unit
+*wayland-wm@*_${ID}_*.service* and *wayland-session-waitenv.service* are
+started.
 
-Compositor should finalize its startup by running "*uwsm finalize*" (see
-_finalize_ subcommand section). This adds *WAYLAND_DISPLAY* var set by
-compositor to activation environments and puts compositor's unit in active
-state, so *graphical-session.target* is declared reached, allowing dependent
-units to proceed with startup.
+Compositor should at least put *WAYLAND_DISPLAY* variable to systemd activation
+environment. This will trigger uwsm's automatic finalization logic. Without
+*WAYLAND_DISPLAY* in activation environment startup will timeout in 10 seconds.
+
+Manual finailzation is possible by running "*uwsm finalize*" (see _finalize_
+subcommand section), also in combination with tweaking *UWSM_WAIT_VARNAMES*
+and *UWSM_WAIT_VARNAMES_SETTLETIME* vars (see _Environment vars_ section).
+
+Successful activation of compositor unit and existance of *WAYLAND_DISPLAY*
+in activation environment will allow *graphical-session.target* to be declared
+reached.
 
 Finally, *xdg-desktop-autostart.target* is activated.
 
@@ -258,8 +276,9 @@ started, to track the PID of invoking *uwsm*, then *uwsm* process replaces
 itself with *systemctl* execution that starts *wayland-wm@*_${ID}_*.service*
 and waits for it to finish.
 
-In order to complete the startup sequence, the compositor has to run "*uwsm
-finalize*" (see the next subsection).
+In order to complete the startup sequence, the compositor has to put
+*WAYLAND_DISPLAY* to systemd activation environment. This can be done explicitly
+by making compositor run "*uwsm finalize*" command (see the next subsection).
 
 ## finalize
 
@@ -268,11 +287,13 @@ For running by a compositor on startup.
 	*uwsm* finalize [-h] [_VAR_NAME_ ...]
 
 Exports *WAYLAND_DISPLAY*, *DISPLAY* and any defined vars mentioned by names
-in arguments or in *UWSM_FINALIZE_VARNAMES* variable. Then sends startup
-notification for the unit to systemd user manager.
+in arguments or in *UWSM_FINALIZE_VARNAMES* variable (whitespace-separated).
+Then sends startup notification for the unit to systemd user manager.
 
-*This is required* to be run by compositor, otherwise *wayland-session@.service*
-unit will terminate due to startup timeout.
+*This is required* if compositor itself does not put *WAYLAND_DISPLAY* to
+systemd activation environment, otherwise *wayland-session@.service* unit
+or a dedicated *wayland-session-waitenv.service* unit will terminate due to
+startup timeout.
 
 *UWSM_FINALIZE_VARNAMES* variable can be prefilled by plugins.
 
