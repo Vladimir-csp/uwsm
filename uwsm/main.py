@@ -2158,7 +2158,7 @@ class Args:
         return str({"parsed": self.parsed})
 
 
-def append_to_cleanup_file(wm_id, varnames, create=True):
+def append_to_cleanup_file(wm_id, varnames, skip_always_cleanup=False, create=True):
     "Aappend varnames to cleanup file, expects wm_id, varnames, create (bool)"
     cleanup_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
@@ -2166,7 +2166,11 @@ def append_to_cleanup_file(wm_id, varnames, create=True):
         f"env_cleanup_{wm_id}.list",
     )
 
-    varnames = filter_varnames(set(varnames))
+    # do not bother with useless cleanups
+    if skip_always_cleanup:
+        varnames = filter_varnames(set(varnames) - Varnames.never_cleanup - Varnames.always_cleanup)
+    else:
+        varnames = filter_varnames(set(varnames) - Varnames.never_cleanup)
     if not varnames:
         print_debug("no varnames to write to cleanup file")
         return
@@ -2176,32 +2180,42 @@ def append_to_cleanup_file(wm_id, varnames, create=True):
             raise FileNotFoundError(f'"{cleanup_file}" does not exist!')
         print_debug(f'cleanup file "{cleanup_file}" does not exist')
         os.makedirs(os.path.dirname(cleanup_file), exist_ok=True)
+
         # write new file
         with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
             open_cleanup_file.write("\n".join(sorted(varnames)) + "\n")
-            return
 
     elif not os.path.isfile(cleanup_file):
         raise OSError(f'"{cleanup_file}" is not a file!')
 
-    # first read existing varnames
-    with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
-        # read varnames in a set
-        current_cleanup_varnames = filter_varnames(
-            {l.strip() for l in open_cleanup_file.readlines() if l.strip()}
-        )
-    print_debug(f'cleanup file "{cleanup_file}", varnames', current_cleanup_varnames)
-
-    # subtract existing
-    varnames = sorted(varnames - current_cleanup_varnames)
-
-    # append new
-    if varnames:
-        print_debug("appending to cleanup file", varnames)
-        with open(cleanup_file, "a", encoding="UTF-8") as open_cleanup_file:
-            open_cleanup_file.write("\n".join(sorted(varnames)) + "\n")
     else:
-        print_debug("no new varnames to append to cleanup file")
+        # first read existing varnames
+        with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
+            # read varnames in a set
+            current_cleanup_varnames = filter_varnames(
+                {l.strip() for l in open_cleanup_file.readlines() if l.strip()}
+            )
+        print_debug(f'cleanup file "{cleanup_file}", varnames', current_cleanup_varnames)
+
+        # subtract existing
+        varnames = sorted(varnames - current_cleanup_varnames)
+
+        # append new
+        if varnames:
+            print_debug("appending to cleanup file", varnames)
+            with open(cleanup_file, "a", encoding="UTF-8") as open_cleanup_file:
+                open_cleanup_file.write("\n".join(sorted(varnames)) + "\n")
+
+        else:
+            print_debug("no new varnames to append to cleanup file")
+            return
+
+    # print message about future env cleanup
+    cleanup_varnames_msg = (
+        "Marking variables for later cleanup from systemd user manager on stop:\n  "
+        + "\n  ".join(sorted(varnames))
+    )
+    print_normal(cleanup_varnames_msg)
 
 
 def finalize(additional_vars=None):
@@ -2753,7 +2767,7 @@ def prepare_env():
 
     # Set of vars to remove from systemd user manager on shutdown
     cleanup_varnames = (
-        set(set_env.keys()) | Varnames.always_cleanup - Varnames.never_cleanup
+        (set(set_env.keys()) | Varnames.always_cleanup) - Varnames.never_cleanup
     )
 
     # write cleanup file
@@ -2778,13 +2792,6 @@ def prepare_env():
 
         # unset env
         unset_systemd_vars(unset_varnames)
-
-    # print message about future env cleanup
-    cleanup_varnames_msg = (
-        "Variables marked for cleanup from systemd user manager on stop:\n  "
-        + "\n  ".join(sorted(cleanup_varnames))
-    )
-    print_normal(cleanup_varnames_msg)
 
 
 def cleanup_env():
@@ -2815,7 +2822,7 @@ def cleanup_env():
                 continue
             cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
             if os.path.isfile(cleanup_file):
-                print_normal(f'Found cleanup_file "{os.path.basename(cleanup_file)}".')
+                print_normal(f'Found cleanup file "{os.path.basename(cleanup_file)}".')
                 cleanup_files.append(cleanup_file)
 
     if not cleanup_files:
@@ -2834,8 +2841,8 @@ def cleanup_env():
     systemd_varnames = set(systemd_vars.keys())
 
     cleanup_varnames = (
-        current_cleanup_varnames
-        | Varnames.always_cleanup - Varnames.never_cleanup & systemd_varnames
+        ((current_cleanup_varnames
+        | Varnames.always_cleanup) - Varnames.never_cleanup) & systemd_varnames
     )
 
     if cleanup_varnames:
@@ -4608,23 +4615,11 @@ def main():
                         # calculate environment delta and update cleanup list
                         env_post = filter_varnames(bus_session.get_systemd_vars())
                         env_delta = dict(set(env_post.items()) - set(env_pre.items()))
-                        # do not bother with useless cleanups
-                        env_delta = (
-                            set(env_delta.keys())
-                            - Varnames.always_unset
-                            - Varnames.never_cleanup
-                        )
 
                         if env_delta:
-                            # print message about future env cleanup
-                            cleanup_varnames_msg = (
-                                "Marking newly appeared variables for cleanup from systemd user manager on stop:\n  "
-                                + "\n  ".join(sorted(env_delta))
-                            )
-                            print_normal(cleanup_varnames_msg)
                             try:
                                 append_to_cleanup_file(
-                                    CompGlobals.id, env_delta, create=True
+                                    CompGlobals.id, env_delta, skip_always_cleanup=True, create=True
                                 )
                             except FileNotFoundError as caught_exception:
                                 print_error(
