@@ -14,11 +14,14 @@ session/XDG autostart management in Systemd-managed environments.
 > `feat!: ...`, etc.).
 
 > [!IMPORTANT]
-> Upcoming v0.19.0 consolidates various resources (config, environment, and
-> runtime files) into `uwsm` subdirs. Warnings will be issued for encountered old
-> paths, and v0.20.0 will drop them. Please migrate.
-> Also v0.19.0 will introduce automatic finalization mechanism. It will remove
-> the necessity to run `uwsm finalize` in compositors in some/lots of cases.
+> v0.19.0 has some breaking changes:
+>
+> - Various resources (config, environment, and runtime files) are consolidated
+>   into `uwsm` subdirs. Warnings will be issued for encountered old paths, and
+>   v0.20.0 will drop them. Please migrate.
+> - Automatic finalization mechanism. It removes the necessity to run
+>   `uwsm finalize` in compositors in some/lots of cases.
+>   v0.20.0 will remove related accomodations from plugins where possible.
 
 > [!NOTE]
 > It is highly recommended to use
