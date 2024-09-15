@@ -3952,8 +3952,8 @@ def fill_comp_globals():
             elif entry.getComment():
                 CompGlobals.description = entry.getComment()
 
-            # inherit slice argument
-            if entry_uwsm_args is not None and Args.parsed.use_session_slice is None:
+            # inherit slice argument (for start mode only)
+            if Args.parsed.mode == "start" and entry_uwsm_args is not None and Args.parsed.use_session_slice is None:
                 print_debug(
                     "inherited use_session_slice",
                     entry_uwsm_args.parsed.use_session_slice,
