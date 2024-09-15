@@ -2146,6 +2146,52 @@ class Args:
         return str({"parsed": self.parsed})
 
 
+def append_to_cleanup_file(wm_id, varnames, create=True):
+    "Aappend varnames to cleanup file, expects wm_id, varnames, create (bool)"
+    cleanup_file = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True),
+        BIN_NAME,
+        f"env_cleanup_{wm_id}.list",
+    )
+
+    varnames = filter_varnames(set(varnames))
+    if not varnames:
+        print_debug("no varnames to write to cleanup file")
+        return
+
+    if not os.path.exists(cleanup_file):
+        if not create:
+            raise FileNotFoundError(f'"{cleanup_file}" does not exist!')
+        print_debug(f'cleanup file "{cleanup_file}" does not exist')
+        os.makedirs(os.path.dirname(cleanup_file), exist_ok=True)
+        # write new file
+        with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
+            open_cleanup_file.write("\n".join(sorted(varnames)) + "\n")
+            return
+
+    elif not os.path.isfile(cleanup_file):
+        raise OSError(f'"{cleanup_file}" is not a file!')
+
+    # first read existing varnames
+    with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
+        # read varnames in a set
+        current_cleanup_varnames = filter_varnames(
+            {l.strip() for l in open_cleanup_file.readlines() if l.strip()}
+        )
+    print_debug(f'cleanup file "{cleanup_file}", varnames', current_cleanup_varnames)
+
+    # subtract existing
+    varnames = sorted(varnames - current_cleanup_varnames)
+
+    # append new
+    if varnames:
+        print_debug("appending to cleanup file", varnames)
+        with open(cleanup_file, "a", encoding="UTF-8") as open_cleanup_file:
+            open_cleanup_file.write("\n".join(sorted(varnames)) + "\n")
+    else:
+        print_debug("no new varnames to append to cleanup file")
+
+
 def finalize(additional_vars=None):
     """
     Exports variables to systemd and dbus activation environments,
@@ -2188,23 +2234,11 @@ def finalize(additional_vars=None):
         sys.exit(1)
 
     # append vars to cleanup file
-    cleanup_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True),
-        BIN_NAME,
-        f"env_cleanup_{wm_id}.list",
-    )
-    if os.path.isfile(cleanup_file):
-        with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
-            current_cleanup_varnames = {
-                l.strip() for l in open_cleanup_file.readlines() if l.strip()
-            }
-    else:
-        print_error(f'"{cleanup_file}" does not exist!\nAssuming env preloader failed.')
+    try:
+        append_to_cleanup_file(wm_id, export_vars_names, create=False)
+    except FileNotFoundError as caught_exception:
+        print_error(caught_exception, "Assuming env preloader failed.")
         sys.exit(1)
-    with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
-        open_cleanup_file.write(
-            "\n".join(sorted(current_cleanup_varnames | set(export_vars_names)))
-        )
 
     # export vars
     print_normal(
@@ -2712,25 +2746,7 @@ def prepare_env():
 
     # write cleanup file
     # first get exitsing vars if cleanup file already exists
-    cleanup_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True),
-        BIN_NAME,
-        f"env_cleanup_{CompGlobals.id}.list",
-    )
-    if os.path.isfile(cleanup_file):
-        with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
-            current_cleanup_varnames = {
-                l.strip() for l in open_cleanup_file.readlines() if l.strip()
-            }
-    else:
-        current_cleanup_varnames = set()
-        # create uwsm subdir
-        os.makedirs(os.path.dirname(cleanup_file), exist_ok=True)
-    # write cleanup file
-    with open(cleanup_file, "w", encoding="UTF-8") as open_cleanup_file:
-        open_cleanup_file.write(
-            "\n".join(sorted(current_cleanup_varnames | cleanup_varnames))
-        )
+    append_to_cleanup_file(CompGlobals.id, cleanup_varnames, create=True)
 
     # print message about env export
     set_env_msg = "Exporting variables to systemd user manager:\n  " + "\n  ".join(
@@ -4146,7 +4162,9 @@ def main():
                 )
                 if select_wm_id:
                     if select_wm_id == default_id:
-                        print_normal(f"Default compositor ID unchanged: {select_wm_id}.")
+                        print_normal(
+                            f"Default compositor ID unchanged: {select_wm_id}."
+                        )
                     else:
                         save_default_comp_entry(select_wm_id)
                     # update Args.parsed.wm_cmdline in place
@@ -4544,6 +4562,10 @@ def main():
                 print_debug(CompGlobals.cmdline)
                 print_normal(f"Starting: {shlex.join(CompGlobals.cmdline)}...")
 
+                # get current systemd environment
+                bus_session = DbusInteractions("session")
+                env_pre = filter_varnames(bus_session.get_systemd_vars())
+
                 # fork out a process that will watch for expected variables
                 # in activation environment and signal unit readiness automatically
                 mainpid = os.getpid()
@@ -4556,6 +4578,34 @@ def main():
                         )
                         # just to be on the safe side if things are settling down
                         time.sleep(0.2)
+
+                        # calculate environment delta and update cleanup list
+                        env_post = filter_varnames(bus_session.get_systemd_vars())
+                        env_delta = dict(set(env_post.items()) - set(env_pre.items()))
+                        # do not bother with useless cleanups
+                        env_delta = (
+                            set(env_delta.keys())
+                            - Varnames.always_unset
+                            - Varnames.never_cleanup
+                        )
+
+                        if env_delta:
+                            # print message about future env cleanup
+                            cleanup_varnames_msg = (
+                                "Marking newly appeared variables for cleanup from systemd user manager on stop:\n  "
+                                + "\n  ".join(sorted(env_delta))
+                            )
+                            print_normal(cleanup_varnames_msg)
+                            try:
+                                append_to_cleanup_file(
+                                    CompGlobals.id, env_delta, create=True
+                                )
+                            except FileNotFoundError as caught_exception:
+                                print_error(
+                                    caught_exception, "Assuming env preloader failed"
+                                )
+                                os.kill(mainpid, signal.SIGTERM)
+                                sys.exit(1)
 
                         if get_active_wm_unit(active=False, activating=True):
                             print_normal(f"Declairng unit for {CompGlobals.id} ready.")
