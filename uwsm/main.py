@@ -1143,7 +1143,7 @@ def generate_units():
             Description=Session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
             Requires=wayland-session-pre@%i.target wayland-wm@%i.service
-            Wants=wayland-waitenv.service wayland-session-xdg-autostart@%i.target
+            Wants=wayland-session-waitenv.service wayland-session-xdg-autostart@%i.target
             After=graphical-session-pre.target
             BindsTo=graphical-session.target
             Before=graphical-session.target
@@ -1261,7 +1261,7 @@ def generate_units():
         ),
     )
     update_unit(
-        "wayland-waitenv.service",
+        "wayland-session-waitenv.service",
         dedent(
             f"""
             # injected by {BIN_NAME}, do not edit
