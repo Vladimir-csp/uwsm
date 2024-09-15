@@ -571,10 +571,12 @@ def get_default_comp_entry():
                 print_warning(
                     f'Encountered legacy config file "{old_config_file}" (ignored)!'
                 )
+                print_normal("Continuing in 5 seconds...")
                 time.sleep(5)
             # fallback to legacy if no new config
             else:
                 print_warning(f'Using legacy config file "{old_config_file}"!')
+                print_normal("Continuing in 5 seconds...")
                 time.sleep(5)
                 config_file = old_config_file
 
@@ -600,6 +602,16 @@ def save_default_comp_entry(default):
         with open(config_file, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
             print_ok(f"Saved default compositor ID: {default}.")
+
+        # TRANSITION: move config to subdir
+        old_config = os.path.join(
+            BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
+        )
+        if os.path.isfile(old_config):
+            os.remove(old_config)
+            print_warning(f'Removed legacy config "{old_config}"')
+            print_normal("Continuing in 5 seconds...")
+            time.sleep(5)
     else:
         print_ok(f"Would save default compositor ID: {default}.")
 
@@ -4139,7 +4151,11 @@ def main():
             default_id = get_default_comp_entry()
             select_wm_id = select_comp_entry(default_id)
             if select_wm_id:
-                if select_wm_id == default_id:
+                # TRANSITION: move config to subdir
+                old_config = os.path.join(
+                    BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
+                )
+                if select_wm_id == default_id and not os.path.isfile(old_config):
                     print_normal(f"Default compositor ID unchanged: {select_wm_id}.")
                 else:
                     save_default_comp_entry(select_wm_id)
@@ -4161,7 +4177,11 @@ def main():
                     default_id, Args.parsed.wm_cmdline[0] == "default"
                 )
                 if select_wm_id:
-                    if select_wm_id == default_id:
+                    # TRANSITION: move config to subdir
+                    old_config = os.path.join(
+                        BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
+                    )
+                    if select_wm_id == default_id and not os.path.isfile(old_config):
                         print_normal(
                             f"Default compositor ID unchanged: {select_wm_id}."
                         )
