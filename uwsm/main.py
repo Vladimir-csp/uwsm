@@ -768,10 +768,10 @@ def reload_systemd():
         UnitsState.changed = False
         return True
 
-    # query systemd dbus for matching units
     print_normal("Reloading systemd user manager.")
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
+
     job = bus_session.reload_systemd()
     # wait for job to be done
     while True:
@@ -787,11 +787,19 @@ def reload_systemd():
     return True
 
 
-def set_systemd_vars(vars_dict: dict, dbus_only=False):
+def set_systemd_vars(vars_dict: dict, dbus_only=False, bus_session=None):
     "Exports vars from given dict to systemd user manager"
 
-    bus_session = DbusInteractions("session")
-    print_debug("bus_session initial", bus_session)
+    if bus_session is None:
+        bus_session = DbusInteractions("session")
+        print_debug("bus_session initial", bus_session)
+
+    # print message about env export
+    print_normal(
+        "Exporting variables to systemd user manager:\n  "
+        + "\n  ".join(sorted(vars_dict.keys()))
+    )
+
     # check what dbus service is running
     # if it is not dbus-broker, also set dbus environment vars
     dbus_unit = bus_session.get_unit_property("dbus.service", "Id")
@@ -813,10 +821,18 @@ def set_systemd_vars(vars_dict: dict, dbus_only=False):
         print_debug("skipped managing systemd activation environment")
 
 
-def unset_systemd_vars(vars_list):
+def unset_systemd_vars(vars_list, bus_session=None):
     "Unsets vars from given list from systemd user manager"
-    bus_session = DbusInteractions("session")
-    print_debug("bus_session initial", bus_session)
+
+    if bus_session is None:
+        bus_session = DbusInteractions("session")
+        print_debug("bus_session initial", bus_session)
+
+    # print message about env unset
+    print_normal(
+        "Exporting variables to systemd user manager:\n  "
+        + "\n  ".join(sorted(vars_list))
+    )
 
     dbus_unit = bus_session.get_unit_property("dbus.service", "Id")
     print_debug("dbus.service Id", dbus_unit)
@@ -889,13 +905,15 @@ def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     return (unit_dir, unit)
 
 
-def get_active_wm_unit(active=True, activating=True):
+def get_active_wm_unit(active=True, activating=True, bus_session=None):
     """
     Finds activating or active wayland-wm@*.service, returns unit ID.
     Bool strict_active to match only active state.
     """
-    bus_session = DbusInteractions("session")
-    print_debug("bus_session initial", bus_session)
+
+    if bus_session is None:
+        bus_session = DbusInteractions("session")
+        print_debug("bus_session initial", bus_session)
 
     # query systemd dbus for matching units
     units = bus_session.list_units_by_patterns(
@@ -914,10 +932,10 @@ def get_active_wm_unit(active=True, activating=True):
         return str(units[0][0])
 
 
-def get_active_wm_id(active=True, activating=True):
+def get_active_wm_id(active=True, activating=True, bus_session=None):
     "Finds running wayland-wm@*.service, returns specifier"
 
-    active_id = get_active_wm_unit(active, activating)
+    active_id = get_active_wm_unit(active, activating, bus_session)
 
     if active_id:
         # extract and unescape specifier
@@ -928,7 +946,7 @@ def get_active_wm_id(active=True, activating=True):
     return ""
 
 
-def is_active(check_wm_id="", verbose=False, verbose_active=False):
+def is_active(check_wm_id="", verbose=False, verbose_active=False, bus_session=None):
     """
     Checks if units are active or activating, returns bool.
     If check_wm_id is empty, checks graphical*.target and wayland-wm@*.service
@@ -937,8 +955,9 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False):
     verbose=True prints matched or relevant units
     verbose_active=True prints matched active units
     """
-    bus_session = DbusInteractions("session")
-    print_debug("bus_session initial", bus_session)
+    if bus_session is None:
+        bus_session = DbusInteractions("session")
+        print_debug("bus_session initial", bus_session)
 
     check_units_generic = [
         "graphical-session-pre.target",
@@ -2250,10 +2269,14 @@ def finalize(additional_vars=None):
             export_vars.update({var: value})
             export_vars_names.append(var)
 
+    # reuse dbus connection
+    bus_session = DbusInteractions("session")
+    print_debug("bus_session initial", bus_session)
+
     # get id of active or activating compositor
-    wm_id = get_active_wm_id()
+    wm_id = get_active_wm_id(bus_session=bus_session)
     # get id of activating compositor for later decisions
-    activating_wm_id = get_active_wm_id(active=False, activating=True)
+    activating_wm_id = get_active_wm_id(active=False, activating=True, bus_session=bus_session)
 
     if not isinstance(wm_id, str) or not wm_id:
         print_error(
@@ -2273,13 +2296,7 @@ def finalize(additional_vars=None):
         print_error(caught_exception, "Assuming env preloader failed.")
         sys.exit(1)
 
-    # export vars
-    print_normal(
-        "Exporting variables to systemd user manager:\n  "
-        + "\n  ".join(export_vars_names)
-    )
-
-    set_systemd_vars(export_vars)
+    set_systemd_vars(export_vars, bus_session=bus_session)
 
     # if no prior failures and unit is in activating state, exec systemd-notify
     if activating_wm_id:
@@ -2781,24 +2798,12 @@ def prepare_env():
     # first get exitsing vars if cleanup file already exists
     append_to_cleanup_file(CompGlobals.id, cleanup_varnames, create=True)
 
-    # print message about env export
-    set_env_msg = "Exporting variables to systemd user manager:\n  " + "\n  ".join(
-        sorted(set_env.keys())
-    )
-    print_normal(set_env_msg)
     # export env to systemd user manager
-    set_systemd_vars(set_env)
+    set_systemd_vars(set_env, bus_session=bus_session)
 
     if unset_varnames:
-        # print message about env unset
-        unset_varnames_msg = (
-            "Unsetting variables from systemd user manager:\n  "
-            + "\n  ".join(sorted(unset_varnames))
-        )
-        print_normal(unset_varnames_msg)
-
         # unset env
-        unset_systemd_vars(unset_varnames)
+        unset_systemd_vars(unset_varnames, bus_session=bus_session)
 
 
 def cleanup_env():
@@ -2860,7 +2865,7 @@ def cleanup_env():
         print_normal(cleanup_varnames_msg)
 
         # unset vars
-        unset_systemd_vars(cleanup_varnames)
+        unset_systemd_vars(cleanup_varnames, bus_session=bus_session)
 
     for cleanup_file in cleanup_files:
         os.remove(cleanup_file)
@@ -3676,6 +3681,9 @@ def fill_comp_globals():
     based on args or desktop entry
     """
 
+    bus_session = DbusInteractions("session")
+    print_debug("bus_session initial", bus_session)
+
     # Deal with ID and main argument
     if Args.parsed.mode == "start":
         # The first argument contains ID and is the main compositor argument
@@ -3921,7 +3929,7 @@ def fill_comp_globals():
                 CompGlobals.desktop_names = (
                     (
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
-                        if not is_active()
+                        if not is_active(bus_session=bus_session)
                         else []
                     )
                     + entry.get("DesktopNames", list=True)
@@ -4005,7 +4013,7 @@ def fill_comp_globals():
                 CompGlobals.desktop_names = (
                     (
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
-                        if not is_active()
+                        if not is_active(bus_session=bus_session)
                         else []
                     )
                     + [CompGlobals.bin_name]
@@ -4120,13 +4128,16 @@ def waitpid(pid: int):
 
 def waitenv(varnames: List[str] = None, timeout=10, step=0.5):
     "Waits for varnames to appear in activation environment"
+
     if varnames is None:
         varnames = ["WAYLAND_DISPLAY"]
     else:
         varnames = filter_varnames(varnames)
     varnames_set = set(varnames)
     varnames_exist_set = set()
+
     bus_session = DbusInteractions("session")
+
     start_ts = time.time()
     for attempt in range(1, int(timeout // step) + 1):
         aenv_varnames_set = set(bus_session.get_systemd_vars().keys())
@@ -4625,7 +4636,7 @@ def main():
 
                         if env_delta:
                             # sync delta to dbus
-                            set_systemd_vars(env_delta, dbus_only=True)
+                            set_systemd_vars(env_delta, dbus_only=True, bus_session=bus_session)
                             try:
                                 append_to_cleanup_file(
                                     CompGlobals.id, env_delta, skip_always_cleanup=True, create=True
@@ -4637,7 +4648,7 @@ def main():
                                 os.kill(mainpid, signal.SIGTERM)
                                 sys.exit(1)
 
-                        if get_active_wm_unit(active=False, activating=True):
+                        if get_active_wm_unit(active=False, activating=True, bus_session=bus_session):
                             print_normal(f"Declairng unit for {CompGlobals.id} ready.")
                             os.execlp("systemd-notify", "systemd-notify", "--ready")
                         else:
