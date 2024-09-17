@@ -1345,7 +1345,7 @@ def generate_units():
             RemainAfterExit=no
             ExecStart={BIN_PATH} aux waitenv
             Restart=no
-            TimeoutStartSec=12
+            TimeoutStartSec=10
             SyslogIdentifier={BIN_NAME}_waitenv
             Slice=background.slice
             """
@@ -1921,7 +1921,10 @@ class Args:
             "env_names",
             metavar="VAR_NAME",
             nargs="*",
-            help="Additional vars to export.",
+            help=(
+                'Additional vars to export by name. Direct assignment "VAR_NAME=value" is also possible, '
+                + 'but recommended only for creating flags for "UWSM_WAIT_VARNAMES" mechanism.'
+            ),
         )
 
         # app subcommand
@@ -2906,12 +2909,6 @@ def cleanup_env():
     ) & systemd_varnames
 
     if cleanup_varnames:
-        cleanup_varnames_msg = (
-            "Cleaning up variables from systemd user manager:\n  "
-            + "\n  ".join(sorted(cleanup_varnames))
-        )
-        print_normal(cleanup_varnames_msg)
-
         # unset vars
         unset_systemd_vars(cleanup_varnames, bus_session=bus_session)
 
@@ -4178,7 +4175,7 @@ def waitpid(pid: int):
     return
 
 
-def waitenv(varnames: List[str] = None, timeout=10, step=0.5):
+def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
     "Waits for varnames to appear in activation environment"
 
     if varnames is None:
@@ -4191,7 +4188,8 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5):
     bus_session = DbusInteractions("session")
 
     start_ts = time.time()
-    for attempt in range(1, int(timeout // step) + 1):
+    warned = False
+    for attempt in range(1, int(timeout // step + 1)):
         aenv_varnames_set = set(bus_session.get_systemd_vars().keys())
         if varnames_set.issubset(aenv_varnames_set):
             print_ok(
@@ -4204,11 +4202,27 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5):
         if varnames_appeared_set:
             varnames_exist_set.update(varnames_appeared_set)
             print_normal(
-                f"Expected variables appeared in activation environment:\n  {', '.join(varnames_appeared_set)}\nStill expecting:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
+                "Expected variables appeared in activation environment:\n"
+                + f"  {', '.join(varnames_appeared_set)}\nStill expecting:\n"
+                + f"  {', '.join(varnames_set.difference(varnames_exist_set))}"
+            )
+        elif attempt == 1:
+            print_normal(
+                "Expecting variables to appear in activation environment:\n"
+                + f"  {', '.join(varnames_set)}"
+            )
+        elif (attempt * step) / timeout >= 0.8 and not warned:
+            warned = True
+            print_warning(
+                "Still waiting for variables in activation environment, nearing timeout:\n"
+                + f"  {', '.join(varnames_set)}"
             )
         if time.time() - start_ts > timeout:
             break
         time.sleep(step)
+
+    # let systemd time out units in 10 seconds.
+    time.sleep(end_buffer)
     raise TimeoutError(
         f"Timed out waiting for variables in activation environment:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
     )
@@ -4718,7 +4732,7 @@ def main():
                             )
                             sys.exit(0)
                     except Exception as caught_exception:
-                        print_warning("Autoready failed:\n", caught_exception)
+                        print_warning("Autoready failed:", caught_exception)
                         sys.exit(1)
                     # end of fork
                 # execute compositor cmdline
