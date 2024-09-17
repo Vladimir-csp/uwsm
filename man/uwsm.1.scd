@@ -297,6 +297,9 @@ startup timeout.
 
 *UWSM_FINALIZE_VARNAMES* variable can be prefilled by plugins.
 
+Direct assignment as _VAR_NAME_=_value_ is also possible, but recommended only
+for creating flags for *UWSM_WAIT_VARNAMES* mechanism.
+
 ## stop
 
 Stops compositor and optionally removes generated units.
