@@ -4191,11 +4191,22 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
     warned = False
     for attempt in range(1, int(timeout // step + 1)):
         aenv_varnames_set = set(bus_session.get_systemd_vars().keys())
+
+        # all is done
         if varnames_set.issubset(aenv_varnames_set):
-            print_ok(
-                f"All expected variables appeared in activation environment:\n  {', '.join(varnames)}"
-            )
+            # list vars on first attempt
+            if attempt == 1:
+                print_ok(
+                    f"All expected variables appeared in activation environment:\n  {', '.join(varnames)}"
+                )
+            # simpler message if later
+            else:
+                print_ok(
+                    "All expected variables appeared in activation environment."
+                )
             return
+
+        # report partial progress
         varnames_appeared_set = varnames_set.intersection(aenv_varnames_set).difference(
             varnames_exist_set
         )
@@ -4206,17 +4217,23 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
                 + f"  {', '.join(varnames_appeared_set)}\nStill expecting:\n"
                 + f"  {', '.join(varnames_set.difference(varnames_exist_set))}"
             )
+
+        # nothing is present at the start
         elif attempt == 1:
             print_normal(
                 "Expecting variables to appear in activation environment:\n"
                 + f"  {', '.join(varnames_set)}"
             )
+
+        # still not done in 80% of timeout
         elif (attempt * step) / timeout >= 0.8 and not warned:
             warned = True
             print_warning(
                 "Still waiting for variables in activation environment, nearing timeout:\n"
                 + f"  {', '.join(varnames_set)}"
             )
+
+        # 
         if time.time() - start_ts > timeout:
             break
         time.sleep(step)
