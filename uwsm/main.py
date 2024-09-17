@@ -829,9 +829,13 @@ def set_systemd_vars(vars_dict: dict, dbus_only=False, bus_session=None):
             vars_dict,
         )
         if dbus_only:
-            print_normal("Exporting vars to dbus environment (consider switching to dbus-broker)")
+            print_normal(
+                "Exporting vars to dbus environment (consider switching to dbus-broker)"
+            )
         else:
-            print_normal("Also exporting vars to dbus environment (consider switching to dbus-broker)")
+            print_normal(
+                "Also exporting vars to dbus environment (consider switching to dbus-broker)"
+            )
         bus_session.set_dbus_vars(vars_dict)
     else:
         print_debug(
@@ -863,7 +867,9 @@ def unset_systemd_vars(vars_list, bus_session=None):
         for var in vars_list:
             vars_dict.update({var: ""})
 
-        print_normal("Also writing empty values to dbus environment (consider switching to dbus-broker)")
+        print_normal(
+            "Also writing empty values to dbus environment (consider switching to dbus-broker)"
+        )
         print_debug("sending to .UpdateActivationEnvironment", vars_dict)
         bus_session.set_dbus_vars(vars_dict)
 
@@ -2284,10 +2290,21 @@ def finalize(additional_vars=None):
         raise ValueError(
             "WAYLAND_DISPLAY is not defined or empty. Are we being run by a wayland compositor or not?"
         )
+
     export_vars = {}
     export_vars_names = []
     for var in ["WAYLAND_DISPLAY", "DISPLAY"] + sorted(set(additional_vars)):
-        value = os.getenv(var, None)
+        if "=" in var:
+            var, value = var.split("=", maxsplit=1)
+            if not filter_varnames(var):
+                continue
+            if var in ["WAYLAND_DISPLAY", "DISPLAY"]:
+                print_warning(f"Refusing to override {var}, will take from environment")
+                continue
+        else:
+            if not filter_varnames(var):
+                continue
+            value = os.getenv(var, None)
         if value is not None and var not in export_vars_names:
             export_vars.update({var: value})
             export_vars_names.append(var)
@@ -2673,8 +2690,15 @@ def filter_varnames(data):
     Filters variable names (some environments can introduce garbage).
     Accepts dicts of env or lists, tuples, sets of names. Returns only valid.
     """
-    if not isinstance(data, (dict, set, list, tuple)):
+    if not isinstance(data, (dict, set, list, tuple, str)):
         raise TypeError(f"Expected dict|set|list|tuple, received {type(data)}")
+
+    if isinstance(data, str):
+        if not Val.sh_varname.search(data):
+            print_warning(f'Encountered illegal var "{data}".')
+            return None
+        else:
+            return data
 
     if isinstance(data, dict):
         for var in list(data.keys()):
