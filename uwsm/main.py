@@ -794,11 +794,28 @@ def set_systemd_vars(vars_dict: dict, dbus_only=False, bus_session=None):
         bus_session = DbusInteractions("session")
         print_debug("bus_session initial", bus_session)
 
+    # get existing environment (for info only)
+    existing_vars_dict = bus_session.get_systemd_vars()
+
     # print message about env export
     print_normal(
         "Exporting variables to systemd user manager:\n  "
-        + "\n  ".join(sorted(vars_dict.keys()))
+        + "\n  ".join(
+            (
+                (
+                    f"{v} (already set)"
+                    if v in existing_vars_dict and vars_dict[v] == existing_vars_dict[v]
+                    else f"{v} (updating)" if v in existing_vars_dict else v
+                )
+                for v in sorted(vars_dict.keys())
+            )
+        )
     )
+
+    if not dbus_only:
+        bus_session.set_systemd_vars(vars_dict)
+    else:
+        print_debug("skipped managing systemd activation environment")
 
     # check what dbus service is running
     # if it is not dbus-broker, also set dbus environment vars
@@ -806,19 +823,20 @@ def set_systemd_vars(vars_dict: dict, dbus_only=False, bus_session=None):
     print_debug("dbus.service Id", dbus_unit)
     if dbus_unit != "dbus-broker.service":
         print_debug(
-            "dbus unit", dbus_unit, "managing separate dbus activation environment"
+            "dbus unit",
+            dbus_unit,
+            "managing separate dbus activation environment",
+            vars_dict,
         )
-        print_debug("sending to .UpdateActivationEnvironment", vars_dict)
+        if dbus_only:
+            print_normal("Exporting vars to dbus environment (consider switching to dbus-broker)")
+        else:
+            print_normal("Also exporting vars to dbus environment (consider switching to dbus-broker)")
         bus_session.set_dbus_vars(vars_dict)
     else:
         print_debug(
             "dbus unit", dbus_unit, "skipped managing dbus activation environment"
         )
-
-    if not dbus_only:
-        bus_session.set_systemd_vars(vars_dict)
-    else:
-        print_debug("skipped managing systemd activation environment")
 
 
 def unset_systemd_vars(vars_list, bus_session=None):
@@ -830,7 +848,7 @@ def unset_systemd_vars(vars_list, bus_session=None):
 
     # print message about env unset
     print_normal(
-        "Exporting variables to systemd user manager:\n  "
+        "Removing variables from systemd user manager:\n  "
         + "\n  ".join(sorted(vars_list))
     )
 
@@ -845,6 +863,7 @@ def unset_systemd_vars(vars_list, bus_session=None):
         for var in vars_list:
             vars_dict.update({var: ""})
 
+        print_normal("Also writing empty values to dbus environment (consider switching to dbus-broker)")
         print_debug("sending to .UpdateActivationEnvironment", vars_dict)
         bus_session.set_dbus_vars(vars_dict)
 
@@ -2194,7 +2213,9 @@ def append_to_cleanup_file(wm_id, varnames, skip_always_cleanup=False, create=Tr
 
     # do not bother with useless cleanups
     if skip_always_cleanup:
-        varnames = filter_varnames(set(varnames) - Varnames.never_cleanup - Varnames.always_cleanup)
+        varnames = filter_varnames(
+            set(varnames) - Varnames.never_cleanup - Varnames.always_cleanup
+        )
     else:
         varnames = filter_varnames(set(varnames) - Varnames.never_cleanup)
     if not varnames:
@@ -2221,7 +2242,9 @@ def append_to_cleanup_file(wm_id, varnames, skip_always_cleanup=False, create=Tr
             current_cleanup_varnames = filter_varnames(
                 {l.strip() for l in open_cleanup_file.readlines() if l.strip()}
             )
-        print_debug(f'cleanup file "{cleanup_file}", varnames', current_cleanup_varnames)
+        print_debug(
+            f'cleanup file "{cleanup_file}", varnames', current_cleanup_varnames
+        )
 
         # subtract existing
         varnames = sorted(varnames - current_cleanup_varnames)
@@ -2276,7 +2299,9 @@ def finalize(additional_vars=None):
     # get id of active or activating compositor
     wm_id = get_active_wm_id(bus_session=bus_session)
     # get id of activating compositor for later decisions
-    activating_wm_id = get_active_wm_id(active=False, activating=True, bus_session=bus_session)
+    activating_wm_id = get_active_wm_id(
+        active=False, activating=True, bus_session=bus_session
+    )
 
     if not isinstance(wm_id, str) or not wm_id:
         print_error(
@@ -2791,8 +2816,8 @@ def prepare_env():
 
     # Set of vars to remove from systemd user manager on shutdown
     cleanup_varnames = (
-        (set(set_env.keys()) | Varnames.always_cleanup) - Varnames.never_cleanup
-    )
+        set(set_env.keys()) | Varnames.always_cleanup
+    ) - Varnames.never_cleanup
 
     # write cleanup file
     # first get exitsing vars if cleanup file already exists
@@ -2853,9 +2878,8 @@ def cleanup_env():
     systemd_varnames = set(systemd_vars.keys())
 
     cleanup_varnames = (
-        ((current_cleanup_varnames
-        | Varnames.always_cleanup) - Varnames.never_cleanup) & systemd_varnames
-    )
+        (current_cleanup_varnames | Varnames.always_cleanup) - Varnames.never_cleanup
+    ) & systemd_varnames
 
     if cleanup_varnames:
         cleanup_varnames_msg = (
@@ -3961,7 +3985,11 @@ def fill_comp_globals():
                 CompGlobals.description = entry.getComment()
 
             # inherit slice argument (for start mode only)
-            if Args.parsed.mode == "start" and entry_uwsm_args is not None and Args.parsed.use_session_slice is None:
+            if (
+                Args.parsed.mode == "start"
+                and entry_uwsm_args is not None
+                and Args.parsed.use_session_slice is None
+            ):
                 print_debug(
                     "inherited use_session_slice",
                     entry_uwsm_args.parsed.use_session_slice,
@@ -4626,7 +4654,9 @@ def main():
                         try:
                             settle_time = float(settle_time)
                         except:
-                            print_warning(f"\"UWSM_WAIT_VARNAMES_SETTLETIME\" contains invalid value \"{settle_time}\", using \"0.2\"")
+                            print_warning(
+                                f'"UWSM_WAIT_VARNAMES_SETTLETIME" contains invalid value "{settle_time}", using "0.2"'
+                            )
                             settle_time = 0.2
                         time.sleep(settle_time)
 
@@ -4636,10 +4666,15 @@ def main():
 
                         if env_delta:
                             # sync delta to dbus
-                            set_systemd_vars(env_delta, dbus_only=True, bus_session=bus_session)
+                            set_systemd_vars(
+                                env_delta, dbus_only=True, bus_session=bus_session
+                            )
                             try:
                                 append_to_cleanup_file(
-                                    CompGlobals.id, env_delta, skip_always_cleanup=True, create=True
+                                    CompGlobals.id,
+                                    env_delta,
+                                    skip_always_cleanup=True,
+                                    create=True,
                                 )
                             except FileNotFoundError as caught_exception:
                                 print_error(
@@ -4648,7 +4683,9 @@ def main():
                                 os.kill(mainpid, signal.SIGTERM)
                                 sys.exit(1)
 
-                        if get_active_wm_unit(active=False, activating=True, bus_session=bus_session):
+                        if get_active_wm_unit(
+                            active=False, activating=True, bus_session=bus_session
+                        ):
                             print_normal(f"Declairng unit for {CompGlobals.id} ready.")
                             os.execlp("systemd-notify", "systemd-notify", "--ready")
                         else:
@@ -4694,7 +4731,9 @@ def main():
                 try:
                     settle_time = float(settle_time)
                 except:
-                    print_warning(f"\"UWSM_WAIT_VARNAMES_SETTLETIME\" contains invalid value \"{settle_time}\", using \"0.2\"")
+                    print_warning(
+                        f'"UWSM_WAIT_VARNAMES_SETTLETIME" contains invalid value "{settle_time}", using "0.2"'
+                    )
                     settle_time = 0.2
                 time.sleep(settle_time)
                 sys.exit(0)
