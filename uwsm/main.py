@@ -548,47 +548,26 @@ def find_entries(
 
 def get_default_comp_entry():
     "Gets compositor Desktop Entry ID from {BIN_NAME}/default-id file in config hierarchy and fallback system data hiearchy"
-    # TRANSITION: move config to subdir
-    # iterate over config paths + system data paths
-    extended_dirs = []
-    for config_dir in BaseDirectory.load_config_paths(""):
-        if os.path.isdir(config_dir):
-            extended_dirs.append(config_dir)
-    for config_dir in BaseDirectory.load_data_paths(""):
-        # skip one in XDG_DATA_HOME
-        if os.path.normpath(config_dir).startswith(
-            os.path.normpath(BaseDirectory.xdg_data_home)
-        ):
-            continue
-        if os.path.isdir(config_dir):
-            extended_dirs.append(config_dir)
+    config_file = ''
+    for check_config_file in BaseDirectory.load_config_paths(f"{BIN_NAME}/default-id"):
+        if os.path.isfile(check_config_file):
+            config_file = check_config_file
+            break
+    if not config_file:
+        for check_config_file in BaseDirectory.load_data_paths(f"{BIN_NAME}/default-id"):
+            if os.path.isfile(check_config_file):
+                config_file = check_config_file
+                break
 
-    for config_dir in extended_dirs:
-        old_config_file = os.path.join(config_dir, f"{BIN_NAME}-default-id")
-        config_file = os.path.join(config_dir, f"{BIN_NAME}/default-id")
-        if os.path.isfile(old_config_file):
-            if os.path.isfile(config_file):
-                print_warning(
-                    f'Encountered legacy config file "{old_config_file}" (ignored)!'
-                )
-                print_normal("Continuing in 5 seconds...")
-                time.sleep(5)
-            # fallback to legacy if no new config
-            else:
-                print_warning(f'Using legacy config file "{old_config_file}"!')
-                print_normal("Continuing in 5 seconds...")
-                time.sleep(5)
-                config_file = old_config_file
+    if config_file:
+        try:
+            with open(config_file, "r", encoding="UTF-8") as config_file:
+                for line in config_file.readlines():
+                    if line.strip():
+                        return line.strip()
+        except Exception as caught_exception:
+            print_error(caught_exception)
 
-        if os.path.isfile(config_file):
-            try:
-                with open(config_file, "r", encoding="UTF-8") as config_file:
-                    for line in config_file.readlines():
-                        if line.strip():
-                            return line.strip()
-            except Exception as caught_exception:
-                print_error(caught_exception)
-                continue
     return ""
 
 
@@ -602,16 +581,6 @@ def save_default_comp_entry(default):
         with open(config_file, "w", encoding="UTF-8") as config:
             config.write(default + "\n")
             print_ok(f"Saved default compositor ID: {default}.")
-
-        # TRANSITION: move config to subdir
-        old_config = os.path.join(
-            BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
-        )
-        if os.path.isfile(old_config):
-            os.remove(old_config)
-            print_warning(f'Removed legacy config "{old_config}"')
-            print_normal("Continuing in 5 seconds...")
-            time.sleep(5)
     else:
         print_ok(f"Would save default compositor ID: {default}.")
 
@@ -2554,32 +2523,10 @@ def prepare_env_gen_sh(random_mark):
         	__ENV_FILES__=''
         	for __DNLC__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
         		IFS="${__OIFS__}"
-        		# TRANSITION: move to subdir
-        		if [ -f "${1}/${__SELF_NAME__}-env-${__DNLC__}" ]; then
-        			if [ -f "${1}/${__SELF_NAME__}/env-${__DNLC__}" ]; then
-        				echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env-${__DNLC__}\" (ignored)!" >&2
-        				__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
-        			else
-        				echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env-${__DNLC__}\" (used)!" >&2
-        				__ENV_FILES__="${__SELF_NAME__}-env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
-        			fi
-        		else
-        			__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
-        		fi
+        		__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
         	done
         	# add common env file at the beginning
-        	# TRANSITION: move to subdir
-        	if [ -f "${1}/${__SELF_NAME__}-env" ]; then
-        		if [ -f "${1}/${__SELF_NAME__}/env" ]; then
-        			echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env\" (ignored)!" >&2
-        			__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
-        		else
-        			echo "Encountered legacy env file \"${1}/${__SELF_NAME__}-env\" (used)!" >&2
-        			__ENV_FILES__="${__SELF_NAME__}-env${__ENV_FILES__:+:}${__ENV_FILES__}"
-        		fi
-        	else
-        		__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
-        	fi
+        	__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
         	unset __DNLC__
 
         	# load env file sequence from this config dir rung
@@ -4259,11 +4206,7 @@ def main():
             default_id = get_default_comp_entry()
             select_wm_id = select_comp_entry(default_id)
             if select_wm_id:
-                # TRANSITION: move config to subdir
-                old_config = os.path.join(
-                    BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
-                )
-                if select_wm_id == default_id and not os.path.isfile(old_config):
+                if select_wm_id == default_id:
                     print_normal(f"Default compositor ID unchanged: {select_wm_id}.")
                 else:
                     save_default_comp_entry(select_wm_id)
@@ -4285,11 +4228,7 @@ def main():
                     default_id, Args.parsed.wm_cmdline[0] == "default"
                 )
                 if select_wm_id:
-                    # TRANSITION: move config to subdir
-                    old_config = os.path.join(
-                        BaseDirectory.xdg_config_home, f"{BIN_NAME}-default-id"
-                    )
-                    if select_wm_id == default_id and not os.path.isfile(old_config):
+                    if select_wm_id == default_id:
                         print_normal(
                             f"Default compositor ID unchanged: {select_wm_id}."
                         )
