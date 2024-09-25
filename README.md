@@ -14,16 +14,13 @@ session/XDG autostart management in Systemd-managed environments.
 > `feat!: ...`, etc.).
 
 > [!IMPORTANT]
-> v0.19.x introduced some breaking changes:
+> v0.20.x finishes a set of breaking changes:
 >
 > - Various resources (config, environment, and runtime files) are consolidated
->   into `uwsm` subdirs. Warnings will be issued for encountered old paths, and
->   v0.20.0 will drop them. Please migrate.
-> - Automatic finalization mechanism: it removes the necessity to run
->   `uwsm finalize` in compositors which put variables to systemd activation
->   environment themselves. v0.20.0 will stop preventing compositors from doing
->   that. To test this behavior in v0.19.1 export `UWSM_AUTOFINALIZE_TEST=true`
->   (in shell profile or environment.d). More about the algorithm in
+>   into `uwsm` subdirs. Old paths no longer considered.
+> - Automatic finalization mechanism: existing plugins will no longer prevent
+>   compositors from signaling unit readiness and putting vars in activation
+>   environments. More about the algorithm in
 >   [second installation section](#2-service-startup-notification-and-vars-set-by-compositor)
 
 > [!NOTE]
@@ -303,9 +300,9 @@ Runtime dependencies:
 
 Potentially tricky part.
 
-TLDR; if your compositor puts `WAYLAND_DISPLAY` (and along with it `DISPLAY`,
-any other important or useful variables) into systemd activation environment,
-uwsm will make everything work automagically, proceed to section 3.
+TLDR; if your compositor puts `WAYLAND_DISPLAY` (and **along with it**
+`DISPLAY`, or other important or useful variables) into systemd activation
+environment, uwsm will make everything work automagically, proceed to section 3.
 
 Otherwise configure compositor to run `uwsm finalize` command at the end of its
 startup. It will deal with putting `WAYLAND_DISPLAY` and `DISPLAY` (if set)
@@ -317,7 +314,7 @@ If compositor is known to set useful vars but they are missing from activation
 environments.
 </summary>
 
-List names of variable as arguments to `uwsm finalize`, or *append* them to
+List names of variable as arguments to `uwsm finalize`, or **append** them to
 whitespace-separated list in `UWSM_FINALIZE_VARNAMES` variable (do it
 beforehand, i.e. in env files or shell profile).
 
@@ -338,14 +335,14 @@ activation environments later than `WAYLAND_DISPLAY`, too late for downstream
 units to get.
 </summary>
 
-*Append* names of variables to whitespace-separated list in `UWSM_WAIT_VARNAMES`
-variable (do it beforehand, i.e. in env files or shell profile). This will make
-uwsm delay graphical session startup until those vars appear in systemd
-activation environment.
+**Append** names of variables to whitespace-separated list in
+`UWSM_WAIT_VARNAMES` variable (do it beforehand, i.e. in env files or shell
+profile). This will make uwsm delay graphical session startup until those vars
+appear in systemd activation environment.
 
-Depending on situation, combine this with with `uwsm finalize` command (see
-previous spoiler) to put more variables into activation environments and gain
-more control over delay mechanism of uwsm.
+Depending on situation, combine this with with `uwsm finalize` command to put
+more variables into activation environments and gain more control over delay
+mechanism of uwsm.
 
 Be aware that `uwsm finalize` skips undefined vars, so be sure that all
 vars listed in `UWSM_WAIT_VARNAMES` are really being set, or use explicit

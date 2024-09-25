@@ -42,15 +42,18 @@ Help for each subcommand is accessible by running "*uwsm* {_subcommand_} *-h*".
 ## Files
 
 In XDG config hierarchy:
-|[ *uwsm-env*
+|[ *uwsm/env*
 :<
-|  *uwsm-env-*_${compositor}_
-:  Environment (shell) to be sourced for
-   the graphical session. Sourced from directories of increasing priority,
-   in each directory common file is sourced first, then suffixed files in the
-   order of items listed in *XDG_CURRENT_SESSION* var (lowercased).
-|  *uwsm-default-id*
+|  *uwsm/env-*_${compositor}_
+:  Environment (shell) to be sourced for the graphical session. Sourced from
+   directories of increasing priority, in each directory common file is sourced
+   first, then suffixed files in the order of items listed in
+   *XDG_CURRENT_SESSION* var (lowercased).
+|  *uwsm/default-id*
 :  Stores Desktop Entry ID of default compositor.
+
+Fallback is also extended into the system part of XDG data hierarchy, this can
+be used for distro level defaults.
 
 ## Environment vars
 
@@ -182,7 +185,7 @@ Selects default wayland session compositor Desktop Entry.
 
 Invokes a whiptail menu to select default session among Desktop Entries in
 *wayland-sessions* XDG data hierarchy. Writes to
-*${XDG_CONFIG_HOME}/uwsm-default-id*. Nothing else is done. Returns *1* if
+*${XDG_CONFIG_HOME}/uwsm/default-id*. Nothing else is done. Returns *1* if
 selection is cancelled. Can be used for scripting launch condition in shell
 profile.
 
