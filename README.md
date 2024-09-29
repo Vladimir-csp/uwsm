@@ -509,7 +509,7 @@ will also be written if encountered in a desktop entry's `Exec`.
 
 Optional parameters to provide more metadata:
 
-- `-[a|e]D DesktopName1[:DesktopMame2:...]`: append (`-a`) or exclusively set
+- `-[a|e]D DesktopName1[:DesktopName2:...]`: append (`-a`) or exclusively set
   (`-e`) `${XDG_CURRENT_DESKTOP}`
 - `-N Name`
 - `-C "Compositor description"`
