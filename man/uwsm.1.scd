@@ -133,7 +133,7 @@ Compositor should at least put *WAYLAND_DISPLAY* variable to systemd activation
 environment. This will trigger uwsm's automatic finalization logic. Without
 *WAYLAND_DISPLAY* in activation environment startup will timeout in 10 seconds.
 
-Manual finailzation is possible by running "*uwsm finalize*" (see _finalize_
+Manual finalization is possible by running "*uwsm finalize*" (see _finalize_
 subcommand section), also in combination with tweaking *UWSM_WAIT_VARNAMES*
 and *UWSM_WAIT_VARNAMES_SETTLETIME* vars (see _Environment vars_ section).
 
@@ -333,7 +333,7 @@ Application-to-unit launcher with Desktop Entry support.
 | 
 :     any slice by full name
 |  *-t* {*scope*,*service*}
-:  Type of unit to launch (default: *service*, can be preset by
+:  Type of unit to launch (default: *scope*, can be preset by
    *UWSM_APP_UNIT_TYPE* env var).
 |  *-a* _app_name_
 :  Override app name (a substring in unit name).
