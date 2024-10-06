@@ -25,7 +25,6 @@ import subprocess
 import textwrap
 import time
 import signal
-import traceback
 import stat
 from typing import List, Callable
 from urllib import parse as urlparse
@@ -240,9 +239,136 @@ class MainArg:
         print_debug(f"Path {self.path} OK")
 
 
+def entry_expand_str(value: str):
+    """
+    Expands escape sequences \\s, \\n, \\t, \\r, and \\\\ for a string from desktop entry according to
+    https://specifications.freedesktop.org/desktop-entry-spec/latest/value-types.html
+    """
+    if "\\" not in value:
+        return value
+    new_value = ""
+    escaped = False
+
+    print_debug("expander received", value)
+
+    for char in value:
+        if escaped:
+            # expand escape sequence
+            new_value += {
+                "s": " ",
+                "n": "\n",
+                "t": "\t",
+                "r": "\r",
+                "\\": "\\",
+            }.get(char, char)
+            escaped = False
+            continue
+        if char == "\\":
+            # mark next character for expansion
+            escaped = True
+            continue
+        # append char as is
+        new_value += char
+
+    print_debug("expander produced", new_value)
+
+    return new_value
+
+
+def entry_tokenize_exec(value: str):
+    """
+    Unquotes and splits Exec string (should be already expanded) according to
+    https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html
+    """
+    value = value.strip()
+    cmd = []
+    arg = ""
+    quoted = False
+    in_space = False
+    escaped = False
+
+    print_debug("tokenizer received", value)
+
+    for char in list(value) + [None]:
+        # string is terminated by None
+        if char is None:
+            cmd.append(arg)
+            break
+        # continuation of space, drop
+        if in_space and char.isspace():
+            continue
+        # mark as no longer in space
+        if in_space:
+            in_space = False
+        # process characters inside quotes
+        if quoted:
+            # append escaped character as is
+            if escaped:
+                arg += char
+                escaped = False
+                continue
+            # close quotes
+            if char == '"':
+                quoted = False
+                continue
+            # mark next as escaped
+            if char == "\\":
+                escaped = True
+                continue
+            # error out on unescaped characters
+            if char in ("`", "$"):
+                raise ValueError(f'Encountered unescaped "{char}" in Exec')
+            # add character as is
+            arg += char
+            continue
+        # open quotes
+        if char == '"':
+            quoted = True
+            continue
+        # append and reset argument, mark space
+        if char.isspace():
+            in_space = True
+            cmd.append(arg)
+            arg = ""
+            continue
+        # these should be quoted
+        if char in (
+            "\t",
+            "\n",
+            "'",
+            "\\",
+            ">",
+            "<",
+            "~",
+            "|",
+            "&",
+            ";",
+            "$",
+            "*",
+            "?",
+            "#",
+            "(",
+            ")",
+            "`",
+        ):
+            raise ValueError(f'Encountered unquoted "{char}" in Exec')
+        arg += char
+
+    print_debug("tokenizer produced", cmd)
+
+    return cmd
+
+
 def entry_action_keys(entry, entry_action=None):
-    "Extracts Name, Exec, Icon from entry with or without entry_action, returns as dict"
-    out = {"Name": entry.getName(), "Exec": entry.getExec(), "Icon": entry.getIcon()}
+    """
+    Extracts Name, Exec, Icon from entry with or without entry_action, returns as dict.
+    String values are expanded, Exec is also tokenized.
+    """
+    out = {
+        "Name": entry_expand_str(entry.getName()),
+        "Exec": entry_tokenize_exec(entry_expand_str(entry.getExec())),
+        "Icon": entry.getIcon(),
+    }
     if not entry_action:
         return out
 
@@ -255,8 +381,8 @@ def entry_action_keys(entry, entry_action=None):
     entry.defaultGroup = f"Desktop Action {entry_action}"
     out.update(
         {
-            "Name": entry.getName(),
-            "Exec": entry.getExec(),
+            "Name": entry_expand_str(entry.getName()),
+            "Exec": entry_tokenize_exec(entry_expand_str(entry.getExec())),
         }
     )
     if entry.getIcon():
@@ -337,10 +463,10 @@ def check_entry_basic(entry, entry_action=None):
     else:
         if not entry.hasKey("Exec") or not entry.getExec():
             raise RuntimeError(f"Entry {entry.getFileName()} does not have Exec")
-        entry_exec = entry.getExec()
-    if not which(shlex.split(entry_exec)[0]):
+        entry_exec = entry_tokenize_exec(entry_expand_str(entry.getExec()))
+    if not which(entry_exec[0]):
         raise RuntimeError(
-            f"Entry {entry.getFileName()} points to missing executable {shlex.split(entry_exec)[0]}"
+            f"Entry {entry.getFileName()} points to missing executable {entry_exec[0]}"
         )
 
 
@@ -548,13 +674,15 @@ def find_entries(
 
 def get_default_comp_entry():
     "Gets compositor Desktop Entry ID from {BIN_NAME}/default-id file in config hierarchy and fallback system data hiearchy"
-    config_file = ''
+    config_file = ""
     for check_config_file in BaseDirectory.load_config_paths(f"{BIN_NAME}/default-id"):
         if os.path.isfile(check_config_file):
             config_file = check_config_file
             break
     if not config_file:
-        for check_config_file in BaseDirectory.load_data_paths(f"{BIN_NAME}/default-id"):
+        for check_config_file in BaseDirectory.load_data_paths(
+            f"{BIN_NAME}/default-id"
+        ):
             if os.path.isfile(check_config_file):
                 config_file = check_config_file
                 break
@@ -605,10 +733,10 @@ def select_comp_entry(default="", just_confirm=False):
             )
         ]
     ):
-        name: str = entry.getName()
-        generic_name: str = entry.getGenericName()
+        name: str = entry_expand_str(entry.getName())
+        generic_name: str = entry_expand_str(entry.getGenericName())
         description: str = " ".join((n for n in (name, generic_name) if n))
-        comment: str = entry.getComment()
+        comment: str = entry_expand_str(entry.getComment())
         # add a choice
         choices_raw.append((entry_id, description, comment))
 
@@ -623,14 +751,15 @@ def select_comp_entry(default="", just_confirm=False):
             entry.defaultGroup = action_group
             if (
                 not entry.getExec()
-                or not which(shlex.split(str(entry.getExec()))[0])
                 or not entry.getName()
+                or not which(entry_tokenize_exec(entry_expand_str(entry.getExec()))[0])
             ):
                 continue
+            action_name = entry_expand_str(entry.getName())
 
-            # action_description: str = f" ╰─▶ {entry.getName()}"
-            # action_description: str = f" ╰▶ {entry.getName()}"
-            action_description: str = f" └▶ {entry.getName()}"
+            # action_description: str = f" ╰─▶ {action_name}"
+            # action_description: str = f" ╰▶ {action_name}"
+            action_description: str = f" └▶ {action_name}"
 
             # add a choice
             choices_raw.append((f"{entry_id}:{action}", action_description, ""))
@@ -2889,7 +3018,7 @@ def gen_entry_args(entry, args, entry_action=None):
     # %i --icon getIcon() if getIcon()
 
     entry_dict = entry_action_keys(entry, entry_action=entry_action)
-    entry_argv = shlex.split(entry_dict["Exec"])
+    entry_argv = entry_dict["Exec"]
 
     entry_cmd, entry_args = entry_argv[0], entry_argv[1:]
     print_debug("entry_cmd, entry_args pre:", entry_cmd, entry_args)
@@ -2989,7 +3118,7 @@ def gen_entry_args(entry, args, entry_action=None):
                 print_debug(f"added {arg}, expand: {expand}, {entry_args}")
 
         elif entry_arg == "%c":
-            entry_args[idx + expand] = entry.getName()
+            entry_args[idx + expand] = entry_expand_str(entry.getName())
             print_debug(f"replaced, expand: {expand}. {entry_args}")
         elif entry_arg == "%k":
             entry_args[idx + expand] = entry.getFileName()
@@ -3260,7 +3389,12 @@ def app(
         # get localized entry name for description if no override
         if not unit_description:
             unit_description = " - ".join(
-                n for n in (entry.getName(), entry.getGenericName()) if n
+                n
+                for n in (
+                    entry_expand_str(entry.getName()),
+                    entry_expand_str(entry.getGenericName()),
+                )
+                if n
             )
 
         # generate command and args according to entry
@@ -3345,9 +3479,9 @@ def app(
                 Terminal.entry_action_id,
             ) = find_terminal_entry()
 
-        terminal_cmdline = shlex.split(
-            entry_action_keys(Terminal.entry, Terminal.entry_action_id)["Exec"]
-        )
+        terminal_cmdline = entry_action_keys(Terminal.entry, Terminal.entry_action_id)[
+            "Exec"
+        ]
         if Terminal.entry.hasKey("TerminalArgExec"):
             terminal_execarg = Terminal.entry.get("TerminalArgExec")
         elif Terminal.entry.hasKey("X-TerminalArgExec"):
@@ -3358,7 +3492,9 @@ def app(
             terminal_execarg = Terminal.entry.get("X-ExecArg")
         else:
             terminal_execarg = "-e"
-        terminal_execarg = [terminal_execarg] if terminal_execarg else []
+        terminal_execarg = (
+            [entry_expand_str(terminal_execarg)] if terminal_execarg else []
+        )
 
         # discard explicit -e or execarg for terminal
         # only if follwed by something, otherwise it will error out on Command not found below
@@ -3373,7 +3509,10 @@ def app(
             if not unit_description:
                 unit_description = " - ".join(
                     n
-                    for n in (Terminal.entry.getName(), Terminal.entry.getGenericName())
+                    for n in (
+                        entry_expand_str(Terminal.entry.getName()),
+                        entry_expand_str(Terminal.entry.getGenericName()),
+                    )
                     if n
                 )
             # cmdline contents should not be referenced until the end of this function,
@@ -3754,7 +3893,7 @@ def fill_comp_globals():
 
         # get Exec from entry as CompGlobals.cmdline if not already filled
         if not CompGlobals.cmdline:
-            CompGlobals.cmdline = shlex.split(entry_dict["Exec"])
+            CompGlobals.cmdline = entry_dict["Exec"]
         CompGlobals.bin_name = os.path.basename(CompGlobals.cmdline[0])
 
         print_debug(f"self_name: {BIN_NAME}", f"bin_name: {CompGlobals.bin_name}")
@@ -3843,7 +3982,7 @@ def fill_comp_globals():
                     )
 
                     # get Exec from entry as CompGlobals.cmdline
-                    entry_cmdline = shlex.split(entry_dict["Exec"])
+                    entry_cmdline = entry_dict["Exec"]
 
                     if os.path.basename(entry_cmdline[0]) == BIN_NAME:
                         raise ValueError(
@@ -3942,7 +4081,12 @@ def fill_comp_globals():
                 CompGlobals.name = entry_uwsm_args.parsed.wm_name
             else:
                 CompGlobals.name = " - ".join(
-                    n for n in (entry.getName(), entry.getGenericName()) if n
+                    n
+                    for n in (
+                        entry_expand_str(entry.getName()),
+                        entry_expand_str(entry.getGenericName()),
+                    )
+                    if n
                 )
 
             if Args.parsed.wm_comment:
@@ -3950,7 +4094,7 @@ def fill_comp_globals():
             elif entry_uwsm_args is not None and entry_uwsm_args.parsed.wm_comment:
                 CompGlobals.description = entry_uwsm_args.parsed.wm_comment
             elif entry.getComment():
-                CompGlobals.description = entry.getComment()
+                CompGlobals.description = entry_expand_str(entry.getComment())
 
             # inherit slice argument (for start mode only)
             if (
@@ -4148,9 +4292,7 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
                 )
             # simpler message if later
             else:
-                print_ok(
-                    "All expected variables appeared in activation environment."
-                )
+                print_ok("All expected variables appeared in activation environment.")
             return
 
         # report partial progress
@@ -4180,7 +4322,7 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
                 + f"  {', '.join(varnames_set)}"
             )
 
-        # 
+        # timeout
         if time.time() - start_ts > timeout:
             break
         time.sleep(step)
