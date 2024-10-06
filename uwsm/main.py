@@ -2998,13 +2998,13 @@ def path2url(arg):
     "If argument is not an url, convert to url"
     if urlparse.urlparse(arg).scheme:
         return arg
-    return f"file:{urlparse.quote(arg)}"
+    return f"file://{urlparse.quote(arg)}"
 
 
 def gen_entry_args(entry, args, entry_action=None):
     """
     Takes DesktopEntry object and additional args, returns rendered argv as (cmd, args).
-    "args" can be a list of args or a list of lists of args if multiple instances of cmd
+    outgoing "args" can be a list of args or a list of lists of args if multiple instances of cmd
     are required.
     """
 
@@ -3018,41 +3018,51 @@ def gen_entry_args(entry, args, entry_action=None):
     # %i --icon getIcon() if getIcon()
 
     entry_dict = entry_action_keys(entry, entry_action=entry_action)
-    entry_argv = entry_dict["Exec"]
 
-    entry_cmd, entry_args = entry_argv[0], entry_argv[1:]
-    print_debug("entry_cmd, entry_args pre:", entry_cmd, entry_args)
+    entry_cmd, entry_args_pre = entry_dict["Exec"][0], entry_dict["Exec"][1:]
+    print_debug("entry_cmd, entry_args pre:", entry_cmd, entry_args_pre)
 
-    ## search for fields to expand or pop
-    # expansion counter
-    expand = 0
+    entry_args = []
+
+    ## search for fields to reappend, expand, or pop
+
     # %[fFuU] recorder
     encountered_fu = ""
+    # %[fu] index
+    encountered_fu_idx = None
 
-    for idx, entry_arg in enumerate(entry_args.copy()):
-        print_debug(f"parsing argument {idx + 1}: {entry_arg}")
-        if entry_arg == "%f":
+    for idx, entry_arg in enumerate(entry_args_pre):
+        print_debug(f'parsing argument {idx + 1}: "{entry_arg}"')
+        if len(re.findall(r"(?!^|[^%])%[a-zA-Z]", entry_arg)) > 1:
+            raise RuntimeError(f'More than one % field in argument: "{entry_arg}"')
+
+        elif "%%" in entry_arg:
+            new_arg = entry_arg.replace("%%", "%")
+            entry_args.append(new_arg)
+            print_debug(f'replaced with "{new_arg}", appended: {entry_args}')
+
+        elif re.search(r"%[DdNnvm]", entry_arg):
+            print_debug(f"dropped as deprecated")
+
+        elif "%f" in entry_arg:
             if encountered_fu:
                 raise RuntimeError(
                     f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
             encountered_fu = entry_arg
+            encountered_fu_idx = len(entry_args)
+            print_debug(f"marked encountered_fu_idx by refilled entry_args {len(entry_args)}")
 
-            if len(args) <= 1:
-                # pop field arg
-                entry_args.pop(idx + expand)
-                expand -= 1
-                print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
-
-                if args:
-                    # replace field with single argument
-                    entry_args.insert(idx + expand, args[0])
-                    expand += 1
-                    print_debug(f"added {args[0]}, expand: {expand}, {entry_args}")
-
+            if len(args) == 0:
+                print_debug(f"popped, {entry_args}")
+            elif len(args) == 1:
+                new_arg = entry_arg.replace("%f", args[0])
+                entry_args.append(new_arg)
+                print_debug(f'replaced with "{new_arg}", appended: {entry_args}')
             else:
                 # leave field arg for later iterative replacement
-                print_debug(f"ignored {entry_arg}, expand: {expand}, {entry_args}")
+                print_debug(f"ignored, {entry_args}")
+                entry_args.append(entry_arg)
 
         elif entry_arg == "%F":
             if encountered_fu:
@@ -3061,41 +3071,35 @@ def gen_entry_args(entry, args, entry_action=None):
                 )
             encountered_fu = entry_arg
 
-            # pop field arg
-            entry_args.pop(idx + expand)
-            expand -= 1
-            print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
-
             # replace with arguments
             for arg in args:
-                entry_args.insert(idx + expand, arg)
-                expand += 1
-                print_debug(f"added {arg}, expand: {expand}, {entry_args}")
+                entry_args.append(arg)
+                print_debug(f'appended "{arg}", {entry_args}')
 
-        elif entry_arg == "%u":
+        elif "%F" in entry_arg:
+            raise RuntimeError(f'Encountered "%F" inside argument: "{entry_arg}"')
+
+        elif "%u" in entry_arg:
             if encountered_fu:
                 raise RuntimeError(
                     f'Desktop entry has conflicting args: "{encountered_fu}", "{entry_arg}"'
                 )
             encountered_fu = entry_arg
+            encountered_fu_idx = len(entry_args)
+            print_debug(f"marked encountered_fu_idx by refilled entry_args {len(entry_args)}")
 
-            if len(args) <= 1:
-                # pop field arg
-                entry_args.pop(idx + expand)
-                expand -= 1
-                print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
-
-                if args:
-                    # replace field with single argument
-                    # convert to url, assume file
-                    arg = path2url(args[0])
-                    entry_args.insert(idx + expand, arg)
-                    expand += 1
-                    print_debug(f"added {arg}, expand: {expand}, {entry_args}")
-
+            if len(args) == 0:
+                print_debug(f'popped "{entry_arg}", {entry_args}')
+            elif len(args) == 1:
+                new_arg = entry_arg.replace("%u", path2url(args[0]))
+                entry_args.append(new_arg)
+                print_debug(
+                    f'replaced "{entry_arg}" => "{new_arg}", appended: {entry_args}'
+                )
             else:
                 # leave field arg for later iterative replacement
-                print_debug(f"ignored {entry_arg}, expand: {expand}, {entry_args}")
+                print_debug(f'ignored "{entry_arg}", {entry_args}')
+                entry_args.append(entry_arg)
 
         elif entry_arg == "%U":
             if encountered_fu:
@@ -3104,35 +3108,34 @@ def gen_entry_args(entry, args, entry_action=None):
                 )
             encountered_fu = entry_arg
 
-            # pop field arg
-            entry_args.pop(idx + expand)
-            expand -= 1
-            print_debug(f"popped {entry_arg}, expand: {expand}, {entry_args}")
-
             # replace with arguments
             for arg in args:
                 # urify if not an url, assume file
                 arg = path2url(arg)
-                entry_args.insert(idx + expand, arg)
-                expand += 1
-                print_debug(f"added {arg}, expand: {expand}, {entry_args}")
+                entry_args.append(arg)
+                print_debug(f'appended "{arg}", {entry_args}')
+
+        elif "%U" in entry_arg:
+            raise RuntimeError(f'Encountered "%U" inside argument: "{entry_arg}"')
 
         elif entry_arg == "%c":
-            entry_args[idx + expand] = entry_expand_str(entry.getName())
-            print_debug(f"replaced, expand: {expand}. {entry_args}")
+            arg = entry_expand_str(entry.getName())
+            entry_args.append(arg)
+            print_debug(f'replaced with "{arg}", {entry_args}')
         elif entry_arg == "%k":
-            entry_args[idx + expand] = entry.getFileName()
-            print_debug(f"replaced, expand: {expand}. {entry_args}")
+            arg = entry.getFileName()
+            entry_args.append(arg)
+            print_debug(f'replaced, with "{arg}", {entry_args}')
         elif entry_arg == "%i":
             if entry_dict["Icon"]:
-                entry_args[idx + expand] = "--icon"
-                entry_args.insert(idx + expand + 1, entry_dict["Icon"])
-                expand += 1
-                print_debug(f"replaced and expanded, expand: {expand}. {entry_args}")
+                arg = entry_dict["Icon"]
+                entry_args.extend(["--icon", arg])
+                print_debug(f'replaced with "--icon", "{arg}", {entry_args}')
             else:
-                entry_args.pop(idx + expand)
-                expand -= 1
-                print_debug(f"popped, expand: {expand}")
+                print_debug(f"popped")
+        else:
+            print_debug(f"unchanged")
+            entry_args.append(entry_arg)
 
     print_debug("entry_cmd, entry_args post:", entry_cmd, entry_args)
 
@@ -3150,12 +3153,13 @@ def gen_entry_args(entry, args, entry_action=None):
     # iterative arguments required
     if len(args) > 1 and encountered_fu in ["%f", "%u"]:
         iterated_entry_args = []
-        field_index = entry_args.index(encountered_fu)
         for arg in args:
             cur_entry_args = entry_args.copy()
             if encountered_fu == "%u":
                 arg = path2url(arg)
-            cur_entry_args[field_index] = arg
+            cur_entry_args[encountered_fu_idx] = cur_entry_args[
+                encountered_fu_idx
+            ].replace(encountered_fu, arg)
             iterated_entry_args.append(cur_entry_args)
             print_debug("added iter args", cur_entry_args)
 
