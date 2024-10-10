@@ -2123,6 +2123,13 @@ class Args:
             default="",
         )
         parsers["app"].add_argument(
+            "-S",
+            dest="silent",
+            choices=["out", "err", "both"],
+            required=False,
+            help="Silence stdout, stderr, or both.",
+        )
+        parsers["app"].add_argument(
             "-T",
             dest="terminal",
             action="store_true",
@@ -3051,7 +3058,9 @@ def gen_entry_args(entry, args, entry_action=None):
                 )
             encountered_fu = entry_arg
             encountered_fu_idx = len(entry_args)
-            print_debug(f"marked encountered_fu_idx by refilled entry_args {len(entry_args)}")
+            print_debug(
+                f"marked encountered_fu_idx by refilled entry_args {len(entry_args)}"
+            )
 
             if len(args) == 0:
                 print_debug(f"popped, {entry_args}")
@@ -3086,7 +3095,9 @@ def gen_entry_args(entry, args, entry_action=None):
                 )
             encountered_fu = entry_arg
             encountered_fu_idx = len(entry_args)
-            print_debug(f"marked encountered_fu_idx by refilled entry_args {len(entry_args)}")
+            print_debug(
+                f"marked encountered_fu_idx by refilled entry_args {len(entry_args)}"
+            )
 
             if len(args) == 0:
                 print_debug(f'popped "{entry_arg}", {entry_args}')
@@ -3335,6 +3346,7 @@ def app(
     unit_description,
     fork=False,
     return_cmdline=False,
+    silent=None,
 ):
     """
     Exec given command or Desktop Entry via systemd-run in specific slice.
@@ -3434,6 +3446,7 @@ def app(
                         unit_description,
                         fork=True,
                         return_cmdline=return_cmdline,
+                        silent=silent,
                     )
                 )
                 # add placeholder for rc
@@ -3618,23 +3631,31 @@ def app(
                 f"Unit name is too long ({len(unit_name)} > 255): {unit_name}"
             )
 
-    final_args = (
-        "systemd-run",
-        "--user",
-        *(
-            ["--scope"]
-            if app_unit_type == "scope"
-            else ["--property=Type=exec", "--property=ExitType=cgroup"]
-        ),
-        f"--slice={slice_name}",
-        f"--unit={unit_name}",
-        f"--description={unit_description}",
-        "--quiet",
-        "--collect",
-        "--same-dir",
-        "--",
-        *(terminal_cmdline + terminal_execarg),
-        *cmdline,
+    # compose arguments
+    final_args = ["systemd-run", "--user"]
+    if app_unit_type == "scope":
+        final_args.append("--scope")
+    else:
+        final_args.extend(["--property=Type=exec", "--property=ExitType=cgroup"])
+        # silence service via unit properties
+        if silent and silent in ["out", "both"]:
+            print_debug("silencing service stdout")
+            final_args.append("--property=StandardOutput=null")
+        if silent and silent in ["err", "both"]:
+            print_debug("silencing service stderr")
+            final_args.append("--property=StandardError=null")
+    final_args.extend(
+        [
+            f"--slice={slice_name}",
+            f"--unit={unit_name}",
+            f"--description={unit_description}",
+            "--quiet",
+            "--collect",
+            "--same-dir",
+            "--",
+            *(terminal_cmdline + terminal_execarg),
+            *cmdline,
+        ]
     )
 
     print_debug("final_args", *(final_args))
@@ -3644,6 +3665,16 @@ def app(
 
     if fork:
         return subprocess.Popen(final_args)
+
+    # silence scope directly
+    if app_unit_type == "scope" and silent:
+        n = os.open(os.devnull, os.O_WRONLY)
+        if silent in ["out", "both"]:
+            print_debug("silencing scope stdout")
+            os.dup2(n, 1)
+        if silent in ["err", "both"]:
+            print_debug("silencing scope stderr")
+            os.dup2(n, 2)
 
     os.execlp(final_args[0], *(final_args))
 
@@ -4605,6 +4636,7 @@ def main():
                 app_name=Args.parsed.app_name,
                 unit_name=Args.parsed.unit_name,
                 unit_description=Args.parsed.unit_description,
+                silent=Args.parsed.silent,
             )
         except Exception as caught_exception:
             print_error(caught_exception, notify=1)
