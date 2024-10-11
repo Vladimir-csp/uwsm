@@ -211,6 +211,8 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 	## skip various combinations
 	# actions unsuited for scopes
 	start+*+type:scope+* | restart+*+type:scope+* | reload+*+type:scope+* | enable+*+type:scope+* | disable+*+type:scope+*) continue ;;
+	# actions unsuited for sockets
+	kill+*+type:socket+* | freeze+*+type:socket+* | thaw+*+type:socket+*) continue ;;
 	# start for active, reloading, can not start, masked
 	start+*+as:activ* | start+*+as:reloading+* | start+*+cstart:no+* | start+*+ufs:masked+*) continue ;;
 	# stop for inactive, deactivating, can not stop, masked
