@@ -52,6 +52,20 @@ class DbusInteractions:
                 "org.freedesktop.DBus.Properties",
             )
 
+    def get_systemd_properties(self, keys):
+        "Takes list of keys, returns dict of requested properties of systemd daemon"
+        self.add_systemd_properties_interface()
+        props = {}
+        for key in keys:
+            props.update(
+                {
+                    key: self.dbus_objects["systemd_properties_interface"].Get(
+                        "org.freedesktop.systemd1.Manager", key
+                    )
+                }
+            )
+        return props
+
     def add_systemd_unit_properties(self, unit_id):
         "Adds unit properties interface of unit_id into nested unit_properties dict"
         self.add_systemd_manager_interface()

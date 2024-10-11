@@ -3638,12 +3638,27 @@ def app(
     else:
         final_args.extend(["--property=Type=exec", "--property=ExitType=cgroup"])
         # silence service via unit properties
-        if silent and silent in ["out", "both"]:
-            print_debug("silencing service stdout")
-            final_args.append("--property=StandardOutput=null")
-        if silent and silent in ["err", "both"]:
-            print_debug("silencing service stderr")
-            final_args.append("--property=StandardError=null")
+        if silent:
+            if silent == "out":
+                print_debug("silencing service stdout")
+                final_args.append("--property=StandardOutput=null")
+                # uninherit stderr if inherited
+                bus_session = DbusInteractions("session")
+                sdprops = bus_session.get_systemd_properties(
+                    ["DefaultStandardOutput", "DefaultStandardError"]
+                )
+                if str(sdprops["DefaultStandardError"]) == "inherit":
+                    final_args.append(
+                        f"--property=StandardError={str(sdprops['DefaultStandardOutput'])}"
+                    )
+            elif silent == "err":
+                print_debug("silencing service stderr")
+                final_args.append("--property=StandardError=null")
+            elif silent == "both":
+                print_debug("silencing service stdout and stderr")
+                final_args.extend(
+                    ["--property=StandardOutput=null", "--property=StandardError=null"]
+                )
     final_args.extend(
         [
             f"--slice={slice_name}",
