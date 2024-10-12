@@ -6,7 +6,11 @@
 # https://github.com/Vladimir-csp/uwsm
 # https://gitlab.freedesktop.org/Vladimir-csp/uwsm
 
+set -e
+
 SELF="${0##*/}"
+
+SD_USER_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 
 showhelp() {
 	while IFS='' read -r line; do
@@ -38,6 +42,61 @@ showhelp() {
 	EOH
 }
 
+dirempty() {
+	# check if dir $1 is empty based purely on glob expansion
+	case "$(printf '%s;' "$1"/* "$1"/.*)" in
+	"${1}/*;${1}/.;${1}/..;" | "${1}/*;${1}/.;" | "${1}/*;${1}/.*;") return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+silence() {
+	mkdir -vp "${SD_USER_DIR}/${UNIT_TEMPLATE}.d"
+	set -- '[Service]'
+	case "$SILENCE_ACTION" in
+	# silence out
+	stdout)
+		set -- "$@" 'StandardOutput=null'
+		# unsilence stderr if it is inheriting
+		dso=''
+		dse=''
+		while IFS='=' read -r key value; do
+			case "$key" in
+			DefaultStandardOutput) dso=$value ;;
+			DefaultStandardError) dse=$value ;;
+			esac
+		done <<- EOF
+			$(systemctl --user show --property DefaultStandardOutput --property DefaultStandardError)
+		EOF
+		case "$dse" in
+		inherit) set -- "$@" "StandardError=$dso" ;;
+		esac
+		;;
+	# silence err
+	stderr) set -- "$@" 'StandardError=null' ;;
+	# silence both
+	both) set -- "$@" 'StandardOutput=null' 'StandardError=null' ;;
+	esac
+	printf '%s\n' "$@" > "${SD_USER_DIR}/${UNIT_TEMPLATE}.d/slient.conf"
+	systemctl --user daemon-reload
+	# restart unit if requested
+	case "$RESTART" in
+	yes) systemctl --user restart "$UNIT" ;;
+	esac
+}
+
+unsilence() {
+	rm -v "${SD_USER_DIR}/${UNIT_TEMPLATE}.d/slient.conf"
+	if dirempty "${SD_USER_DIR}/${UNIT_TEMPLATE}.d"; then
+		rmdir -v "${SD_USER_DIR}/${UNIT_TEMPLATE}.d" || true
+	fi
+	systemctl --user daemon-reload
+	# restart unit if requested
+	case "$RESTART" in
+	yes) systemctl --user restart "$UNIT" ;;
+	esac
+}
+
 ALL=''
 for arg in "$@"; do
 	case "$arg" in
@@ -56,7 +115,7 @@ done
 if [ "$#" -le "1" ]; then
 	dmenu_candidates="$1 fuzzel wofi rofi tofi bemenu wmenu dmenu"
 	for dmenu_candidate in $dmenu_candidates; do
-		! command -v "$dmenu_candidate" >/dev/null || break
+		! command -v "$dmenu_candidate" > /dev/null || break
 	done
 
 	case "$dmenu_candidate" in
@@ -195,8 +254,21 @@ done <<- EOF
 	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState,UnitFileState,WantedBy,RequiredBy,UpheldBy "$UNIT")
 EOF
 
+SILENT_STATE=false
+
 case "$UNIT" in
-*.service) UNIT_TYPE=service ;;
+*.service)
+	UNIT_TYPE=service
+	# get unit template
+	case "$UNIT" in
+	*@*) UNIT_TEMPLATE=${UNIT%%@*}@.service ;;
+	*) UNIT_TEMPLATE=${UNIT} ;;
+	esac
+	# silent state is determined only by our drop-in, not actual configuration
+	if [ -f "${SD_USER_DIR}/${UNIT_TEMPLATE}.d/slient.conf" ]; then
+		SILENT_STATE=true
+	fi
+	;;
 *.scope) UNIT_TYPE=scope ;;
 *.socket) UNIT_TYPE=socket ;;
 esac
@@ -205,14 +277,14 @@ esac
 ACTIONS=''
 DISABLE_ACTIONS=''
 ENABLE_ACTIONS=''
-for ACTION in start reload restart stop kill reset-failed enable disable freeze thaw mask unmask; do
-	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
-	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
+for ACTION in start reload restart stop kill reset-failed enable disable freeze thaw silence unsilence mask unmask; do
+	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
+	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
 	## skip various combinations
 	# actions unsuited for scopes
-	start+*+type:scope+* | restart+*+type:scope+* | reload+*+type:scope+* | enable+*+type:scope+* | disable+*+type:scope+*) continue ;;
+	start+*+type:scope+* | restart+*+type:scope+* | reload+*+type:scope+* | enable+*+type:scope+* | disable+*+type:scope+* | silence+*+type:scope+* | unsilence+*+type:scope+*) continue ;;
 	# actions unsuited for sockets
-	kill+*+type:socket+* | freeze+*+type:socket+* | thaw+*+type:socket+*) continue ;;
+	kill+*+type:socket+* | freeze+*+type:socket+* | thaw+*+type:socket+* | silence+*+type:socket+* | unsilence+*+type:socket+*) continue ;;
 	# start for active, reloading, can not start, masked
 	start+*+as:activ* | start+*+as:reloading+* | start+*+cstart:no+* | start+*+ufs:masked+*) continue ;;
 	# stop for inactive, deactivating, can not stop, masked
@@ -237,6 +309,8 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 	enable+*+install:+* | enable+*+ufs:generated+* | enable+*+ufs:enabled+* | enable+*+ufs:runtime-enabled+* | enable+*+ufs:masked+*) continue ;;
 	# disable for generated, transient
 	disable+*+ufs:generated+* | disable+*+ufs:transient+*) continue ;;
+	# silence states toggle
+	silence+*+silent:true+* | unsilence+*+silent:false+*) continue ;;
 	## special handling of some surviving actions
 	disable+*+ufs:runtime-enabled+*+as:activ* | disable+*+ufs:runtime-enabled+*+as:reloading*)
 		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime${N}disable --runtime --now"
@@ -309,6 +383,48 @@ kill)
 	report "$SIGNAL"
 	ACTION="kill --signal=$SIGNAL"
 	;;
+silence)
+	SILENCE_ACTION=$(
+		"$@" "Silence for ${DESCRIPTION#*=}: " <<- EOF
+			stdout
+			stderr
+			both
+		EOF
+	) || cancel_exit
+	report "$SILENCE_ACTION"
+	RESTART=$(
+		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
+			no
+			yes
+		EOF
+	) || cancel_exit
+	report "$RESTART"
+	;;
+unsilence)
+	RESTART=$(
+		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
+			no
+			yes
+		EOF
+	) || cancel_exit
+	report "$RESTART"
+	;;
+esac
+
+# set final command
+case "$ACTION" in
+silence)
+	# rig function as action
+	set -- silence
+	;;
+unsilence)
+	# rig function as action
+	set -- unsilence
+	;;
+*)
+	# shellcheck disable=SC2086
+	set -- systemctl --user $ACTION "$UNIT"
+	;;
 esac
 
 # apply selected action
@@ -316,7 +432,7 @@ if command -v notify-send > /dev/null; then
 	# capture only stderr
 	ERR=$(
 		# shellcheck disable=SC2086
-		systemctl --user $ACTION "$UNIT" 2>&1 > /dev/null
+		"$@" 2>&1 > /dev/null
 	)
 	RC="$?"
 	if [ "$RC" = "0" ] && [ -z "$ERR" ]; then
@@ -332,6 +448,5 @@ if command -v notify-send > /dev/null; then
 	notify-send -a "$SELF" -u "$URG" "$AST" "${UNIT}${ERR:+:$N}${ERR}"
 	exit "$RC"
 else
-	# shellcheck disable=SC2086
-	exec systemctl --user $ACTION "$UNIT"
+	"$@"
 fi
