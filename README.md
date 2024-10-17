@@ -13,16 +13,6 @@ session/XDG autostart management in Systemd-managed environments.
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
 
-> [!IMPORTANT]
-> v0.20.x finishes a set of breaking changes:
->
-> - Various resources (config, environment, and runtime files) are consolidated
->   into `uwsm` subdirs. Old paths no longer considered.
-> - Automatic finalization mechanism: existing plugins will no longer prevent
->   compositors from signaling unit readiness and putting vars in activation
->   environments. More about the algorithm in
->   [second installation section](#2-service-startup-notification-and-vars-set-by-compositor)
-
 > [!NOTE]
 > It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
@@ -455,6 +445,16 @@ Specifying paths to executables or desktop entry files is also supported.
 
 Always use `--` to disambiguate command line if any dashed arguments are
 intended for the app being launched.
+
+Scopes are default type of units for launching apps via `uwsm app`, they are
+executed in-place and behave like simple commands, inheriting environment and
+pty of origin.
+
+Services are launched in background by systemd user manager and are given
+environment based on the current state of activation environment of systemd,
+output is routed to journal. `uwsm app` will return immediately after launch.
+This allows more control over applicaton, i.e. restarting it with updated
+environment.
 
 Example snippets for sway config for launching apps:
 
