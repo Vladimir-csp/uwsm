@@ -3,7 +3,7 @@
 # Generates version string modified from "git describe" output,
 # or a fallback version if not in git repo.
 
-VERSION=0.20.0+git.2
+VERSION=0.20.1
 
 set -e
 
