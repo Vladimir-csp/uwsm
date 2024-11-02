@@ -17,11 +17,11 @@ session/XDG autostart management in Systemd-managed environments.
 > It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
 > implementation. Among other benefits, it reuses the systemd activation
-> environment instead of having its own separate one. This simplifies
-> environment management and allows proper cleanup. The separate activation
-> environment of the reference D-Bus implementation doesn't allow unsetting
-> vars, so they're set to an empty string instead, as a best effort cleanup. The
-> only way to properly clean up the environment in this case is to run
+> environment instead of having a separate one. This simplifies environment
+> management and allows proper cleanup. Reference D-Bus implementation is also
+> supported, but it doesn't allow unsetting vars, so a best effort cleanup is
+> performed by setting them to an empty string instead. The only way to properly
+> clean up the separate environment of the reference dbus daemon is to run
 > `loginctl terminate-user ""`.
 
 ![uwsm select (via whiptail)](uwsm_select.png)
@@ -283,8 +283,9 @@ Runtime dependencies:
     - `bemenu`
     - `wmenu`
     - `dmenu`
-- `notify-send` (optional, for feedback messages; `libnotify-bin` or `libnotify`
-  package)
+- `notify-send` (optional, for feedback from `uwsm app` commands and
+  optional failed unit monitor `fumon` service; from `libnotify-bin` or
+  `libnotify` package)
 
 ### 2. Service startup notification and vars set by compositor
 
