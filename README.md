@@ -21,7 +21,7 @@ session/XDG autostart management in Systemd-managed environments.
 > management and allows proper cleanup. Reference D-Bus implementation is also
 > supported, but it doesn't allow unsetting vars, so a best effort cleanup is
 > performed by setting them to an empty string instead. The only way to properly
-> clean up the separate environment of the reference dbus daemon is to run
+> clean up the separate environment of the reference D-Bus daemon is to run
 > `loginctl terminate-user ""`.
 
 ![uwsm select (via whiptail)](uwsm_select.png)
@@ -40,7 +40,7 @@ Uses systemd units and dependencies for startup, operation, and shutdown.
   `background-graphical.slice`, `session-graphical.slice` to put apps in and
   terminate them cleanly on exit.
 - Provides convenient way of
-  [launching apps to those slices](https://systemd.io/DESKTOP_ENVIRONMENTS/#xdg-standardization-for-applications).
+  [launching apps into those slices](https://systemd.io/DESKTOP_ENVIRONMENTS/#xdg-standardization-for-applications).
 
 </details>
 
@@ -88,10 +88,10 @@ Idempotently (well, best-effort-idempotently) handles environment.
     increasing priority), where `${desktop}` is each item of
     `${XDG_CURRENT_DESKTOP}`, lowercased
 - Difference between environment state before and after preparation is exported
-  into systemd user manager (and dbus activation environment if reference dbus
+  into systemd user manager (and D-Bus activation environment if reference D-Bus
   implementation is used)
 - On shutdown previously exported variables are unset from systemd user manager
-  (activation environment of reference dbus daemon does not support unsetting,
+  (activation environment of reference D-Bus daemon does not support unsetting,
   so those vars are emptied instead (!))
 - Lists of variables for export and cleanup are determined algorithmically by:
   - comparing environment before and after preparation procedures
@@ -120,7 +120,7 @@ and/or be included in them.
 
 - Actively select and launch compositor from Desktop entry (which is used as
   compositor instance ID):
-  - Data taken from entry (Can be amended or overridden via cli arguments):
+  - Data taken from entry (can be amended or overridden via CLI arguments):
     - `Exec` for argument list
     - `DesktopNames` for `XDG_CURRENT_DESKTOP` and `XDG_SESSION_DESKTOP`
     - `Name` and `Comment` for unit `Description`
@@ -191,7 +191,7 @@ descriptions.
 Provides helpers and tools for various operations.
 </summary>
 
-- `uwsm finalize`: for explicitly exporting variables to activatoin environments
+- `uwsm finalize`: for explicitly exporting variables to activation environments
   and signal compositor's unit readiness (compositor service unit uses
   `Type=notify`)
 - `uwsm check may-start`: for checking conditions for launch at login (for
@@ -239,7 +239,7 @@ Building and installing a deb package.
 
 Read and run `./build-deb.sh -i`
 
-Alternatively, 
+Alternatively,
 ```
 IFS='()' read -r _ current_version _ < debian/changelog
 sudo apt install devscripts
@@ -329,9 +329,9 @@ units to get.
 **Append** names of variables to whitespace-separated list in
 `UWSM_WAIT_VARNAMES` variable (do it beforehand, i.e. in env files or shell
 profile). This will make uwsm delay graphical session startup until those vars
-appear in systemd activation environment.
+appear in the systemd activation environment.
 
-Depending on situation, combine this with with `uwsm finalize` command to put
+Depending on the situation, combine this with with `uwsm finalize` command to put
 more variables into activation environments and gain more control over delay
 mechanism of uwsm.
 
@@ -362,21 +362,21 @@ uwsm forks a process that probes systemd activation environment for
 (whitespace-separated). When all expected vars appear, it pauses for
 `UWSM_WAIT_VARNAMES_SETTLETIME` seconds (float, default: 0.2) and signals unit
 readiness. It also updates cleanup list with delta between states of activation
-environment at unit startup time and the end of settle pause. If classic dbus
+environment at unit startup time and the end of settle pause. If classic D-Bus
 implementation is used, this delta is also synched to its activation
 environment.
 
 A separate unit, `wayland-session-waitenv.service` is launched alongside
 compositor, with similar ordering after `graphical-session-pre.target`, before
 `graphical-session.target`. It also waits for the same variables in the same
-manner, then successfully exits (or times out). Its job is to dealy
+manner, then successfully exits (or times out). Its job is to delay
 `graphical-session.target` activation in case compositor signals its readiness
 prematurely. Or to fail startup if expected vars do not appear.
 
-`uwsm finalize` command fills systemd and dbus environments with essential vars
+The `uwsm finalize` command fills systemd and D-Bus environments with essential vars
 set by compositor: `WAYLAND_DISPLAY` (mandatory) and `DISPLAY` (if present).
 Optional vars are taken by name from arguments and `UWSM_FINALIZE_VARNAMES` var,
-which is also pre-filled by plugins. Dbus implementation quirks are handled.
+which is also pre-filled by plugins. D-Bus implementation quirks are handled.
 Undefined vars are silently ignored. Any exported variables are also added to
 cleanup list.
 
@@ -386,7 +386,7 @@ Timeout for unit startup is 10 seconds.
 
 ### 3. Applications and Slices
 
-To properly put applications in `app-graphical.slice` (or like), Configure
+To properly put applications into `app-graphical.slice` (or the like), configure
 application launching in compositor via:
 
 ```
@@ -394,7 +394,7 @@ uwsm app -- {executable|entry.desktop[:action]} [args ...]
 ```
 
 When app launching is properly configured, compositor service itself can be
-placed in `session.slice` by either:
+placed into `session.slice` by either:
 
 - Setting environment variable `UWSM_USE_SESSION_SLICE=true` before generating
   units. Best places to put this:
@@ -406,16 +406,16 @@ placed in `session.slice` by either:
 Background and details
 </summary>
 
-By default `uwsm` launhces compositor service in `app.slice` and all processes
-spawned by compositor will be a part of `wayland-wm@${compositor}.service` unit.
+By default `uwsm` launches the compositor service in `app.slice` and all processes
+spawned by the compositor will be part of the `wayland-wm@${compositor}.service` unit.
 This works, but is not an optimal solution.
 
 Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
-recommends running compositors in `session.slice` and launch apps as scopes or
+recommends running compositors in `session.slice` and launching apps as scopes or
 services in `app.slice`.
 
-`uwsm` provides convenient way of handling this: it generates special nested
+`uwsm` provides a convenient way of handling this: it generates special nested
 slices that will also receive stop action ordered before
 `wayland-wm@${compositor}.service` shutdown:
 
@@ -432,14 +432,14 @@ To launch an app inside one of those slices, use:
 
 Launching desktop entries via a
 [valid ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/file-naming.html#desktop-file-id)
-is also supported, (optionally with an
+is also supported (optionally with an
 [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
 appended via `:`):
 
 `uwsm app [-s a|b|s|custom.slice] [-t scope|service] -- your_app.desktop[:action] [with args]`
 
 In this case args must be supported by the entry or its selected action
-according to
+according to the
 [XDG Desktop Entry Specification](https://specifications.freedesktop.org/desktop-entry-spec/latest).
 
 Specifying paths to executables or desktop entry files is also supported.
@@ -447,14 +447,14 @@ Specifying paths to executables or desktop entry files is also supported.
 Always use `--` to disambiguate command line if any dashed arguments are
 intended for the app being launched.
 
-Scopes are default type of units for launching apps via `uwsm app`, they are
+Scopes are the default type of units for launching apps via `uwsm app`, they are
 executed in-place and behave like simple commands, inheriting environment and
 pty of origin.
 
-Services are launched in background by systemd user manager and are given
-environment based on the current state of activation environment of systemd,
-output is routed to journal. `uwsm app` will return immediately after launch.
-This allows more control over applicaton, i.e. restarting it with updated
+Services are launched in the background by the systemd user manager and are given
+an environment based on the current state of the activation environment of systemd;
+their output is routed to the journal. `uwsm app` will return immediately after launch.
+This allows more control over the application, i.e. restarting it with an updated
 environment.
 
 Example snippets for sway config for launching apps:
@@ -501,7 +501,7 @@ intended for launched compositor.
 [desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/file-naming.html#desktop-file-id)
 (optionally with an
 [action ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
-appended via ':'), or one of special values: `select|default`
+appended via '`:`'), or one of special the values: `select|default`.
 
 If `${compositor}` is given as a path, or `-F` option is given, "hardcode" mode
 is engaged: the resulting command line will always be written to unit drop-ins
@@ -515,18 +515,18 @@ Optional parameters to provide more metadata:
 - `-N Name`
 - `-C "Compositor description"`
 
-Arguments and metadata are stored in specifier unit drop-ins if needed.
+Arguments and metadata are stored in unit drop-ins if needed.
 
-`uwsm start ...` command will wait until graphical session ends, also holding
-open the login session it resides in. Graphical session will also deactivate if
-process that started it ends.
+`uwsm start ...` command will wait until the graphical session ends, also holding
+open the login session it resides in. The graphical session will also deactivate if
+the process that started it ends.
 
 <details><summary>
 Some details
 </summary>
 
 ```
-uwsm start [-[a|e]D DesktopName1[:DesktopMame2:...]] [-N Name] [-C "Compositor description"] [-F] -- ${compositor} [with "any complex" --arguments]
+uwsm start [-[a|e]D DesktopName1[:DesktopName2:...]] [-N Name] [-C "Compositor description"] [-F] -- ${compositor} [with "any complex" --arguments]
 ```
 
 If `${compositor}` is a desktop entry ID, `uwsm` will find it in
@@ -534,17 +534,17 @@ If `${compositor}` is a desktop entry ID, `uwsm` will find it in
 `DesktopNames` will fill `$XDG_CURRENT_DESKTOP`, `Name` and `Comment` will go to
 units' description.
 
-Arguments provided on command line are appended to the command line from
-session's desktop entry (unlike application entries), no argument processing is
-done (Please
+Arguments provided on the command line are appended to the command line from
+session's desktop entry (unlike application entries); no argument processing is
+done. (Please
 [file a bug report](https://github.com/Vladimir-csp/uwsm/issues/new/choose) if
-you encounter any wayland-sessions desktop entry with `%`-fields which would
-require this behavior to be altered).
+you encounter any `wayland-sessions` desktop entry with `%`-fields which would
+require this behavior to be altered.)
 
 If you want to customize compositor execution provided with a desktop entry,
 copy it to `~/.local/share/wayland-sessions/` and change to your liking,
 including adding
-[actions](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html)
+[actions](https://specifications.freedesktop.org/desktop-entry-spec/latest/extra-actions.html).
 
 If `${compositor}` is `select` or `default`, `uwsm` invokes a menu to select
 desktop entries available in `wayland-sessions` data hierarchy (including their
@@ -572,7 +572,7 @@ Things `uwsm start ...` will do:
 #### Shell profile integration
 
 To launch automatically after login on virtual console 1, if systemd is at
-`graphical.target`, add this to shell profile:
+`graphical.target`, add this to your shell profile:
 
 ```
 if uwsm check may-start && uwsm select; then
@@ -628,7 +628,7 @@ Some display managers may fail to handle
 [quoting](https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html)
 correctly. Workaround in this case is to use single-word arguments.
 
-Aternatively, if a display manager supports wrapper commands/scripts, `uwsm`
+Alternatively, if a display manager supports wrapper commands/scripts, `uwsm`
 can be inserted there to receive either Entry and Action IDs, or a parsed
 command line.
 
@@ -641,10 +641,10 @@ Either of:
 - `loginctl terminate-user ""` (this ends all login sessions and units of
   current user, good for resetting everything, including runtime units,
   environments, etc.)
-- `loginctl terminate-sesion "$XDG_SESSION_ID"` (this ends login session
+- `loginctl terminate-session "$XDG_SESSION_ID"` (this ends login session
   that uwsm was launched in, special unit `wayland-session-bindpid@.service`
   waiting for the former login shell process will exit and bring down graphical
-  session units. Empty argument will only work if loginctl is called from within
+  session units. Empty argument will only work if `loginctl` is called from within
   login session scope itself, so variable should be used when calling from
   graphical session units)
 - `uwsm stop` (brings down graphical session units. Login session will end if
@@ -669,7 +669,7 @@ Run `uwsm start -o ${compositor}` to populate `${XDG_RUNTIME_DIR}/systemd/user/`
 with them and do nothing else (`-o`).
 
 Any remainder arguments are appended to compositor argument list (even when
-`${compositor}` is a desktop entry). Use `--` to disambigue:
+`${compositor}` is a desktop entry). Use `--` to disambiguate:
 
 `uwsm start -o -- ${compositor} with "any complex" --arguments`
 
@@ -678,7 +678,7 @@ Desktop entries can be overridden or added in
 
 Basic set of generated units:
 
-- templated targets boud to stock systemd user-level targets
+- templated targets bound to stock systemd user-level targets
   - `wayland-session-pre@.target`
   - `wayland-session@.target`
   - `wayland-session-xdg-autostart@.target`
@@ -736,7 +736,7 @@ find login session associated with current TTY and set `$XDG_SESSION_ID`,
 The difference between initial env (that is the state of activation environment)
 and after all the sourcing and setting is done, plus `Varnames.always_export`,
 minus `Varnames.never_export`, is added to activation environment of systemd
-user manager and dbus.
+user manager and D-Bus.
 
 Those variable names, plus `Varnames.always_cleanup` minus
 `Varnames.never_cleanup` are written to a cleanup list file in runtime dir.
@@ -783,7 +783,7 @@ Only defined variables are used. Variables that are not blacklisted by
 
 Just stop the main service:
 `systemctl --user stop "wayland-wm@${compositor}.service"`, everything else will
-stopped by systemd.
+be stopped by systemd.
 
 Wildcard `systemctl --user stop "wayland-wm@*.service"` will also work, as does
 stopping `wayland-session@*.target`
@@ -798,7 +798,7 @@ command.
 When `wayland-wm-env@${compositor}.service` is stopped, `uwsm aux cleanup-env`
 is launched. It looks for **any** cleanup files (`uwsm/env_cleanup_*.list`) in
 runtime dir. Listed variables, plus `Varnames.always_cleanup` minus
-`Varnames.never_cleanup` are emptied in dbus activation environment and unset
+`Varnames.never_cleanup` are emptied in D-Bus activation environment and unset
 from systemd user manager environment.
 
 When no compositor is running, units can be removed (`-r`) by `uwsm stop -r`.
@@ -867,12 +867,12 @@ Variables available to plugins:
 - `__WM_ID_UNIT_STRING__` - compositor ID escaped for systemd unit name.
 - `__WM_BIN_ID__` - processed first item of compositor argv.
 - `__WM_DESKTOP_NAMES__` - `:`-separated desktop names from `DesktopNames=` of
-  entry and `-D` cli argument.
+  entry and `-D` CLI argument.
 - `__WM_FIRST_DESKTOP_NAME__` - first of the above.
 - `__WM_DESKTOP_NAMES_LOWERCASE__` - same as the above, but in lower case.
 - `__WM_FIRST_DESKTOP_NAME_LOWERCASE__` - first of the above.
 - `__WM_DESKTOP_NAMES_EXCLUSIVE__` - (`true`|`false`) indicates that
-  `__WM_DESKTOP_NAMES__` came from cli argument and are marked as exclusive.
+  `__WM_DESKTOP_NAMES__` came from CLI argument and are marked as exclusive.
 - `__OIFS__` - contains shell default field separator (space, tab, newline) for
   convenient restoring.
 
@@ -889,9 +889,9 @@ Standard functions:
   each config dir, loads `uwsm/env`, `uwsm/env-${desktop}` files
 - `source_file` - sources `$1` file, providing messages for log.
 
-See code inside `uwsm/main.py` for more auxillary funcions.
+See code inside `uwsm/main.py` for more auxiliary functions.
 
-Functions that can be added by plugins, replacing standard funcions:
+Functions that can be added by plugins, replacing standard functions:
 
 - `quirks__${__WM_BIN_ID__}` - called before env loading.
 - `load_wm_env__${__WM_BIN_ID__}`

@@ -28,7 +28,7 @@ It is used as plugin id and suffix in function names.
 	processed first item of compositor argv.
 *\_\_WM\_DESKTOP\_NAMES\_\_*
 	*:*-separated desktop names from *DesktopNames=* of entry and
-	*-D* cli argument.
+	*-D* CLI argument.
 *\_\_WM\_FIRST\_DESKTOP\_NAME\_\_*
 	first of the above.
 *\_\_WM\_DESKTOP\_NAMES\_LOWERCASE\_\_*
@@ -37,7 +37,7 @@ It is used as plugin id and suffix in function names.
 	first of the above.
 *\_\_WM\_DESKTOP\_NAMES\_EXCLUSIVE\_\_*
 	(*true*|*false*) indicates that
-	*\_\_WM\_DESKTOP\_NAMES\_\_* came from cli argument and are
+	*\_\_WM\_DESKTOP\_NAMES\_\_* came from CLI argument and are
 	marked as exclusive.
 *\_\_OIFS\_\_*
 	contains shell default field separator (_space_, _tab_, _newline_)

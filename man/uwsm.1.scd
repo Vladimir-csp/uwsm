@@ -121,7 +121,7 @@ for all templated units.
 
 At the stage of *graphical-session-pre.target* environment is
 sourced from shell profile and from uwsm environment _files_. The delta is
-exported to systemd and dbus activation environments by environment preloader
+exported to the systemd and D-Bus activation environments by environment preloader
 service and is marked for cleanup at shutdown stage. Preloader shell context
 for convenience has *IN_UWSM_ENV_PRELOADER* var set to *true*.
 
@@ -137,7 +137,7 @@ Manual finalization is possible by running "*uwsm finalize*" (see _finalize_
 subcommand section), also in combination with tweaking *UWSM_WAIT_VARNAMES*
 and *UWSM_WAIT_VARNAMES_SETTLETIME* vars (see _Environment vars_ section).
 
-Successful activation of compositor unit and existance of *WAYLAND_DISPLAY*
+Successful activation of compositor unit and existence of *WAYLAND_DISPLAY*
 in activation environment will allow *graphical-session.target* to be declared
 reached.
 
@@ -154,10 +154,10 @@ apps to live in and be terminated on session end:
 - *session-graphical.slice*
 
 A helper *app* subcommand is provided to handle all the systemd-run invocations
-for you (See _app_ subcommand section).
+for you (see _app_ subcommand section).
 
 If app launching is configured as recommended, *uwsm* can be set to launch
-compositor in *session.slice* (as recommended by *systemd.special*(7)) by
+the compositor in *session.slice* (as recommended by *systemd.special*(7)) by
 adding "-S" to *start* subcommand, or adding this to the environment in which
 "*uwsm start*" is launched:
 
@@ -171,7 +171,7 @@ Can be initiated by either:
 - starting *wayland-session-shutdown.target*
 
 Systemd stops all user units in reverse, as it usually does. During deactivation
-of *graphical-session-pre.target* environment preloader service cleans
+of *graphical-session-pre.target*, the environment preloader service cleans
 activation environments by unsetting all variables that were marked for removal
 during startup and finalization stages.
 
@@ -221,7 +221,7 @@ general is in active or activating state.
 :  allowed VT numbers (default: 1)
 
 
-Checks whether it is OK to launch a wayland session by following conditions:
+Checks whether it is OK to launch a wayland session via the following conditions:
 - Running from login shell
 - System is at *graphical.target*
 - User *graphical-session\*.target* units are not yet active
@@ -280,7 +280,7 @@ itself with *systemctl* execution that starts *wayland-wm@*_${ID}_*.service*
 and waits for it to finish.
 
 In order to complete the startup sequence, the compositor has to put
-*WAYLAND_DISPLAY* to systemd activation environment. This can be done explicitly
+*WAYLAND_DISPLAY* into the systemd activation environment. This can be done explicitly
 by making compositor run "*uwsm finalize*" command (see the next subsection).
 
 ## finalize
@@ -393,7 +393,7 @@ The first argument determines the behavior:
 Single commands are prepended with *exec*, iterated commands are assembled with
 trailing *&* each, followed by *wait*.
 
-The purpose of all this is to skip all the expensive python startup and import
+The purpose of all this is to skip all the expensive Python startup and import
 routines that slow things down every time "*uwsm app*" is called. Instead the
 daemon does it once and then listens for requests, while a simple shell script
 may dump arguments to one pipe and run the code received from another via eval,
