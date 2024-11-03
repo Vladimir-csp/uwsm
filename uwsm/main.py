@@ -4831,6 +4831,12 @@ def main():
                 mainpid = os.getpid()
                 childpid = os.fork()
                 if childpid == 0:
+                    # we are the child
+                    # double-fork pattern: we now fork again, immediately exiting from the parent;
+                    # this causes the final child process to get reparented to the system init process
+                    # (or possibly a sub-reaper) and hence prevents it from becoming a zombie.
+                    if os.fork() != 0:
+                        sys.exit(0)
                     try:
                         waitenv(
                             varnames=["WAYLAND_DISPLAY"]
@@ -4873,7 +4879,7 @@ def main():
                         if get_active_wm_unit(
                             active=False, activating=True, bus_session=bus_session
                         ):
-                            print_normal(f"Declairng unit for {CompGlobals.id} ready.")
+                            print_normal(f"Declaring unit for {CompGlobals.id} ready.")
                             os.execlp("systemd-notify", "systemd-notify", "--ready")
                         else:
                             print_normal(
@@ -4883,7 +4889,9 @@ def main():
                     except Exception as caught_exception:
                         print_warning("Autoready failed:", caught_exception)
                         sys.exit(1)
-                    # end of fork
+                else:
+                    # we are the parent
+                    os.waitpid(childpid, 0)
                 # execute compositor cmdline
                 os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
             except Exception as caught_exception:
