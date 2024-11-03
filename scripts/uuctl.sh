@@ -9,6 +9,8 @@
 set -e
 
 SELF="${0##*/}"
+N='
+'
 
 SD_USER_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 
@@ -162,8 +164,6 @@ report() {
 	echo "Selected $1"
 }
 
-ACTIVE_UNITS=''
-INACTIVE_UNITS=''
 reset_current() {
 	C_UNIT=''
 	C_ACTIVE_STATE=''
@@ -174,56 +174,81 @@ reset_current() {
 	C_UNIT_FILE_STATE=''
 }
 
-N='
-'
-reset_current
-# get services and scopes, active or otherwise
-while IFS="=" read -r prop value; do
-	case "$prop" in
-	Id)
-		case "$value" in
-		graphical-*.target | wayland-wm-env@*.service | wayland-wm@*.service | init.scope)
-			if [ -n "$ALL" ]; then
-				C_UNIT="${value}"
-			else
-				C_SKIP=1
-			fi
-			;;
-		*) C_UNIT="${value}" ;;
-		esac
-		;;
-	Names)
-		case "x $value x" in
-		*' dbus.service '*)
-			if [ -z "$ALL" ]; then
-				C_SKIP=1
-			fi
-			;;
-		esac
-		;;
-	UnitFileState) C_UNIT_FILE_STATE="$value" ;;
-	Description) C_NAME="${value}" ;;
-	ActiveState) C_ACTIVE_STATE="${value}" ;;
-	'' | END)
-		# skip if not grabbing
-		if [ -z "$C_SKIP" ]; then
-			case "x $C_FREEZER_STATE $C_UNIT_FILE_STATE x" in
-			*' frozen '*) C_STATE_MSG=frozen ;;
-			*' masked '*) C_STATE_MSG=masked ;;
-			*) C_STATE_MSG="$C_ACTIVE_STATE" ;;
+get_units() {
+	# fills ACTIVE_UNITS, INACTIVE_UNITS with units
+	NEED_DAEMON_RELOAD=''
+	ACTIVE_UNITS=''
+	INACTIVE_UNITS=''
+	# get services and scopes, active or otherwise
+	reset_current
+	while IFS="=" read -r prop value; do
+		case "$prop" in
+		Id)
+			case "$value" in
+			graphical-*.target | wayland-wm-env@*.service | wayland-wm@*.service | init.scope)
+				if [ -n "$ALL" ]; then
+					C_UNIT="${value}"
+				else
+					C_SKIP=1
+				fi
+				;;
+			*) C_UNIT="${value}" ;;
 			esac
-			case "$C_ACTIVE_STATE" in
-			activ*) ACTIVE_UNITS="${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${C_NAME} (${C_STATE_MSG}) ${C_UNIT}" ;;
-			*) INACTIVE_UNITS="${INACTIVE_UNITS}${INACTIVE_UNITS:+$N}${C_NAME} (${C_STATE_MSG}) ${C_UNIT}" ;;
+			;;
+		Names)
+			case "x $value x" in
+			*' dbus.service '*)
+				if [ -z "$ALL" ]; then
+					C_SKIP=1
+				fi
+				;;
 			esac
-		fi
-		reset_current
+			;;
+		UnitFileState) C_UNIT_FILE_STATE="$value" ;;
+		Description) C_NAME="${value}" ;;
+		ActiveState) C_ACTIVE_STATE="${value}" ;;
+		NeedDaemonReload)
+			case "$value" in
+			yes) NEED_DAEMON_RELOAD=yes ;;
+			esac
+			;;
+		'' | END)
+			# skip if not grabbing
+			if [ -z "$C_SKIP" ]; then
+				case "x $C_FREEZER_STATE $C_UNIT_FILE_STATE x" in
+				*' frozen '*) C_STATE_MSG=frozen ;;
+				*' masked '*) C_STATE_MSG=masked ;;
+				*) C_STATE_MSG="$C_ACTIVE_STATE" ;;
+				esac
+				case "$C_ACTIVE_STATE" in
+				activ*) ACTIVE_UNITS="${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${C_NAME} (${C_STATE_MSG}) ${C_UNIT}" ;;
+				*) INACTIVE_UNITS="${INACTIVE_UNITS}${INACTIVE_UNITS:+$N}${C_NAME} (${C_STATE_MSG}) ${C_UNIT}" ;;
+				esac
+			fi
+			reset_current
+			;;
+		esac
+	done <<- EOF
+		$(systemctl --user show --type=service,scope,socket --all --no-pager --quiet --property=Id,ActiveState,Description,Names,UnitFileState,NeedDaemonReload)
+		END
+	EOF
+}
+
+get_units
+
+case "$NEED_DAEMON_RELOAD" in
+yes)
+	DO_DAEMON_RELOAD=$(
+		printf '%s\n' yes no | "$@" "Daemon reload is needed, perform it?"
+	) || cancel_exit
+	case "$DO_DAEMON_RELOAD" in
+	yes)
+		systemctl --user daemon-reload
+		get_units
 		;;
 	esac
-done <<- EOF
-	$(systemctl --user show --type=service,scope,socket --all --no-pager --quiet --property=Id,ActiveState,Description,Names,UnitFileState)
-	END
-EOF
+	;;
+esac
 
 # select unit
 UNIT=$(
@@ -235,20 +260,33 @@ UNIT=${UNIT##* }
 
 report "$UNIT"
 
+# pre-reset vars
+DESCRIPTION=
+CAN_START=
+CAN_STOP=
+CAN_RELOAD=
+CAN_FREEZE=
+FREEZER_STATE=
+ACTIVE_STATE=
+UNIT_FILE_STATE=
+WANTED_BY=
+REQUIRED_BY=
+UPHELD_BY=
+
 # get unit data
 while IFS="=" read -r prop value; do
 	case "$prop" in
-	Description) DESCRIPTION="$value" ;;
-	CanStart) CAN_START="$value" ;;
-	CanStop) CAN_STOP="$value" ;;
-	CanReload) CAN_RELOAD="$value" ;;
-	CanFreeze) CAN_FREEZE="$value" ;;
-	FreezerState) FREEZER_STATE="$value" ;;
-	ActiveState) ACTIVE_STATE="$value" ;;
-	UnitFileState) UNIT_FILE_STATE="$value" ;;
-	WantedBy) WANTED_BY="$value" ;;
-	RequiredBy) REQUIRED_BY="$value" ;;
-	UpheldBy) UPHELD_BY="$value" ;;
+	Description) DESCRIPTION=$value ;;
+	CanStart) CAN_START=$value ;;
+	CanStop) CAN_STOP=$value ;;
+	CanReload) CAN_RELOAD=$value ;;
+	CanFreeze) CAN_FREEZE=$value ;;
+	FreezerState) FREEZER_STATE=$value ;;
+	ActiveState) ACTIVE_STATE=$value ;;
+	UnitFileState) UNIT_FILE_STATE=$value ;;
+	WantedBy) WANTED_BY=$value ;;
+	RequiredBy) REQUIRED_BY=$value ;;
+	UpheldBy) UPHELD_BY=$value ;;
 	esac
 done <<- EOF
 	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState,UnitFileState,WantedBy,RequiredBy,UpheldBy "$UNIT")
