@@ -119,11 +119,11 @@ A set of runtime units bound to standard user session targets is generated:
 Compositor ID (Desktop Entry ID or executable name) becomes the specifier
 for all templated units.
 
-At the stage of *graphical-session-pre.target* environment is
-sourced from shell profile and from uwsm environment _files_. The delta is
-exported to the systemd and D-Bus activation environments by environment preloader
-service and is marked for cleanup at shutdown stage. Preloader shell context
-for convenience has *IN_UWSM_ENV_PRELOADER* var set to *true*.
+At the stage of *graphical-session-pre.target*, the environment is sourced from
+the shell profile and from uwsm environment _files_. The delta is exported to
+the systemd and D-Bus activation environments by the environment preloader
+service and is marked for cleanup at shutdown stage. Preloader shell context for
+convenience has *IN_UWSM_ENV_PRELOADER* var set to *true*.
 
 At the stage of *graphical-session.target* (before it) the main compositor unit
 *wayland-wm@*_${ID}_*.service* and *wayland-session-waitenv.service* are
@@ -280,8 +280,9 @@ itself with *systemctl* execution that starts *wayland-wm@*_${ID}_*.service*
 and waits for it to finish.
 
 In order to complete the startup sequence, the compositor has to put
-*WAYLAND_DISPLAY* into the systemd activation environment. This can be done explicitly
-by making compositor run "*uwsm finalize*" command (see the next subsection).
+*WAYLAND_DISPLAY* into the systemd activation environment. This can be done
+explicitly by making compositor run "*uwsm finalize*" command (see the next
+subsection).
 
 ## finalize
 

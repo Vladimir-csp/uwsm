@@ -331,8 +331,8 @@ units to get.
 profile). This will make uwsm delay graphical session startup until those vars
 appear in the systemd activation environment.
 
-Depending on the situation, combine this with with `uwsm finalize` command to put
-more variables into activation environments and gain more control over delay
+Depending on the situation, combine this with with `uwsm finalize` command to
+put more variables into activation environments and gain more control over delay
 mechanism of uwsm.
 
 Be aware that `uwsm finalize` skips undefined vars, so be sure that all
@@ -373,12 +373,12 @@ manner, then successfully exits (or times out). Its job is to delay
 `graphical-session.target` activation in case compositor signals its readiness
 prematurely. Or to fail startup if expected vars do not appear.
 
-The `uwsm finalize` command fills systemd and D-Bus environments with essential vars
-set by compositor: `WAYLAND_DISPLAY` (mandatory) and `DISPLAY` (if present).
-Optional vars are taken by name from arguments and `UWSM_FINALIZE_VARNAMES` var,
-which is also pre-filled by plugins. D-Bus implementation quirks are handled.
-Undefined vars are silently ignored. Any exported variables are also added to
-cleanup list.
+The `uwsm finalize` command fills systemd and D-Bus environments with essential
+vars set by the compositor: `WAYLAND_DISPLAY` (mandatory) and `DISPLAY` (if
+present). Optional vars are taken by name from arguments and
+`UWSM_FINALIZE_VARNAMES` var, which is also pre-filled by plugins. D-Bus
+implementation quirks are handled. Undefined vars are silently ignored. Any
+exported variables are also added to cleanup list.
 
 Timeout for unit startup is 10 seconds.
 
@@ -406,14 +406,15 @@ placed into `session.slice` by either:
 Background and details
 </summary>
 
-By default `uwsm` launches the compositor service in `app.slice` and all processes
-spawned by the compositor will be part of the `wayland-wm@${compositor}.service` unit.
-This works, but is not an optimal solution.
+By default `uwsm` launches the compositor service in `app.slice` and all
+processes spawned by the compositor will be part of the
+`wayland-wm@${compositor}.service` unit. This works, but is not an optimal
+solution.
 
 Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
-recommends running compositors in `session.slice` and launching apps as scopes or
-services in `app.slice`.
+recommends running compositors in `session.slice` and launching apps as scopes
+or services in `app.slice`.
 
 `uwsm` provides a convenient way of handling this: it generates special nested
 slices that will also receive stop action ordered before
@@ -451,11 +452,11 @@ Scopes are the default type of units for launching apps via `uwsm app`, they are
 executed in-place and behave like simple commands, inheriting environment and
 pty of origin.
 
-Services are launched in the background by the systemd user manager and are given
-an environment based on the current state of the activation environment of systemd;
-their output is routed to the journal. `uwsm app` will return immediately after launch.
-This allows more control over the application, i.e. restarting it with an updated
-environment.
+Services are launched in the background by the systemd user manager and are
+given an environment based on the current state of the activation environment of
+systemd; their output is routed to the journal. `uwsm app` will return
+immediately after launch. This allows more control over the application, i.e.
+restarting it with an updated environment.
 
 Example snippets for sway config for launching apps:
 
@@ -515,11 +516,11 @@ Optional parameters to provide more metadata:
 - `-N Name`
 - `-C "Compositor description"`
 
-Arguments and metadata are stored in unit drop-ins if needed.
+Arguments and metadata are stored in specifier unit drop-ins if needed.
 
-`uwsm start ...` command will wait until the graphical session ends, also holding
-open the login session it resides in. The graphical session will also deactivate if
-the process that started it ends.
+The `uwsm start ...` command will wait until the graphical session ends, also
+holding open the login session it resides in. The graphical session will also
+deactivate if the process that started it ends.
 
 <details><summary>
 Some details
@@ -644,9 +645,9 @@ Either of:
 - `loginctl terminate-session "$XDG_SESSION_ID"` (this ends login session
   that uwsm was launched in, special unit `wayland-session-bindpid@.service`
   waiting for the former login shell process will exit and bring down graphical
-  session units. Empty argument will only work if `loginctl` is called from within
-  login session scope itself, so variable should be used when calling from
-  graphical session units)
+  session units. Empty argument will only work if `loginctl` is called from
+  within login session scope itself, so variable should be used when calling
+  from graphical session units)
 - `uwsm stop` (brings down graphical session units. Login session will end if
   `uwsm start` replaced login shell)
 - `systemctl --user stop wayland-wm@*.service` (effectively the same as previous
