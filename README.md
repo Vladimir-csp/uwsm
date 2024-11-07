@@ -606,8 +606,8 @@ entries. Example `/usr/local/share/wayland-sessions/my-compositor.desktop`:
 [Desktop Entry]
 Name=My compositor (with UWSM)
 Comment=My cool compositor
-Exec=uwsm start -N "My compositor" -D mycompositor -C "My cool compositor" mywm
-DesktopNames=mycompositor
+Exec=uwsm start -N "My compositor" -D mycompositor:mylib -C "My cool compositor" -- mywm
+DesktopNames=mycompositor;mylib
 Type=Application
 ```
 
