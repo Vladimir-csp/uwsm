@@ -652,6 +652,10 @@ Either of:
 - `systemctl --user stop wayland-wm@*.service` (effectively the same as previous
   one)
 
+Do not use compositor's native exit mechanism or kill its process directly, this
+will yank compositor from under all the clients and interfere with ordered unit
+deactivation sequence.
+
 ## Longer story, tour under the hood
 
 Some extended examples and partial recreation of some behaviors via excessive

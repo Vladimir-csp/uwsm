@@ -20,12 +20,12 @@ scopes or services.
 |[ *select*
 :< Select default compositor Entry.
 |  *start*
-:  Start compositor.
+:  Start compositor and graphical session.
 |  *finalize*
 :  Send compositor-set variables and unit startup notification to systemd user
    manager.
 |  *stop*
-:  Stop compositor.
+:  Stop graphical session and compositor.
 |  *app*
 :  Application unit launcher (with Desktop Entry support).
 |  *check*
@@ -174,6 +174,8 @@ Systemd stops all user units in reverse, as it usually does. During deactivation
 of *graphical-session-pre.target*, the environment preloader service cleans
 activation environments by unsetting all variables that were marked for removal
 during startup and finalization stages.
+
+Do not use compositor's native exit mechanism or kill its process directly.
 
 # SUBCOMMANDS
 
