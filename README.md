@@ -262,7 +262,10 @@ https://aur.archlinux.org/packages/uwsm
 NixOS options.
 </summary>
 
-Enable it using `programs.uwsm.enable` and configure available compositors using `programs.uwsm.waylandCompositors`. Please see the options' descriptions for more information.
+Enable it using `programs.uwsm.enable` and configure available compositors using
+`programs.uwsm.waylandCompositors`. Please see the
+[options' descriptions](https://search.nixos.org/options?channel=unstable&show=programs.uwsm.enable&from=0&size=50&sort=relevance&type=packages&query=uwsm)
+for more information.
 
 </details>
 
