@@ -14,7 +14,6 @@ Restart=on-failure
 Slice=background-graphical.slice
 
 [Install]
-# Get started via specific WMs
 WantedBy=graphical-session.target
 # Alternatively can be wanted by specific WMs
 #WantedBy=wayland-wm@sway.desktop.service
