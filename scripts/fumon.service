@@ -6,7 +6,7 @@ After=graphical-session.target
 
 [Service]
 Type=exec
-ExecCondition=sh -c "command -v notify-send > /dev/null"
+ExecCondition=/bin/sh -c "command -v notify-send > /dev/null"
 ExecStart=fumon
 Restart=on-failure
 Slice=background-graphical.slice
