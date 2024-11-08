@@ -259,10 +259,10 @@ https://aur.archlinux.org/packages/uwsm
 </details>
 
 <details><summary>
-NixOS package.
+NixOS options.
 </summary>
 
-https://github.com/NixOS/nixpkgs/tree/master/pkgs/by-name/uw/uwsm/package.nix
+Enable it using `programs.uwsm.enable` and configure available compositors using `programs.uwsm.waylandCompositors`. Please see the options' descriptions for more information.
 
 </details>
 
