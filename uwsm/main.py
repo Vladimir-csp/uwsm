@@ -1962,14 +1962,14 @@ class Args:
             action="store_true",
             dest="use_session_slice",
             default=use_session_slice,
-            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == True else ''}.",
+            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice else ''}.",
         )
         parsers["start_slice"].add_argument(
             "-A",
             action="store_false",
             dest="use_session_slice",
             default=use_session_slice,
-            help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice == False else ' (default)' if use_session_slice is None else ''}.",
+            help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if not use_session_slice else ' (default)' if use_session_slice is None else ''}.",
         )
         parsers["start"].add_argument(
             "-F",
@@ -2862,7 +2862,7 @@ def prepare_env():
 
     sh_path = which("sh")
     if not sh_path:
-        print_error(f'"sh" is not in PATH!')
+        print_error('"sh" is not in PATH!')
         sys.exit(1)
 
     sprc = subprocess.run(
@@ -3067,7 +3067,7 @@ def gen_entry_args(entry, args, entry_action=None):
             print_debug(f'replaced with "{new_arg}", appended: {entry_args}')
 
         elif re.search(r"%[DdNnvm]", entry_arg):
-            print_debug(f"dropped as deprecated")
+            print_debug("dropped as deprecated")
 
         elif "%f" in entry_arg:
             if encountered_fu:
@@ -3161,9 +3161,9 @@ def gen_entry_args(entry, args, entry_action=None):
                 entry_args.extend(["--icon", arg])
                 print_debug(f'replaced with "--icon", "{arg}", {entry_args}')
             else:
-                print_debug(f"popped")
+                print_debug("popped")
         else:
-            print_debug(f"unchanged")
+            print_debug("unchanged")
             entry_args.append(entry_arg)
 
     print_debug("entry_cmd, entry_args post:", entry_cmd, entry_args)
@@ -3232,7 +3232,7 @@ def find_terminal_entry():
                         # only valid entry.desktop[:action] lines are of interest
                         try:
                             arg = MainArg(line)
-                        except:
+                        except Exception:
                             continue
                         if not arg.entry_id or arg.path:
                             continue
@@ -3899,7 +3899,7 @@ def fill_comp_globals():
         main_arg = MainArg(Args.parsed.wm_id)
         # Should not be a path
         if main_arg.path is not None:
-            raise ValueError(f"Aux Compositor ID argument can not be a path")
+            raise ValueError("Aux Compositor ID argument can not be a path")
         # If raw command line is given with non-empty first arg, parse it, replacing main_arg
         if Args.parsed.wm_cmdline and Args.parsed.wm_cmdline[0]:
             main_arg = MainArg(Args.parsed.wm_cmdline[0])
@@ -4864,7 +4864,7 @@ def main():
                         settle_time = os.getenv("UWSM_WAIT_VARNAMES_SETTLETIME", "0.2")
                         try:
                             settle_time = float(settle_time)
-                        except:
+                        except Exception:
                             print_warning(
                                 f'"UWSM_WAIT_VARNAMES_SETTLETIME" contains invalid value "{settle_time}", using "0.2"'
                             )
@@ -4943,7 +4943,7 @@ def main():
                 settle_time = os.getenv("UWSM_WAIT_VARNAMES_SETTLETIME", "0.2")
                 try:
                     settle_time = float(settle_time)
-                except:
+                except Exception:
                     print_warning(
                         f'"UWSM_WAIT_VARNAMES_SETTLETIME" contains invalid value "{settle_time}", using "0.2"'
                     )
