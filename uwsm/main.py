@@ -1678,6 +1678,7 @@ def generate_units():
         remove_unit(wm_specific_service)
 
     ## tweaks
+    # ordering and slicing autostart apps
     update_unit(
         "app-@autostart.service.d/slice-tweak.conf",
         dedent(
@@ -1689,6 +1690,23 @@ def generate_units():
             PartOf=xdg-desktop-autostart.target
             After=xdg-desktop-autostart.target
             [Service]
+            # also put them in special graphical app slice
+            Slice=app-graphical.slice
+            """
+        ),
+    )
+    # ordering and slicing flatpaks
+    update_unit(
+        "app-flatpak-.scope.d/order-tweak.conf",
+        dedent(
+            f"""
+            # injected by {BIN_NAME}, do not edit
+            [Unit]
+            X-UWSM-ID=GENERIC
+            # terminate with session properly
+            PartOf=graphical-session.target
+            After=graphical-session.target
+            [Scope]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
             """
