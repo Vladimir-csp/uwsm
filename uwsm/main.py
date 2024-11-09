@@ -2078,7 +2078,7 @@ class Args:
             ),
             help=dedent(
                 """
-                Applicatoin command line. The first argument can be either one of:\n
+                Application command line. The first argument can be either one of:\n
                   - Executable name or path\n
                   - Desktop Entry ID (with optional ":"-delimited action ID)\n
                   - Path to Desktop Entry file (with optional ":"-delimited action ID)\n
