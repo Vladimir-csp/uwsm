@@ -6,6 +6,8 @@ import random
 import traceback
 from typing import List
 
+from uwsm.dbus import DbusInteractions
+
 
 class Styles:
     "Terminal control characters for color and style"
