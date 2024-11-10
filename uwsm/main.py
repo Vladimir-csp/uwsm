@@ -317,7 +317,7 @@ def entry_tokenize_exec(value: str):
                 continue
             # error out on unescaped characters
             if char in ("`", "$"):
-                raise ValueError(f'Encountered unescaped "{char}" in Exec')
+                raise ValueError(f'Encountered unescaped {char!r} in Exec')
             # add character as is
             arg += char
             continue
@@ -332,26 +332,8 @@ def entry_tokenize_exec(value: str):
             arg = ""
             continue
         # these should be quoted
-        if char in (
-            "\t",
-            "\n",
-            "'",
-            "\\",
-            ">",
-            "<",
-            "~",
-            "|",
-            "&",
-            ";",
-            "$",
-            "*",
-            "?",
-            "#",
-            "(",
-            ")",
-            "`",
-        ):
-            raise ValueError(f'Encountered unquoted "{char}" in Exec')
+        if char in "\t\n'\\><~|&;$*?#()`":
+            raise ValueError(f'Encountered unquoted {char!r} in Exec')
         arg += char
 
     print_debug("tokenizer produced", cmd)
@@ -742,7 +724,7 @@ def select_comp_entry(default="", just_confirm=False):
 
         # also enumerate actions
         for action in entry.getActions():
-            print_debug("parsing aciton", action)
+            print_debug("parsing action", action)
             action_group: str = f"Desktop Action {action}"
             if not entry.hasGroup(action_group):
                 continue
@@ -825,7 +807,7 @@ def select_comp_entry(default="", just_confirm=False):
         if not sys.stdout.isatty():
             io.append("stdout")
         raise IOError(
-            f"{', '.join(io)} {'is' if len(io) == 1 else 'are'} not attached to interactive terminal! Can not launch menu!"
+            f"{', '.join(io)} {'is' if len(io) == 1 else 'are'} not attached to interactive terminal! Cannot launch menu!"
         )
 
     # generate arguments for whiptail exec
@@ -982,7 +964,7 @@ def char2cesc(string: str) -> str:
 def simple_systemd_escape(string: str, start: bool = True) -> str:
     """
     Escapes simple strings by systemd rules.
-    Set 'start=False' if string is not intended for start of resutling string
+    Set 'start=False' if string is not intended for start of resulting string
     """
     out = []
     # escape '.' if starts with it
@@ -1726,7 +1708,7 @@ def generate_units():
             """
         ),
     )
-    # with kde portal is's complicated
+    # with kde portal it's complicated
     update_unit(
         "plasma-xdg-desktop-portal-kde.service.d/order-tweak.conf",
         dedent(
@@ -2050,12 +2032,12 @@ class Args:
             help="Application unit launcher",
             description="Launches application as a scope or service in specific slice.",
             epilog=dedent(
-                """
+                f"""
                 It is highly recommended to configure your compositor to launch apps
                 via this command to fully utilize user-level systemd unit management.\n
                 When this is done, compositor itself can be put in session.slice by adding
                 "-S" to "start" subcommand, or setting this variable in the environment
-                where "{BIN_NAME} start" is executed.:\n
+                where "{BIN_NAME} start" is executed:\n
                 \n
                   UWSM_USE_SESSION_SLICE=true\n
                 \n
@@ -2237,7 +2219,7 @@ class Args:
         parsers["aux"] = parsers["main_subparsers"].add_parser(
             "aux",
             formatter_class=HelpFormatterNewlines,
-            help="Auxillary functions",
+            help="Auxiliary functions",
             description="Can only be called by systemd user manager, used in units Exec*= keys",
         )
         parsers["aux_subparsers"] = parsers["aux"].add_subparsers(
@@ -2336,7 +2318,7 @@ class Args:
 
 
 def append_to_cleanup_file(wm_id, varnames, skip_always_cleanup=False, create=True):
-    "Aappend varnames to cleanup file, expects wm_id, varnames, create (bool)"
+    "Append varnames to cleanup file, expects wm_id, varnames, create (bool)"
     cleanup_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
         BIN_NAME,
@@ -3349,7 +3331,7 @@ def write_neg_cache(name: str, data: dict):
                 neg_cache_file.write(f"{path};{mtime}\n")
     except Exception as caught_exception:
         # just remove it if something is wrong
-        print_debug(f"Removing cahce file {neg_cache_path} due to: {caught_exception}")
+        print_debug(f"Removing cache file {neg_cache_path} due to: {caught_exception}")
         if os.path.isfile(neg_cache_path):
             os.remove(neg_cache_path)
 
@@ -3405,9 +3387,9 @@ def app(
                 },
             )
 
-            print_debug("got entrires", entries)
+            print_debug("got entries", entries)
             if not entries:
-                raise FileNotFoundError(f'Deskop entry not found: "{cmdline[0]}"')
+                raise FileNotFoundError(f'Desktop entry not found: "{cmdline[0]}"')
 
             entry = entries[0]
 
@@ -3899,7 +3881,7 @@ def fill_comp_globals():
         main_arg = MainArg(Args.parsed.wm_id)
         # Should not be a path
         if main_arg.path is not None:
-            raise ValueError("Aux Compositor ID argument can not be a path")
+            raise ValueError("Aux Compositor ID argument cannot be a path")
         # If raw command line is given with non-empty first arg, parse it, replacing main_arg
         if Args.parsed.wm_cmdline and Args.parsed.wm_cmdline[0]:
             main_arg = MainArg(Args.parsed.wm_cmdline[0])
