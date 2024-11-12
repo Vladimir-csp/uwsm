@@ -15,4 +15,4 @@ Slice=background-graphical.slice
 [Install]
 WantedBy=graphical-session.target
 # Alternatively can be wanted by specific WMs
-#WantedBy=wayland-wm@hyprland.desktop.service
+#WantedBy=wayland-session@hyprland.desktop.target

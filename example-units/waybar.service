@@ -16,7 +16,7 @@ Slice=app-graphical.slice
 [Install]
 WantedBy=graphical-session.target
 # Alternatively can be wanted by specific WMs
-#WantedBy=wayland-wm@sway.desktop.service
-#WantedBy=wayland-wm@wayfire.desktop.service
-#WantedBy=wayland-wm@labwc.desktop.service
-#WantedBy=wayland-wm@hyprland.desktop.service
+#WantedBy=wayland-session@sway.desktop.target
+#WantedBy=wayland-session@wayfire.desktop.target
+#WantedBy=wayland-session@labwc.desktop.target
+#WantedBy=wayland-session@hyprland.desktop.target
