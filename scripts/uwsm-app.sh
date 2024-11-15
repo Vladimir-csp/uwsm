@@ -110,6 +110,25 @@ elif [ "$#" = "1" ] && [ "$1" = "ping" ]; then
 	printf '%s' 'ping' > "$PIPE_IN"
 elif [ "$#" = "1" ] && [ "$1" = "stop" ]; then
 	printf '%s' 'stop' > "$PIPE_IN"
+elif [ "$#" -ge "1" ] && {
+	# intercept -h|--help arg
+	help=false
+	for arg in "$@"; do
+		case "$arg" in
+		--) break ;;
+		-h | --help)
+			help=true
+			break
+			;;
+		esac
+	done
+	case "$help" in
+	true) true ;;
+	false) false ;;
+	esac
+} then
+	printf '%s\n' "Running 'uwsm app --help':" ""
+	exec uwsm app -h
 else
 	printf '\0%s' app "$@" > "$PIPE_IN"
 fi
