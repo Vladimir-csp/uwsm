@@ -2207,6 +2207,9 @@ class Args:
             "-q", action="store_true", dest="quiet", help="Do not show anything."
         )
         parsers["may_start"].add_argument(
+            "-i", action="store_true", dest="nologin", help="Do not check for login shell."
+        )
+        parsers["may_start"].add_argument(
             "-g",
             type=int,
             dest="gst_seconds",
@@ -4683,20 +4686,21 @@ def main():
             sys.exit(1)
 
         # check if parent process is a login shell
-        try:
-            with open(
-                f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
-            ) as ppcmdline:
-                parent_cmdline = ppcmdline.read()
-                parent_cmdline = parent_cmdline.strip()
-            print_debug(f"parent_pid: {os.getppid()}")
-            print_debug(f"parent_cmdline: {parent_cmdline}")
-        except Exception as caught_exception:
-            print_error("Could not determine parent process command!")
-            print_error(caught_exception)
-            sys.exit(1)
-        if not parent_cmdline.startswith("-"):
-            dealbreakers.append("Not in login shell")
+        if not Args.parsed.nologin:
+            try:
+                with open(
+                    f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
+                ) as ppcmdline:
+                    parent_cmdline = ppcmdline.read()
+                    parent_cmdline = parent_cmdline.strip()
+                print_debug(f"parent_pid: {os.getppid()}")
+                print_debug(f"parent_cmdline: {parent_cmdline}")
+            except Exception as caught_exception:
+                print_error("Could not determine parent process command!")
+                print_error(caught_exception)
+                sys.exit(1)
+            if not parent_cmdline.startswith("-"):
+                dealbreakers.append("Not in login shell")
 
         # check foreground VT
         fgvt = get_fg_vt()
