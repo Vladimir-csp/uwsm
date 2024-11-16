@@ -98,19 +98,6 @@ Idempotently (well, best-effort-idempotently) handles environment.
   - boolean operations with predefined lists
   - manually exported vars by `uwsm finalize` action
 
-Summary of where to put a user-level var:
-- For entire user's context: define in `${XDG_CONFIG_HOME}/environment.d/*.conf`
-  (see `man 5 environment.d`)
-- For login session context and uwsm environment preloader, including plugins:
-  export in `~/.profile` (may have caveats, see your shell's manual)
-- For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm/env`
-- For uwsm-managed graphical session of specific compositor: export in
-  `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`
-
-Also for convenience environment preloader defines `IN_UWSM_ENV_PRELOADER=true`
-variable (not exported), which can be probed from shell profile to do things
-conditionally.
-
 </details>
 
 <details><summary>
@@ -211,7 +198,7 @@ Provides helpers and tools for various operations.
 
 </details>
 
-## Installation
+## Installation and basic configuration
 
 ### 1. Building and installing
 
@@ -485,6 +472,29 @@ setting its default via `UWSM_APP_UNIT_TYPE` env var.
 
 </details>
 
+### 4. Environments and shell profile
+
+There are three general groups of environment variables in graphical session
+operation:
+
+- those that all/some apps need to see
+- those that compositor needs to see
+- those that compositor sets and graphical apps need to see (this was covered in
+  [section 2](#2-service-startup-notification-and-vars-set-by-compositor))
+
+Summary of where to put a user-level var for the first two categories:
+- For entire user's context: define in `${XDG_CONFIG_HOME}/environment.d/*.conf`
+  (see `man 5 environment.d`)
+- For login session context and uwsm environment preloader, including plugins:
+  export in `~/.profile` (may have caveats, see your shell's manual)
+- For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm/env`
+- For uwsm-managed graphical session of specific compositor: export in
+  `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`
+
+Choose whatever scope suits your needs. Note on shell profile: uwsm environment
+preloader uses POSIX shell (`/bin/sh`) and sources `/etc/profile`,
+`${HOME}/.profile`. Other shells compatibility with these files may vary.
+
 ## Operation
 
 ### Syntax and behavior
@@ -591,6 +601,10 @@ loop will be attempted and failed.
 By default: parent is a login shell (process name starts with `-`), tty1 is in
 foreground, system's `graphical.target` is active or activating, user's
 `graphical-session.target` and other related units are inactive.
+
+Also for convenience environment preloader defines `IN_UWSM_ENV_PRELOADER=true`
+variable (not exported), which can be probed from shell profile to do things
+conditionally.
 
 `uwsm select` shows whiptail menu to select the default desktop entry from
 `wayland-sessions` directories. At this point one can cancel and continue with
