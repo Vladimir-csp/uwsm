@@ -575,7 +575,7 @@ Things `uwsm start ...` will do:
 #### Shell profile integration
 
 To launch automatically after login on virtual console 1, if systemd is at
-`graphical.target`, add this to your shell profile:
+`graphical.target`, add this code to your shell profile:
 
 ```
 if uwsm check may-start && uwsm select; then
@@ -583,11 +583,16 @@ if uwsm check may-start && uwsm select; then
 fi
 ```
 
-`uwsm check may-start` checker subcommand, among other things, **screens for
-being in interactive login shell, which is essential**, since profile sourcing
-can otherwise lead to nasty loops.
+The main statement **should** be protected by a condition that will return false
+when uwsm environment preloader sources the profile, otherwise an undesirable
+loop will be attempted and failed.
 
-`uwsm start select` shows whiptail menu to select default desktop entry from
+`uwsm check may-start` subcommand serves as a collection of useful checks.
+By default: parent is a login shell (process name starts with `-`), tty1 is in
+foreground, system's `graphical.target` is active or activating, user's
+`graphical-session.target` and other related units are inactive.
+
+`uwsm select` shows whiptail menu to select the default desktop entry from
 `wayland-sessions` directories. At this point one can cancel and continue with
 the normal login shell.
 
