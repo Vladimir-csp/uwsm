@@ -10,9 +10,10 @@ has_system_xdg = \
   run_command(
     PYTHON_PROG,
     '-BIc',
-    'import xdg',
+    'import xdg_base_dirs',
     check: false,
   ).returncode() == 0
+  # python3 -BIc 'import xdg_base_dirs'
 
 if not has_system_dbus
   error('python dbus module not found')
