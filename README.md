@@ -622,24 +622,31 @@ with identifier `uwsm_start`. Otherwise it might be hard to see the output.
 #### From a display manager
 
 To launch uwsm from a display/login manager, `uwsm` can be used inside desktop
-entries. Example `/usr/local/share/wayland-sessions/my-compositor.desktop`:
+entries. Example `/usr/local/share/wayland-sessions/my-compositor-uwsm.desktop`:
 
 ```
 [Desktop Entry]
 Name=My compositor (with UWSM)
-Comment=My cool compositor
+Comment=My cool compositor, UWSM session
+
+# either full command line with metadata and executable
 Exec=uwsm start -N "My compositor" -D mycompositor:mylib -C "My cool compositor" -- mywm
+
+# or a reference to another entry
+Exec=uwsm start -- my-compositor.desktop
+
 DesktopNames=mycompositor;mylib
 Type=Application
 ```
 
 Things to keep in mind:
 
-- For consistency, command line arguments should mirror the keys of the entry
-- Command in `Exec=` should start with `uwsm start`
+- Command in `Exec=` should start with `uwsm start`.
+- If command references an exeutable, keys of the entry should be mirrored in
+  arguments, because otherwise `uwsm` will not have access to those strings.
 - It should not point to itself (as a combination of Desktop Entry ID and Action
-  ID)
-- It should not point to a Desktop Entry ID and Action ID that also uses `uwsm`
+  ID).
+- It should not point to a Desktop Entry ID and Action ID that also uses `uwsm`.
 
 Potentially such entries may be found and used by `uwsm` itself, i.e. in shell
 profile integration situation, or when launched manually. Following the
@@ -648,7 +655,8 @@ requested arguments inside the entry without any side effects.
 
 Some display managers may fail to handle
 [quoting](https://specifications.freedesktop.org/desktop-entry-spec/latest/exec-variables.html)
-correctly. Workaround in this case is to use single-word arguments.
+correctly. Workaround in this case is to use single-word arguments and/or point
+to another entry.
 
 Alternatively, if a display manager supports wrapper commands/scripts, `uwsm`
 can be inserted there to receive either Entry and Action IDs, or a parsed
