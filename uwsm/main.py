@@ -2760,13 +2760,14 @@ def prepare_env_gen_sh(random_mark):
         """
     )
 
+
     shell_full = "\n".join(
         [
-            *(["set -x\n"] if int(os.getenv("DEBUG", "0")) > 0 else []),
+            *(["set -x\n"] if DebugFlag.debug else []),
             shell_definitions,
             shell_plugins_load,
             shell_main_body,
-            *(["set +x\n"] if int(os.getenv("DEBUG", "0")) > 0 else []),
+            *(["set +x\n"] if DebugFlag.debug else []),
             shell_print_env,
         ]
     )
@@ -4389,6 +4390,11 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
 
 def main():
     "UWSM main entrypoint"
+
+    # print warning about invalid DEBUG value
+    if DebugFlag.warning:
+        print_warning(DebugFlag.warning)
+        DebugFlag.warning = None
 
     # parse args globally
     Args(store_parsers=True)

@@ -3,8 +3,26 @@ import sys
 import re
 import textwrap
 import random
+import syslog
 import traceback
 from typing import List
+
+
+class DebugFlag:
+    "Checks for DEBUG env value and holds 'debug' boolean, 'warning' string"
+    debug = os.getenv("DEBUG", "0")
+    warning = None
+    if debug.isnumeric():
+        debug = int(debug) > 0
+    elif not debug:
+        debug = False
+    elif debug.lower().capitalize() in ("Yes", "True", "Y"):
+        debug = True
+    elif not debug or debug.lower().capitalize() in ("No", "False", "N"):
+        debug = False
+    else:
+        warning = f'Expected boolean or numeric or empty value for DEBUG, got "{debug}", assuming False'
+        debug = False
 
 
 class Styles:
@@ -63,8 +81,16 @@ def sane_split(string: str, delimiter: str) -> List[str]:
 
 # all print_* functions force flush for synchronized output
 def print_normal(*what, **how):
-    "Normal print with flush"
+    """
+    Normal print with flush.
+    optional 'log': False
+    """
+    log = how.pop("log", False)
+
     print(*what, **how, flush=True)
+
+    if log:
+        syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, str(*what))
 
 
 def print_ok(*what, **how):
@@ -73,16 +99,21 @@ def print_ok(*what, **how):
     In green if 'file' is a tty.
     'notify': 0: no, 1: if 'file' is not a tty, 2: always
     'notify_urgency': 0
+    'log': False
     """
     file = how.pop("file", sys.stdout)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 0)
+    log = how.pop("log", False)
 
     if file.isatty():
         print(Styles.green, end="", file=file, flush=True)
     print(*what, **how, file=file, flush=True)
     if file.isatty():
         print(Styles.reset, end="", file=file, flush=True)
+
+    if log:
+        syslog.syslog(syslog.LOG_NOTICE | syslog.LOG_USER, str(*what))
 
     if notify and (not file.isatty() or notify == 2):
         try:
@@ -99,10 +130,12 @@ def print_warning(*what, **how):
     In yellow if 'file' is a tty.
     'notify': 0: no, 1: if 'file' is a tty, 2: always
     'notify_urgency': 1
+    'log': False
     """
     file = how.pop("file", sys.stdout)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 1)
+    log = how.pop("log", False)
 
     if file.isatty():
         print(Styles.yellow, end="", file=file, flush=True)
@@ -111,10 +144,13 @@ def print_warning(*what, **how):
         print(Styles.reset, end="", file=file, flush=True)
 
     # in debug mode find and print exceptions to stderr
-    if int(os.getenv("DEBUG", "0")) > 0:
+    if DebugFlag.debug:
         for item in what:
             if isinstance(item, Exception):
                 traceback.print_exception(item, file=sys.stderr)
+
+    if log:
+        syslog.syslog(syslog.LOG_WARNING | syslog.LOG_USER, str(*what))
 
     if notify and (not file.isatty() or notify == 2):
         try:
@@ -133,10 +169,12 @@ def print_error(*what, **how):
     In red if 'file' is a tty.
     'notify': 0: no, 1: if 'file' is a tty, 2: always
     'notify_urgency': 1
+    'log': False
     """
     file = how.pop("file", sys.stderr)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 2)
+    log = how.pop("log", False)
 
     if file.isatty():
         print(Styles.red, end="", file=file, flush=True)
@@ -145,10 +183,13 @@ def print_error(*what, **how):
         print(Styles.reset, end="", file=file, flush=True)
 
     # in debug mode find and print exceptions to stderr
-    if int(os.getenv("DEBUG", "0")) > 0:
+    if DebugFlag.debug:
         for item in what:
             if isinstance(item, Exception):
                 traceback.print_exception(item, file=sys.stderr)
+
+    if log:
+        syslog.syslog(syslog.LOG_ERROR | syslog.LOG_USER, str(*what))
 
     if notify and (not file.isatty() or notify == 2):
         try:
@@ -161,12 +202,14 @@ def print_error(*what, **how):
             print_warning(caught_exception, notify=0)
 
 
-if int(os.getenv("DEBUG", "0")) > 0:
+if DebugFlag.debug:
     from inspect import stack
 
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
         dsep = "\n" if "sep" not in how or "\n" not in how["sep"] else ""
+        log = how.pop("log", False)
+
         my_stack = stack()
         print(
             f"DEBUG {my_stack[1].filename}:{my_stack[1].lineno} {my_stack[1].function}{dsep}",
@@ -177,6 +220,9 @@ if int(os.getenv("DEBUG", "0")) > 0:
             flush=True,
         )
         print(Styles.reset, end="", file=sys.stderr, flush=True)
+
+        if log:
+            syslog.syslog(syslog.LOG_DEBUG | syslog.LOG_USER, str(*what))
 
 else:
 
