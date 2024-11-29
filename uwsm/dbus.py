@@ -111,6 +111,45 @@ class DbusInteractions:
                 "org.freedesktop.Notifications",
             )
 
+    def add_login(self):
+        "Adds /org/freedesktop/login1 object"
+        if "login" not in self.dbus_objects:
+            self.dbus_objects["login"] = self.dbus_objects["bus"].get_object(
+                "org.freedesktop.login1", "/org/freedesktop/login1"
+            )
+
+    def add_login_manager_interface(self):
+        "Adds org.freedesktop.login1.Manager method interface"
+        self.add_login()
+        if "login_manager_interface" not in self.dbus_objects:
+            self.dbus_objects["login_manager_interface"] = dbus.Interface(
+                self.dbus_objects["login"],
+                "org.freedesktop.login1.Manager",
+            )
+
+    def add_login_properties_interface(self):
+        "Adds org.freedesktop.login1.Manager properties interface"
+        self.add_login()
+        if "login_properties_interface" not in self.dbus_objects:
+            self.dbus_objects["login_properties_interface"] = dbus.Interface(
+                self.dbus_objects["login"],
+                "org.freedesktop.DBus.Properties",
+            )
+
+    def get_login_properties(self, keys):
+        "Takes list of keys, returns dict of requested properties of login daemon"
+        self.add_login_properties_interface()
+        props = {}
+        for key in keys:
+            props.update(
+                {
+                    key: self.dbus_objects["login_properties_interface"].Get(
+                        "org.freedesktop.login1.Manager", key
+                    )
+                }
+            )
+        return props
+
     # External functions (doing stuff via objects)
 
     def get_unit_property(self, unit_id, unit_property):
@@ -170,6 +209,16 @@ class DbusInteractions:
     def stop_unit(self, unit: str, job_mode: str = "fail"):
         self.add_systemd_manager_interface()
         return self.dbus_objects["systemd_manager_interface"].StopUnit(unit, job_mode)
+
+    def list_login_sessions(self):
+        "Lists login sessions"
+        self.add_login_manager_interface()
+        return self.dbus_objects["login_manager_interface"].ListSessions()
+
+    def list_login_sessions_ex(self):
+        "Lists login sessions"
+        self.add_login_manager_interface()
+        return self.dbus_objects["login_manager_interface"].ListSessionsEx()
 
     def notify(
         self,

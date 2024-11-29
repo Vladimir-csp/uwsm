@@ -114,31 +114,44 @@ class HelpFormatterNewlines(argparse.HelpFormatter):
 class Varnames:
     "Sets of varnames"
     always_export = {
+        "PATH",
+        "XDG_CURRENT_DESKTOP",
+        "XDG_MENU_PREFIX",
+        "XDG_SEAT",
+        "XDG_SEAT_PATH",
+        "XDG_SESSION_DESKTOP",
         "XDG_SESSION_ID",
+        "XDG_SESSION_PATH",
         "XDG_SESSION_TYPE",
         "XDG_VTNR",
-        "XDG_CURRENT_DESKTOP",
-        "XDG_SESSION_DESKTOP",
-        "XDG_MENU_PREFIX",
-        "PATH",
     }
     never_export = {"PWD", "LS_COLORS", "INVOCATION_ID", "SHLVL", "SHELL"}
     always_unset = {"DISPLAY", "WAYLAND_DISPLAY"}
     always_cleanup = {
         "DISPLAY",
+        "LANG",
+        "PATH",
         "WAYLAND_DISPLAY",
+        "XCURSOR_SIZE",
+        "XCURSOR_THEME",
+        "XDG_CURRENT_DESKTOP",
+        "XDG_MENU_PREFIX",
+        "XDG_SEAT",
+        "XDG_SEAT_PATH",
+        "XDG_SESSION_DESKTOP",
         "XDG_SESSION_ID",
+        "XDG_SESSION_PATH",
         "XDG_SESSION_TYPE",
         "XDG_VTNR",
-        "XDG_CURRENT_DESKTOP",
-        "XDG_SESSION_DESKTOP",
-        "XDG_MENU_PREFIX",
-        "PATH",
-        "XCURSOR_THEME",
-        "XCURSOR_SIZE",
-        "LANG",
     }
     never_cleanup = {"SSH_AGENT_LAUNCHER", "SSH_AUTH_SOCK", "SSH_AGENT_PID"}
+    pass_from_login = {
+        "XDG_SEAT",
+        "XDG_SEAT_PATH",
+        "XDG_SESSION_ID",
+        "XDG_SESSION_PATH",
+        "XDG_VTNR",
+    }
 
 
 class MainArg:
@@ -317,7 +330,7 @@ def entry_tokenize_exec(value: str):
                 continue
             # error out on unescaped characters
             if char in ("`", "$"):
-                raise ValueError(f'Encountered unescaped {char!r} in Exec')
+                raise ValueError(f"Encountered unescaped {char!r} in Exec")
             # add character as is
             arg += char
             continue
@@ -333,7 +346,7 @@ def entry_tokenize_exec(value: str):
             continue
         # these should be quoted
         if char in "\t\n'\\><~|&;$*?#()`":
-            raise ValueError(f'Encountered unquoted {char!r} in Exec')
+            raise ValueError(f"Encountered unquoted {char!r} in Exec")
         arg += char
 
     print_debug("tokenizer produced", cmd)
@@ -2207,7 +2220,10 @@ class Args:
             "-q", action="store_true", dest="quiet", help="Do not show anything."
         )
         parsers["may_start"].add_argument(
-            "-i", action="store_true", dest="nologin", help="Do not check for login shell."
+            "-i",
+            action="store_true",
+            dest="nologin",
+            help="Do not check for login shell.",
         )
         parsers["may_start"].add_argument(
             "-g",
@@ -2464,7 +2480,28 @@ def finalize(additional_vars=None):
     sys.exit(1)
 
 
-def get_fg_vt():
+def save_session_vars():
+    "Saves some vars from login session context to runtime file"
+    env = dict(os.environ)
+    env_login_session = {}
+    for var in Varnames.pass_from_login:
+        if var in env:
+            env_login_session.update({var: env[var]})
+    uwsm_login_session_env_file = os.path.join(
+        BaseDirectory.get_runtime_dir(), BIN_NAME, "login_session_env"
+    )
+    if not env_login_session:
+        print_debug("nothing to write")
+        return
+    os.makedirs(os.path.dirname(uwsm_login_session_env_file), exist_ok=True)
+    with open(uwsm_login_session_env_file, "w") as login_session_env_data:
+        login_session_env_data.write(
+            "\0".join((f"{key}={value}" for key, value in env_login_session.items()))
+        )
+    print_debug(f"written {uwsm_login_session_env_file}", env_login_session)
+
+
+def get_fg_vt() -> int:
     "Returns number of foreground VT or None"
     try:
         with open(
@@ -2489,79 +2526,43 @@ def get_fg_vt():
         return None
 
 
-def get_session_by_vt(v_term: int, verbose: bool = False):
-    "Takes VT number, returns associated XDG session ID or None"
+def get_session_by_vt(vtnr: int, verbose: bool = False):
+    "Takes VT number, returns tuple of (session_id, seat_id) or None"
+
+    tty = f"tty{vtnr}"
+
+    try:
+        login = os.getlogin()
+    except Exception as caught_exception:
+        print_error(caught_exception)
+        print_error("Could not determine login name")
+        return None
 
     # get session list
-    sprc = subprocess.run(
-        ["loginctl", "list-sessions", "--no-legend", "--no-pager"],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    print_debug(sprc)
-    if sprc.returncode != 0:
-        if verbose:
-            print_error(f'"{shlex.join(sprc.args)}" returned {sprc.returncode}!')
-        return None
-    if sprc.stderr.strip():
-        print_error(sprc.stderr.strip())
-
-    # iterate over sessions
-    for line in sprc.stdout.splitlines():
-        # id is the first alphanumeric in line, can be space-padded, so strip
-        session_id = line.strip().split(" ")[0]
-        print_debug("session_id", session_id)
-        if not session_id:
-            continue
-
-        # get session user and VTNr
-        sprc2 = subprocess.run(
-            [
-                "loginctl",
-                "show-session",
-                session_id,
-                "--property",
-                "Name",
-                "--property",
-                "VTNr",
-            ],
-            text=True,
-            capture_output=True,
-            check=False,
+    bus_system = DbusInteractions("system")
+    for (
+        session_id,
+        _user_id,
+        user_name,
+        seat_id,
+        _leader_pid,
+        session_class,
+        tty_name,
+        _idle_hint,
+        _idle_hint_mts,
+        _session_object_path,
+    ) in bus_system.list_login_sessions_ex():
+        print_debug(
+            "iterating over session",
+            (session_id, user_name, seat_id, session_class, tty_name),
         )
-        print_debug(sprc2)
-        if sprc2.returncode != 0:
-            if verbose:
-                print_error(f'"{shlex.join(sprc2.args)}" returned {sprc2.returncode}!')
-            continue
-        if sprc2.stderr.strip():
-            print_error(sprc.stderr.strip())
-
-        # order is not governed by arguments, seems to be alphabetic, but sort to be sure
-        props = sorted(sprc2.stdout.splitlines())
-        if len(props) != 2:
-            if verbose:
-                print_error(
-                    f'{shlex.join(sprc2.args)}" printed unparseable properties:\n{sprc2.stdout.strip()}!'
-                )
-            continue
-        user: str = props[0].split("=")[1]
-        vtnr: str = props[1].split("=")[1]
-
-        if not user:
-            if verbose:
-                print_error(f'{shlex.join(sprc2.args)}" printed empty user!')
-            continue
-        if not vtnr.isnumeric():
-            if verbose:
-                print_error(
-                    f'{shlex.join(sprc2.args)}" printed malformed vtnr: "{vtnr}"!'
-                )
-            continue
-
-        if int(vtnr) == v_term and user == os.getlogin():
-            return session_id
+        if (
+            str(session_class) == "user"
+            and str(user_name) == login
+            and str(tty_name) == tty
+        ):
+            print_debug("found session")
+            return (str(session_id), str(seat_id))
 
     return None
 
@@ -2760,7 +2761,6 @@ def prepare_env_gen_sh(random_mark):
         """
     )
 
-
     shell_full = "\n".join(
         [
             *(["set -x\n"] if DebugFlag.debug else []),
@@ -2828,19 +2828,72 @@ def prepare_env():
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
 
+    # get login session environment saved by uwsm start
+    env_login_session = {}
+    uwsm_login_session_env_file = os.path.join(
+        BaseDirectory.get_runtime_dir(), BIN_NAME, "login_session_env"
+    )
+    if os.path.isfile(uwsm_login_session_env_file):
+        try:
+            with open(
+                uwsm_login_session_env_file, "r", encoding="UTF-8"
+            ) as env_login_session_data:
+                env_login_session_raw = env_login_session_data.read()
+            env_login_session_raw = sane_split(env_login_session_raw, "\0")
+            for string in env_login_session_raw:
+                var, value = string.split("=", maxsplit=1)
+                env_login_session.update({var: value})
+            env_login_session = filter_varnames(env_login_session)
+            print_debug("got env_login_session", env_login_session)
+            print_normal(
+                f"Got saved login session variables: {', '.join(sorted(env_login_session.keys()))}"
+            )
+            os.remove(uwsm_login_session_env_file)
+            print_debug(f"removed {uwsm_login_session_env_file}")
+        except Exception as caught_exception:
+            print_warning(
+                "Could not read or parse runtime uwsm/login_session_env:",
+                caught_exception,
+            )
+
+    # if XDG_SEAT or XDG_SESSION_ID from login context are not known, deduce them.
+    if (
+        "XDG_SEAT" not in env_login_session
+        or not env_login_session["XDG_SEAT"]
+        or "XDG_SESSION_ID" not in env_login_session
+        or not env_login_session["XDG_SESSION_ID"]
+    ):
+
+        # get foreground VT if not known from login context
+        if (
+            "XDG_VTNR" not in env_login_session
+            or not env_login_session["XDG_VTNR"]
+            or not env_login_session["XDG_VTNR"].isnumeric()
+        ):
+            v_term = get_fg_vt()
+            if v_term is None:
+                raise RuntimeError("Could not determine foreground VT")
+            # update session environment
+            env_login_session.update({"XDG_VTNR": str(v_term)})
+        else:
+            v_term = int(env_login_session["XDG_VTNR"])
+
+        session_vars = get_session_by_vt(v_term)
+        if session_vars is None:
+            raise RuntimeError("Could not determine session of foreground VT")
+        env_login_session.update(
+            {"XDG_SEAT": session_vars[1], "XDG_SESSION_ID": session_vars[0]}
+        )
+
     # get current ENV from systemd user manager
     # could use os.environ, but this is cleaner
     env_pre = filter_varnames(bus_session.get_systemd_vars())
     systemd_varnames = set(env_pre.keys())
 
-    # override XDG_VTNR and XDG_SESSION_ID right away, they are in Varnames.always_export
-    v_term = get_fg_vt()
-    if v_term is None:
-        raise RuntimeError("Could not determine foreground VT")
-    session_id = get_session_by_vt(v_term)
-    if session_id is None:
-        raise RuntimeError("Could not determine session of foreground VT")
-    env_pre.update({"XDG_VTNR": str(v_term), "XDG_SESSION_ID": session_id})
+    # update env_pre with allowed vars from login context right away
+    for var, value in env_login_session.items():
+        if var in Varnames.pass_from_login:
+            env_pre.update({var: value})
 
     # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
@@ -4503,10 +4556,10 @@ def main():
                 print_normal(f"Will start {CompGlobals.id}...")
                 print_warning("Dry Run Mode. Will not go further.")
                 sys.exit(0)
-            else:
-                print_normal(
-                    f"Starting {CompGlobals.id} and waiting while it is running..."
-                )
+
+            print_normal(
+                f"Starting {CompGlobals.id} and waiting while it is running..."
+            )
 
             # start bindpid service on our PID
             sprc = subprocess.run(
@@ -4519,6 +4572,8 @@ def main():
                 check=True,
             )
             print_debug(sprc)
+
+            save_session_vars()
 
             # fork out a process that will hold session scope open
             # until compositor unit is stopped
