@@ -4332,7 +4332,7 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
 
     bus_session = DbusInteractions("session")
 
-    start_ts = time.time()
+    start_ts = time.monotonic()
     warned = False
     for attempt in range(1, int(timeout // step + 1)):
         aenv_varnames_set = set(bus_session.get_systemd_vars().keys())
@@ -4377,7 +4377,7 @@ def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
             )
 
         # timeout
-        if time.time() - start_ts > timeout:
+        if time.monotonic() - start_ts > timeout:
             break
         time.sleep(step)
 
