@@ -145,13 +145,6 @@ class Varnames:
         "XDG_VTNR",
     }
     never_cleanup = {"SSH_AGENT_LAUNCHER", "SSH_AUTH_SOCK", "SSH_AGENT_PID"}
-    pass_from_login = {
-        "XDG_SEAT",
-        "XDG_SEAT_PATH",
-        "XDG_SESSION_ID",
-        "XDG_SESSION_PATH",
-        "XDG_VTNR",
-    }
 
 
 class MainArg:
@@ -2480,25 +2473,45 @@ def finalize(additional_vars=None):
     sys.exit(1)
 
 
-def save_session_vars():
-    "Saves some vars from login session context to runtime file"
-    env = dict(os.environ)
-    env_login_session = {}
-    for var in Varnames.pass_from_login:
-        if var in env:
-            env_login_session.update({var: env[var]})
-    uwsm_login_session_env_file = os.path.join(
-        BaseDirectory.get_runtime_dir(), BIN_NAME, "login_session_env"
-    )
-    if not env_login_session:
+def save_env(filename: str, env: dict = None):
+    "Saves environment to null-separated runtime file"
+    if env is None:
+        env = dict(os.environ)
+    env = filter_varnames(env)
+    if not env:
         print_debug("nothing to write")
         return
-    os.makedirs(os.path.dirname(uwsm_login_session_env_file), exist_ok=True)
-    with open(uwsm_login_session_env_file, "w") as login_session_env_data:
-        login_session_env_data.write(
-            "\0".join((f"{key}={value}" for key, value in env_login_session.items()))
+    env_file = os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, filename)
+    os.makedirs(os.path.dirname(env_file), exist_ok=True)
+    with open(env_file, "w") as env_file_data:
+        env_file_data.write("\0".join((f"{key}={value}" for key, value in env.items())))
+    print_debug(f"written {env_file}", env)
+
+
+def load_env(filename: str, delete: bool = False) -> dict:
+    "Reads environment from null-separated runtime file"
+    env_file = os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, filename)
+    env = {}
+    if not os.path.isfile(env_file):
+        return env
+    try:
+        with open(env_file, "r", encoding="UTF-8") as env_file_data:
+            env_raw = env_file_data.read()
+        env_raw = sane_split(env_raw, "\0")
+        for string in env_raw:
+            var, value = string.split("=", maxsplit=1)
+            env.update({var: value})
+        env = filter_varnames(env)
+        print_debug("loaded env", env)
+    except Exception as caught_exception:
+        print_warning(
+            f'Could not read or parse "{env_file}":',
+            caught_exception,
         )
-    print_debug(f"written {uwsm_login_session_env_file}", env_login_session)
+    if delete:
+        os.remove(env_file)
+        print_debug(f"removed {env_file}")
+    return env
 
 
 def get_fg_vt() -> int:
@@ -2831,71 +2844,45 @@ def prepare_env():
     print_debug("bus_session initial", bus_session)
 
     # get login session environment saved by uwsm start
-    env_login_session = {}
-    uwsm_login_session_env_file = os.path.join(
-        BaseDirectory.get_runtime_dir(), BIN_NAME, "login_session_env"
-    )
-    if os.path.isfile(uwsm_login_session_env_file):
-        try:
-            with open(
-                uwsm_login_session_env_file, "r", encoding="UTF-8"
-            ) as env_login_session_data:
-                env_login_session_raw = env_login_session_data.read()
-            env_login_session_raw = sane_split(env_login_session_raw, "\0")
-            for string in env_login_session_raw:
-                var, value = string.split("=", maxsplit=1)
-                env_login_session.update({var: value})
-            env_login_session = filter_varnames(env_login_session)
-            print_debug("got env_login_session", env_login_session)
-            print_normal(
-                f"Got saved login session variables: {', '.join(sorted(env_login_session.keys()))}"
-            )
-            os.remove(uwsm_login_session_env_file)
-            print_debug(f"removed {uwsm_login_session_env_file}")
-        except Exception as caught_exception:
-            print_warning(
-                "Could not read or parse runtime uwsm/login_session_env:",
-                caught_exception,
-            )
+    env_login = load_env("env_login", delete=True)
+    if env_login:
+        print_normal(
+            f"Got saved login session variables: {', '.join(sorted(env_login.keys()))}"
+        )
 
     # if XDG_SEAT or XDG_SESSION_ID from login context are not known, deduce them.
     if (
-        "XDG_SEAT" not in env_login_session
-        or not env_login_session["XDG_SEAT"]
-        or "XDG_SESSION_ID" not in env_login_session
-        or not env_login_session["XDG_SESSION_ID"]
+        "XDG_SEAT" not in env_login
+        or not env_login["XDG_SEAT"]
+        or "XDG_SESSION_ID" not in env_login
+        or not env_login["XDG_SESSION_ID"]
     ):
 
         # get foreground VT if not known from login context
         if (
-            "XDG_VTNR" not in env_login_session
-            or not env_login_session["XDG_VTNR"]
-            or not env_login_session["XDG_VTNR"].isnumeric()
+            "XDG_VTNR" not in env_login
+            or not env_login["XDG_VTNR"]
+            or not env_login["XDG_VTNR"].isnumeric()
         ):
             v_term = get_fg_vt()
             if v_term is None:
                 raise RuntimeError("Could not determine foreground VT")
             # update session environment
-            env_login_session.update({"XDG_VTNR": str(v_term)})
+            env_login.update({"XDG_VTNR": str(v_term)})
         else:
-            v_term = int(env_login_session["XDG_VTNR"])
+            v_term = int(env_login["XDG_VTNR"])
 
+        # this returns session and seat tuple
         session_vars = get_session_by_vt(v_term)
         if session_vars is None:
             raise RuntimeError("Could not determine session of foreground VT")
-        env_login_session.update(
-            {"XDG_SEAT": session_vars[1], "XDG_SESSION_ID": session_vars[0]}
+        env_login.update(
+            {"XDG_SESSION_ID": session_vars[0], "XDG_SEAT": session_vars[1]}
         )
 
     # get current ENV from systemd user manager
-    # could use os.environ, but this is cleaner
     env_pre = filter_varnames(bus_session.get_systemd_vars())
     systemd_varnames = set(env_pre.keys())
-
-    # update env_pre with allowed vars from login context right away
-    for var, value in env_login_session.items():
-        if var in Varnames.pass_from_login:
-            env_pre.update({var: value})
 
     # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
@@ -2952,6 +2939,12 @@ def prepare_env():
         else:
             print_error(f"No value: {env}!")
     env_post = filter_varnames(env_post)
+
+    # include vars from login session that are missing from env_post
+    for var, value in env_login.items():
+        if var not in env_post:
+            print_debug(f'back-adding from login env: {var}="{value}"')
+            env_post.update({var: value})
 
     ## Dict of vars to put into systemd user manager
     # raw difference dict between env_post and env_pre
@@ -4575,7 +4568,7 @@ def main():
             )
             print_debug(sprc)
 
-            save_session_vars()
+            save_env("env_login")
 
             # fork out a process that will hold session scope open
             # until compositor unit is stopped
