@@ -125,7 +125,7 @@ class Varnames:
         "XDG_SESSION_TYPE",
         "XDG_VTNR",
     }
-    never_export = {"PWD", "LS_COLORS", "INVOCATION_ID", "SHLVL", "SHELL"}
+    never_export = {"PWD", "LS_COLORS", "INVOCATION_ID", "SHLVL", "SHELL", "TERM"}
     always_unset = {"DISPLAY", "WAYLAND_DISPLAY"}
     always_cleanup = {
         "DISPLAY",
@@ -873,7 +873,7 @@ def reload_systemd():
     return True
 
 
-def set_systemd_vars(vars_dict: dict, dbus_only=False, bus_session=None):
+def set_systemd_vars(vars_dict: dict, dbus_only=False, verbose=True, bus_session=None):
     "Exports vars from given dict to systemd user manager"
 
     if bus_session is None:
@@ -883,19 +883,23 @@ def set_systemd_vars(vars_dict: dict, dbus_only=False, bus_session=None):
     # get existing environment (for info only)
     existing_vars_dict = bus_session.get_systemd_vars()
 
+    # compose vars list for message
+    vars_msg = []
+    for v in sorted(vars_dict.keys()):
+        if v in existing_vars_dict and vars_dict[v] == existing_vars_dict[v]:
+            if verbose:
+                vars_msg.append(f"{v} (already set)")
+        elif v in existing_vars_dict:
+            vars_msg.append(f"{v} (updating)")
+        else:
+            vars_msg.append(v)
+
+    if not verbose and not vars_msg:
+        vars_msg = ["(All already set)"]
+
     # print message about env export
     print_normal(
-        "Exporting variables to systemd user manager:\n  "
-        + "\n  ".join(
-            (
-                (
-                    f"{v} (already set)"
-                    if v in existing_vars_dict and vars_dict[v] == existing_vars_dict[v]
-                    else f"{v} (updating)" if v in existing_vars_dict else v
-                )
-                for v in sorted(vars_dict.keys())
-            )
-        )
+        "Exporting variables to systemd user manager:\n  " + "\n  ".join(vars_msg)
     )
 
     if not dbus_only:
@@ -2329,21 +2333,20 @@ class Args:
         return str({"parsed": self.parsed})
 
 
-def append_to_cleanup_file(wm_id, varnames, skip_always_cleanup=False, create=True):
+def append_to_cleanup_file(varnames, skip_always_cleanup=False, create=True):
     "Append varnames to cleanup file, expects wm_id, varnames, create (bool)"
     cleanup_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
         BIN_NAME,
-        f"env_cleanup_{wm_id}.list",
+        f"env_cleanup.list",
     )
+
+    varnames = set(filter_varnames(varnames)) - Varnames.never_cleanup
 
     # do not bother with useless cleanups
     if skip_always_cleanup:
-        varnames = filter_varnames(
-            set(varnames) - Varnames.never_cleanup - Varnames.always_cleanup
-        )
-    else:
-        varnames = filter_varnames(set(varnames) - Varnames.never_cleanup)
+        varnames = varnames - Varnames.always_cleanup
+
     if not varnames:
         print_debug("no varnames to write to cleanup file")
         return
@@ -2453,7 +2456,7 @@ def finalize(additional_vars=None):
 
     # append vars to cleanup file
     try:
-        append_to_cleanup_file(wm_id, export_vars_names, create=False)
+        append_to_cleanup_file(export_vars_names, create=False)
     except FileNotFoundError as caught_exception:
         print_error(caught_exception, "Assuming env preloader failed.")
         sys.exit(1)
@@ -2474,7 +2477,7 @@ def finalize(additional_vars=None):
 
 
 def save_env(filename: str, env: dict = None):
-    "Saves environment to null-separated runtime file"
+    "Saves environment to a null-separated runtime file"
     if env is None:
         env = dict(os.environ)
     env = filter_varnames(env)
@@ -2489,7 +2492,7 @@ def save_env(filename: str, env: dict = None):
 
 
 def load_env(filename: str, delete: bool = False) -> dict:
-    "Reads environment from null-separated runtime file"
+    "Reads environment from a null-separated runtime file"
     env_file = os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, filename)
     env = {}
     if not os.path.isfile(env_file):
@@ -2846,9 +2849,7 @@ def prepare_env():
     # get login session environment saved by uwsm start
     env_login = load_env("env_login", delete=True)
     if env_login:
-        print_normal(
-            f"Got saved login session variables: {', '.join(sorted(env_login.keys()))}"
-        )
+        print_normal(f"Got saved login session variables.")
 
     # if XDG_SEAT or XDG_SESSION_ID from login context are not known, deduce them.
     if (
@@ -2883,6 +2884,9 @@ def prepare_env():
     # get current ENV from systemd user manager
     env_pre = filter_varnames(bus_session.get_systemd_vars())
     systemd_varnames = set(env_pre.keys())
+
+    # save initial systemd state for later restoration on cleanup
+    save_env("env_pre", env_pre)
 
     # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
@@ -2934,7 +2938,7 @@ def prepare_env():
     env_post = {}
     for env in stdout.split("\0"):
         env = env.split("=", maxsplit=1)
-        if len(env) == 2:
+        if len(env) == 2 and env[0] != "_":
             env_post.update({env[0]: env[1]})
         else:
             print_error(f"No value: {env}!")
@@ -2977,13 +2981,11 @@ def prepare_env():
     unset_varnames = unset_varnames & systemd_varnames
 
     # Set of vars to remove from systemd user manager on shutdown
-    cleanup_varnames = (
-        set(set_env.keys()) | Varnames.always_cleanup
-    ) - Varnames.never_cleanup
+    cleanup_varnames = set(set_env.keys()) - Varnames.never_cleanup
 
     # write cleanup file
     # first get exitsing vars if cleanup file already exists
-    append_to_cleanup_file(CompGlobals.id, cleanup_varnames, create=True)
+    append_to_cleanup_file(cleanup_varnames, create=True)
 
     # export env to systemd user manager
     set_systemd_vars(set_env, bus_session=bus_session)
@@ -2995,13 +2997,13 @@ def prepare_env():
 
 def cleanup_env():
     """
-    takes var names from "${XDG_RUNTIME_DIR}/uwsm/env_cleanup_*.list"
-    union Varnames.always_cleanup,
-    difference Varnames.never_cleanup,
-    intersect actual systemd user manager varnames,
-    and remove them from systemd user manager.
-    Remove found cleanup files
-    Returns bool if cleaned up anything
+    Takes var names from "${XDG_RUNTIME_DIR}/uwsm/env_cleanup[_*].list", applies
+    union with Varnames.always_cleanup,
+    difference with Varnames.never_cleanup,
+    intersect with actual systemd user manager varnames.
+    Unsets vars them from systemd user manager.
+    Takes saved environment from "${XDG_RUNTIME_DIR}/uwsm/env_pre" and restores it
+    Removes found cleanup files
     """
 
     print_normal("Cleaning up...")
@@ -3013,10 +3015,15 @@ def cleanup_env():
     )
     cleanup_files = []
 
+    # TODO leave only env_cleanup.list after a few releases
     if os.path.isdir(cleanup_file_dir):
         for cleanup_file in os.listdir(cleanup_file_dir):
-            if not cleanup_file.startswith("env_cleanup_") or not cleanup_file.endswith(
-                ".list"
+            if not (
+                cleanup_file == "env_cleanup.list"
+                or (
+                    cleanup_file.startswith("env_cleanup_")
+                    and cleanup_file.endswith(".list")
+                )
             ):
                 continue
             cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
@@ -3026,7 +3033,6 @@ def cleanup_env():
 
     if not cleanup_files:
         print_warning("No cleanup files found.")
-        return False
 
     current_cleanup_varnames = set()
     for cleanup_file in cleanup_files:
@@ -3039,18 +3045,35 @@ def cleanup_env():
     systemd_vars = bus_session.get_systemd_vars()
     systemd_varnames = set(systemd_vars.keys())
 
+    # load initial state, delete file later
+    env_pre_file = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "env_pre"
+    )
+    if os.path.isfile(env_pre_file):
+        print_normal('Found initial systemd state file "env_pre"')
+        env_pre = load_env("env_pre", delete=False)
+
     cleanup_varnames = (
-        (current_cleanup_varnames | Varnames.always_cleanup) - Varnames.never_cleanup
-    ) & systemd_varnames
+        ((current_cleanup_varnames | Varnames.always_cleanup) - Varnames.never_cleanup)
+        & systemd_varnames
+    ) - set(env_pre.keys())
 
     if cleanup_varnames:
         # unset vars
         unset_systemd_vars(cleanup_varnames, bus_session=bus_session)
 
-    for cleanup_file in cleanup_files:
+    # restore initial systemd vars
+    if env_pre:
+        print_normal("Restoring initial systemd vars.")
+        set_systemd_vars(env_pre, verbose=False, bus_session=bus_session)
+
+    for cleanup_file in cleanup_files + [
+        os.path.join(BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "env_pre")
+    ]:
+        if not os.path.exists(cleanup_file):
+            continue
         os.remove(cleanup_file)
         print_ok(f'Removed "{os.path.basename(cleanup_file)}".')
-    return True
 
 
 def path2url(arg):
@@ -4924,7 +4947,6 @@ def main():
                             )
                             try:
                                 append_to_cleanup_file(
-                                    CompGlobals.id,
                                     env_delta,
                                     skip_always_cleanup=True,
                                     create=True,
