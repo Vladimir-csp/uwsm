@@ -386,9 +386,8 @@ When app launching is properly configured, compositor service itself can be
 placed into `session.slice` by either:
 
 - Setting environment variable `UWSM_USE_SESSION_SLICE=true` before generating
-  units. Best places to put this:
-  - export in `~/.profile` before `uwsm` invocation
-  - put in `~/.config/environment.d/*.conf` (see `man environment.d`)
+  units. Best places to put this is to export in `~/.profile` before `uwsm`
+  invocation
 - Adding `-S` argument to `uwsm start` subcommand.
 
 <details><summary>
@@ -483,10 +482,11 @@ operation:
   [section 2](#2-service-startup-notification-and-vars-set-by-compositor))
 
 Summary of where to put a user-level var for the first two categories:
-- For entire user's context: define in `${XDG_CONFIG_HOME}/environment.d/*.conf`
-  (see `man 5 environment.d`)
-- For login session context and uwsm environment preloader, including plugins:
-  export in `~/.profile` (may have caveats, see your shell's manual)
+- For user's systemd services, including compositor: define in
+  `${XDG_CONFIG_HOME}/environment.d/*.conf`. It does not affect login sessions
+  or systemd user manager itself (see `man 5 environment.d`).
+- For login shell context and uwsm environment preloader, including plugins:
+  export in `~/.profile` (may have caveats, see your shell's manual).
 - For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm/env`
 - For uwsm-managed graphical session of specific compositor: export in
   `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`

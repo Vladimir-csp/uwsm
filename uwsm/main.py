@@ -2744,6 +2744,7 @@ def prepare_env_gen_sh(random_mark):
         	"quirks_${__WM_BIN_ID__}" || exit $?
         fi
 
+        #### load env files
         if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null 2>&1; then
         	"load_wm_env_${__WM_BIN_ID__}" || exit $?
         else
@@ -2778,7 +2779,8 @@ def prepare_env_gen_sh(random_mark):
 def filter_varnames(data):
     """
     Filters variable names (some environments can introduce garbage).
-    Accepts dicts of env or lists, tuples, sets of names. Returns only valid.
+    Accepts dicts of env assignments, or lists, tuples, sets of env names.
+    Returns same data structure, but only with valid names.
     """
     if not isinstance(data, (dict, set, list, tuple, str)):
         raise TypeError(f"Expected dict|set|list|tuple, received {type(data)}")
