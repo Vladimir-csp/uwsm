@@ -1374,7 +1374,7 @@ def generate_units():
             Type=oneshot
             RemainAfterExit=yes
             ExecStart={BIN_PATH} aux prepare-env -- "%I"
-            ExecStop={BIN_PATH} aux cleanup-env
+            ExecStopPost={BIN_PATH} aux cleanup-env
             Restart=no
             SyslogIdentifier={BIN_NAME}_env-preloader
             Slice={wayland_wm_slice}
