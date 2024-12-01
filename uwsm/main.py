@@ -2615,7 +2615,7 @@ def prepare_env_gen_sh(random_mark):
         shell_plugins_load.append(
             dedent(
                 f"""
-                echo "Loading plugin \\"{plugin}\\""
+                echo "Loading plugin \\"{plugin}\\"."
                 . "{plugin}"
                 """
             )
@@ -2648,7 +2648,7 @@ def prepare_env_gen_sh(random_mark):
         	# sources file if exists, with messaging
         	if [ -f "${1}" ]; then
         		if [ -r "${1}" ]; then
-        			echo "Loading environment from \"${1}\""
+        			echo "Loading environment from \"${1}\"."
         			. "${1}"
         		else
         			"Environment file ${1} is not readable" >&2
@@ -2756,7 +2756,7 @@ def prepare_env_gen_sh(random_mark):
 
         #### apply quirks
         if type "quirks_${__WM_BIN_ID__}" >/dev/null 2>&1; then
-        	echo "Applying quirks for \"${__WM_BIN_ID__}\""
+        	echo "Applying quirks for \"${__WM_BIN_ID__}\"."
         	"quirks_${__WM_BIN_ID__}" || exit $?
         fi
 
@@ -3050,7 +3050,7 @@ def cleanup_env():
         BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "env_pre"
     )
     if os.path.isfile(env_pre_file):
-        print_normal('Found initial systemd state file "env_pre"')
+        print_normal('Found initial systemd state file "env_pre".')
         env_pre = load_env("env_pre", delete=False)
 
     cleanup_varnames = (
