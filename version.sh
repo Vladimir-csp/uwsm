@@ -7,14 +7,13 @@ VERSION=0.20.5+git.1
 
 set -e
 
-# fallback version in case not in git repo
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+# fallback version in case not in git repo, or history is unavailable
+if git rev-parse --is-inside-work-tree > /dev/null 2>&1 && d_version=$(git describe --tags); then
+	VERSION=${d_version#v}
+else
 	echo "$VERSION"
-	exit 0
+	return 0 || exit 0
 fi
-
-VERSION=$(git describe --tags)
-VERSION=${VERSION#v}
 
 IFS='-' read -r version cdelta ghash <<- EOF
 	$VERSION
