@@ -4492,6 +4492,8 @@ def main():
 
     #### START
     elif Args.parsed.mode == "start":
+        # send output to log
+        LogFlag.log = True
         # Get ID from whiptail menu
         if Args.parsed.wm_cmdline[0] in ["select", "default"]:
             try:
@@ -4693,6 +4695,8 @@ def main():
 
     #### STOP
     elif Args.parsed.mode == "stop":
+        # send output to log
+        LogFlag.log = True
         try:
             stop_wm()
             stop_rc = 0

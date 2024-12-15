@@ -25,6 +25,11 @@ class DebugFlag:
         debug = False
 
 
+class LogFlag:
+    "Holds global state of syslog logging and string prefix"
+    log = False
+
+
 class Styles:
     "Terminal control characters for color and style"
     reset = "\033[0m"
@@ -85,7 +90,7 @@ def print_normal(*what, **how):
     Normal print with flush.
     optional 'log': False
     """
-    log = how.pop("log", False)
+    log = how.pop("log", LogFlag.log)
 
     print(*what, **how, flush=True)
 
@@ -104,7 +109,7 @@ def print_ok(*what, **how):
     file = how.pop("file", sys.stdout)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 0)
-    log = how.pop("log", False)
+    log = how.pop("log", LogFlag.log)
 
     if file.isatty():
         print(Styles.green, end="", file=file, flush=True)
@@ -135,7 +140,7 @@ def print_warning(*what, **how):
     file = how.pop("file", sys.stdout)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 1)
-    log = how.pop("log", False)
+    log = how.pop("log", LogFlag.log)
 
     if file.isatty():
         print(Styles.yellow, end="", file=file, flush=True)
@@ -174,7 +179,7 @@ def print_error(*what, **how):
     file = how.pop("file", sys.stderr)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 2)
-    log = how.pop("log", False)
+    log = how.pop("log", LogFlag.log)
 
     if file.isatty():
         print(Styles.red, end="", file=file, flush=True)
@@ -208,7 +213,7 @@ if DebugFlag.debug:
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
         dsep = "\n" if "sep" not in how or "\n" not in how["sep"] else ""
-        log = how.pop("log", False)
+        log = how.pop("log", LogFlag.log)
 
         my_stack = stack()
         print(
