@@ -2818,7 +2818,7 @@ def filter_varnames(data):
             if var in drop_sh_vars:
                 print_debug(f"Dropped {var} var")
                 data.pop(var)
-            if not Val.sh_varname.search(var):
+            elif not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}".')
                 data.pop(var)
         return data
@@ -2828,7 +2828,7 @@ def filter_varnames(data):
         for var in data:
             if var in drop_sh_vars:
                 print_debug(f"Dropped {var} var")
-            if not Val.sh_varname.search(var):
+            elif not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}".')
             else:
                 new_data.append(var)

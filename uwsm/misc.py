@@ -123,7 +123,7 @@ def print_fancy(*what, **how):
 
     # print colored text for interactive output
     if file.isatty():
-        print(Styles.green, end="", file=file, flush=True)
+        print(color, end="", file=file, flush=True)
         print(*what, **how, file=file, flush=True)
         print(Styles.reset, end="", file=file, flush=True)
     # print lines prefixed with loglevel for journal
@@ -134,7 +134,7 @@ def print_fancy(*what, **how):
         prefixed_lines = []
         for line in print_string.getvalue().splitlines():
             prefixed_lines.append(f"<{loglevel}>{line}")
-        print("\n".join(prefixed_lines), **how, file=print_string, flush=True)
+        print("\n".join(prefixed_lines), **how, file=file, flush=True)
     # simple print
     else:
         print(*what, **how, file=file, flush=True)
