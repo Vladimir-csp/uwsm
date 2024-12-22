@@ -4492,8 +4492,10 @@ def main():
 
     #### START
     elif Args.parsed.mode == "start":
-        # send output to log
+
+        # also send output to log
         LogFlag.log = True
+
         # Get ID from whiptail menu
         if Args.parsed.wm_cmdline[0] in ["select", "default"]:
             try:
@@ -4695,8 +4697,10 @@ def main():
 
     #### STOP
     elif Args.parsed.mode == "stop":
-        # send output to log
+
+        # also send output to log
         LogFlag.log = True
+
         try:
             stop_wm()
             stop_rc = 0
@@ -4719,6 +4723,10 @@ def main():
 
     #### FINALIZE
     elif Args.parsed.mode == "finalize":
+
+        # enable loglevel prefix
+        LogFlag.prefix = True
+
         try:
             finalize(
                 Args.parsed.env_names + os.getenv("UWSM_FINALIZE_VARNAMES", "").split()
@@ -4728,6 +4736,10 @@ def main():
 
     #### APP
     elif Args.parsed.mode == "app":
+
+        # enable loglevel prefix
+        LogFlag.prefix = True
+
         try:
             app(
                 cmdline=Args.parsed.cmdline,
@@ -4873,6 +4885,10 @@ def main():
 
     #### AUX
     elif Args.parsed.mode == "aux":
+
+        # enable loglevel prefix
+        LogFlag.prefix = True
+
         manager_pid = int(os.getenv("MANAGERPID", "0"))
         ppid = int(os.getppid())
         print_debug(f"manager_pid: {manager_pid}, ppid: {ppid}")

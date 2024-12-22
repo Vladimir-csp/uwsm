@@ -5,6 +5,7 @@ import textwrap
 import random
 import syslog
 import traceback
+from io import StringIO
 from typing import List
 
 
@@ -26,8 +27,11 @@ class DebugFlag:
 
 
 class LogFlag:
-    "Holds global state of syslog logging and string prefix"
+    "Holds global state of syslog logging and loglevel prefix switches"
+    # log using syslog module
     log = False
+    # prefix lines with <N> codes for stdin/stderr journal parsing
+    prefix = False
 
 
 class Styles:
@@ -39,6 +43,7 @@ class Styles:
     pale_yellow = "\033[97m"
     blue = "\033[34m"
     violet = "\033[35m"
+    grey = "\033[90m"
     header = "\033[95m"
     bold = "\033[1m"
     under = "\033[4m"
@@ -98,27 +103,54 @@ def print_normal(*what, **how):
         syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, str(*what))
 
 
-def print_ok(*what, **how):
+def print_fancy(*what, **how):
     """
-    Prints to stdout ('file') with flush.
-    In green if 'file' is a tty.
+    Prints to 'file' (sys.stdout) with flush.
+    In 'color' (Styles.green) if 'file' is a tty.
     'notify': 0: no, 1: if 'file' is not a tty, 2: always
     'notify_urgency': 0
-    'log': False
+    'log': False (also log to syslog)
+    'loglevel': 0-7 (EMERG-DEBUG), default 5 (NOTICE)
+    'logprefix': False (prefix lines with 'loglevel' for journal)
     """
     file = how.pop("file", sys.stdout)
+    color = how.pop("color", Styles.green)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 0)
     log = how.pop("log", LogFlag.log)
+    loglevel = how.pop("loglevel", 5)
+    logprefix = how.pop("logprefix", LogFlag.prefix)
 
+    # print colored text for interactive output
     if file.isatty():
         print(Styles.green, end="", file=file, flush=True)
-    print(*what, **how, file=file, flush=True)
-    if file.isatty():
+        print(*what, **how, file=file, flush=True)
         print(Styles.reset, end="", file=file, flush=True)
+    # print lines prefixed with loglevel for journal
+    elif logprefix:
+        # print to fake file, add line prefixes, print for real
+        print_string = StringIO()
+        print(*what, **how, file=print_string, flush=True)
+        prefixed_lines = []
+        for line in print_string.getvalue().splitlines():
+            prefixed_lines.append(f"<{loglevel}>{line}")
+        print("\n".join(prefixed_lines), **how, file=print_string, flush=True)
+    # simple print
+    else:
+        print(*what, **how, file=file, flush=True)
 
     if log:
-        syslog.syslog(syslog.LOG_NOTICE | syslog.LOG_USER, str(*what))
+        sl_level = [
+            syslog.LOG_EMERG,
+            syslog.LOG_ALERT,
+            syslog.LOG_CRIT,
+            syslog.LOG_ERR,
+            syslog.LOG_WARNING,
+            syslog.LOG_NOTICE,
+            syslog.LOG_INFO,
+            syslog.LOG_DEBUG,
+        ][loglevel]
+        syslog.syslog(sl_level | syslog.LOG_USER, str(*what))
 
     if notify and (not file.isatty() or notify == 2):
         try:
@@ -129,82 +161,97 @@ def print_ok(*what, **how):
             print_warning(caught_exception, notify=0)
 
 
-def print_warning(*what, **how):
+def print_ok(*what, **how):
     """
-    Prints to stdout ('file') with flush.
-    In yellow if 'file' is a tty.
-    'notify': 0: no, 1: if 'file' is a tty, 2: always
-    'notify_urgency': 1
-    'log': False
+    Prints to 'file' (sys.stdout) with flush.
+    In 'color' (green) if 'file' is a tty.
+    'notify': 0: no, 1: if 'file' is not a tty, 2: always
+    'notify_urgency': 0
+    'log': False (also log to syslog)
+    'loglevel': 0-7 (EMERG-DEBUG), default 5 (NOTICE)
+    'logprefix': False (prefix lines with 'loglevel' for journal)
     """
     file = how.pop("file", sys.stdout)
+    color = how.pop("color", Styles.green)
+    notify = how.pop("notify", 0)
+    notify_urgency = how.pop("notify_urgency", 0)
+    log = how.pop("log", LogFlag.log)
+    loglevel = how.pop("loglevel", 5)
+    logprefix = how.pop("logprefix", LogFlag.prefix)
+
+    print_fancy(
+        *what,
+        **how,
+        file=file,
+        color=color,
+        notify=notify,
+        notify_urgency=notify_urgency,
+        log=log,
+        loglevel=loglevel,
+        logprefix=logprefix,
+    )
+
+
+def print_warning(*what, **how):
+    """
+    Prints to 'file' (sys.stdout) with flush.
+    In 'color' (Styles.yellow) if 'file' is a tty.
+    'notify': 0: no, 1: if 'file' is not a tty, 2: always
+    'notify_urgency': 1
+    'log': False (also log to syslog)
+    'loglevel': 0-7 (EMERG-DEBUG), default 4 (WARNING)
+    'logprefix': False (prefix lines with 'loglevel' for journal)
+    """
+    file = how.pop("file", sys.stdout)
+    color = how.pop("color", Styles.yellow)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 1)
     log = how.pop("log", LogFlag.log)
+    loglevel = how.pop("loglevel", 4)
+    logprefix = how.pop("logprefix", LogFlag.prefix)
 
-    if file.isatty():
-        print(Styles.yellow, end="", file=file, flush=True)
-    print(*what, **how, file=file, flush=True)
-    if file.isatty():
-        print(Styles.reset, end="", file=file, flush=True)
-
-    # in debug mode find and print exceptions to stderr
-    if DebugFlag.debug:
-        for item in what:
-            if isinstance(item, Exception):
-                traceback.print_exception(item, file=sys.stderr)
-
-    if log:
-        syslog.syslog(syslog.LOG_WARNING | syslog.LOG_USER, str(*what))
-
-    if notify and (not file.isatty() or notify == 2):
-        try:
-            bus_session = DbusInteractions("session")
-            msg = str(*what)
-            bus_session.notify(
-                summary="Warning", body=msg, app_icon="warning", urgency=notify_urgency
-            )
-        except Exception as caught_exception:
-            print_warning(caught_exception, notify=0)
+    print_fancy(
+        *what,
+        **how,
+        file=file,
+        color=color,
+        notify=notify,
+        notify_urgency=notify_urgency,
+        log=log,
+        loglevel=loglevel,
+        logprefix=logprefix,
+    )
 
 
 def print_error(*what, **how):
     """
-    Prints to stderr ('file') with flush.
-    In red if 'file' is a tty.
-    'notify': 0: no, 1: if 'file' is a tty, 2: always
-    'notify_urgency': 1
-    'log': False
+    Prints to 'file' (sys.stderr) with flush.
+    In 'color' (Styles.red) if 'file' is a tty.
+    'notify': 0: no, 1: if 'file' is not a tty, 2: always
+    'notify_urgency': 2
+    'log': False (also log to syslog)
+    'loglevel': 0-7 (EMERG-DEBUG), default 3 (ERR)
+    'logprefix': False (prefix lines with 'loglevel' for journal)
     """
     file = how.pop("file", sys.stderr)
+    color = how.pop("color", Styles.red)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 2)
     log = how.pop("log", LogFlag.log)
+    loglevel = how.pop("loglevel", 3)
+    logprefix = how.pop("logprefix", LogFlag.prefix)
 
-    if file.isatty():
-        print(Styles.red, end="", file=file, flush=True)
-    print(*what, **how, file=file, flush=True)
-    if file.isatty():
-        print(Styles.reset, end="", file=file, flush=True)
-
-    # in debug mode find and print exceptions to stderr
-    if DebugFlag.debug:
-        for item in what:
-            if isinstance(item, Exception):
-                traceback.print_exception(item, file=sys.stderr)
-
-    if log:
-        syslog.syslog(syslog.LOG_ERROR | syslog.LOG_USER, str(*what))
-
-    if notify and (not file.isatty() or notify == 2):
-        try:
-            bus_session = DbusInteractions("session")
-            msg = str(*what)
-            bus_session.notify(
-                summary="Error", body=msg, app_icon="error", urgency=notify_urgency
-            )
-        except Exception as caught_exception:
-            print_warning(caught_exception, notify=0)
+    print_fancy(
+        *what,
+        **how,
+        file=file,
+        color=color,
+        notify=notify,
+        notify_urgency=notify_urgency,
+        log=log,
+        loglevel=loglevel,
+        logprefix=logprefix,
+    )
 
 
 if DebugFlag.debug:
@@ -213,21 +260,28 @@ if DebugFlag.debug:
     def print_debug(*what, **how):
         "Prints to stderr with DEBUG and END_DEBUG marks"
         dsep = "\n" if "sep" not in how or "\n" not in how["sep"] else ""
+        file = how.pop("file", sys.stderr)
+        color = how.pop("color", Styles.grey)
+        notify = 0
+        notify_urgency = 0
         log = how.pop("log", LogFlag.log)
+        loglevel = 7
+        logprefix = how.pop("logprefix", LogFlag.prefix)
 
         my_stack = stack()
-        print(
+        print_fancy(
             f"DEBUG {my_stack[1].filename}:{my_stack[1].lineno} {my_stack[1].function}{dsep}",
             *what,
             f"{dsep}END_DEBUG",
             **how,
-            file=sys.stderr,
-            flush=True,
+            file=file,
+            color=color,
+            notify=notify,
+            notify_urgency=notify_urgency,
+            log=log,
+            loglevel=loglevel,
+            logprefix=logprefix,
         )
-        print(Styles.reset, end="", file=sys.stderr, flush=True)
-
-        if log:
-            syslog.syslog(syslog.LOG_DEBUG | syslog.LOG_USER, str(*what))
 
 else:
 
