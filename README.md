@@ -589,7 +589,7 @@ To launch automatically after login on virtual console 1, if systemd is at
 
 ```
 if uwsm check may-start && uwsm select; then
-	exec systemd-cat -t uwsm_start uwsm start default
+	exec uwsm start default
 fi
 ```
 
@@ -610,12 +610,8 @@ conditionally.
 `wayland-sessions` directories. At this point one can cancel and continue with
 the normal login shell.
 
-`exec` in shell profile causes `uwsm` (via `systemd-cat`) to replace login
-shell, binding it to user's login session.
-
-`systemd-cat -t uwsm_start` part is optional, it executes the command given to
-it (`uwsm`) with its stdout and stderr connected to the systemd journal, tagged
-with identifier `uwsm_start`. Otherwise it might be hard to see the output.
+`exec` in shell profile causes `uwsm` to replace login shell, binding it to
+user's login session.
 
 `uwsm start default` launches the previously selected default compositor.
 
