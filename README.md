@@ -265,6 +265,7 @@ Runtime dependencies:
 - `whiptail` (optional, for `select` feature; from `whiptail` or `libnewt`
    package)
 - a dmenu-like menu (optional; for `uuctl` script), supported:
+    - `walker`
     - `fuzzel`
     - `wofi`
     - `rofi`
@@ -457,6 +458,8 @@ default terminal:
 Fuzzel has a very handy launch-prefix option:
 
 `bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='uwsm app --' --log-no-syslog --log-level=warning`
+
+Walker can prefix launching apps by setting `app_launch_prefix` variable in the config, so `"app_launch_prefix": "uwsm app -- "`.
 
 Launch SpaceFM via a desktop entry:
 
