@@ -29,6 +29,7 @@ showhelp() {
 		Control user services and scopes with dmenu-like menu.
 		Menu tool and options are selected from predefined profiles for:
 
+      walker
 		  fuzzel
 		  wofi
 		  rofi
@@ -115,12 +116,15 @@ for arg in "$@"; do
 done
 
 if [ "$#" -le "1" ]; then
-	dmenu_candidates="$1 fuzzel wofi rofi tofi bemenu wmenu dmenu"
+	dmenu_candidates="$1 walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
 	for dmenu_candidate in $dmenu_candidates; do
 		! command -v "$dmenu_candidate" > /dev/null || break
 	done
 
 	case "$dmenu_candidate" in
+	walker)
+		set -- walker -d -p
+		;;
 	fuzzel)
 		set -- fuzzel --dmenu -R --log-no-syslog --log-level=warning -p
 		;;
