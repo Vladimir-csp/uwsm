@@ -2795,13 +2795,18 @@ def prepare_env_gen_sh(random_mark):
 def filter_varnames(data):
     """
     Filters variable names (some environments can introduce garbage).
+    Also silently removes some shell-specific vars.
     Accepts dicts of env assignments, or lists, tuples, sets of env names.
     Returns same data structure, but only with valid names.
     """
     if not isinstance(data, (dict, set, list, tuple, str)):
         raise TypeError(f"Expected dict|set|list|tuple, received {type(data)}")
+    drop_sh_vars = ["_", "SHELL", "PWD", "OLDWD"]
 
     if isinstance(data, str):
+        if data in drop_sh_vars:
+            print_debug(f"Dropped {data} var")
+            return None
         if not Val.sh_varname.search(data):
             print_warning(f'Encountered illegal var "{data}".')
             return None
@@ -2810,6 +2815,9 @@ def filter_varnames(data):
 
     if isinstance(data, dict):
         for var in list(data.keys()):
+            if var in drop_sh_vars:
+                print_debug(f"Dropped {var} var")
+                data.pop(var)
             if not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}".')
                 data.pop(var)
@@ -2818,6 +2826,8 @@ def filter_varnames(data):
     if isinstance(data, (set, list, tuple)):
         new_data = []
         for var in data:
+            if var in drop_sh_vars:
+                print_debug(f"Dropped {var} var")
             if not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}".')
             else:
