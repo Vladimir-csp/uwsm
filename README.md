@@ -226,6 +226,7 @@ Building and installing a deb package.
 Read and run `./build-deb.sh -i`
 
 Alternatively,
+
 ```
 IFS='()' read -r _ current_version _ < debian/changelog
 sudo apt install devscripts
@@ -257,21 +258,23 @@ for more information.
 </details>
 
 Runtime dependencies:
+
 - python modules:
-    - xdg (pyxdg)
-    - dbus (dbus_python)
+  - xdg (pyxdg)
+  - dbus (dbus_python)
 - `waitpid` (optional, but recommended for resources; from `util-linux` or
   `util-linux-extra` package)
 - `whiptail` (optional, for `select` feature; from `whiptail` or `libnewt`
-   package)
+  package)
 - a dmenu-like menu (optional; for `uuctl` script), supported:
-    - `fuzzel`
-    - `wofi`
-    - `rofi`
-    - `tofi`
-    - `bemenu`
-    - `wmenu`
-    - `dmenu`
+  - `fuzzel`
+  - `walker`
+  - `wofi`
+  - `rofi`
+  - `tofi`
+  - `bemenu`
+  - `wmenu`
+  - `dmenu`
 - `notify-send` (optional, for feedback from `uwsm app` commands and
   optional failed unit monitor `fumon` service; from `libnotify-bin` or
   `libnotify` package)
@@ -482,6 +485,7 @@ operation:
   [section 2](#2-service-startup-notification-and-vars-set-by-compositor))
 
 Summary of where to put a user-level var for the first two categories:
+
 - For user's systemd services, including compositor: define in
   `${XDG_CONFIG_HOME}/environment.d/*.conf`. It does not affect login sessions
   or systemd user manager itself (see `man 5 environment.d`).
@@ -494,6 +498,18 @@ Summary of where to put a user-level var for the first two categories:
 Choose whatever scope suits your needs. Note on shell profile: uwsm environment
 preloader uses POSIX shell (`/bin/sh`) and sources `/etc/profile`,
 `${HOME}/.profile`. Other shells compatibility with these files may vary.
+
+### 5. Launchers
+
+In order to let uwsm manage applications launched by your launcher.
+
+| Launcher | Action                                                                             |
+| -------- | ---------------------------------------------------------------------------------- |
+| fuzzel   | start with `fuzzel --launch-prefix="uwsm app -- "`                                 |
+| walker   | set `app_launch_prefix = "uwsm app -- "` in your config                            |
+| wofi     | start with `uwsm app -- $(wofi --show drun --define=drun-print_desktop_file=true)` |
+| tofi     | start with `uwsm app -- $(tofi-drun)`                                              |
+| rofi     | start with `rofi -show drun -run-command "uwsm app -- {cmd}"`                      |
 
 ## Operation
 
@@ -569,6 +585,7 @@ saves default `${compositor}` and does nothing else, which is handy for seamless
 shell profile integration.
 
 Things `uwsm start ...` will do:
+
 - Prepare unit structure in runtime directory.
 - Fork a process protected from `TERM` and `HUP` signals that will find future
   compositor unit's `MainPID` and wait for it to end, ensuring login session is
