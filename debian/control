@@ -22,7 +22,7 @@ Depends:
  util-linux-extra
 Recommends:
  whiptail,
- fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu,
+ walker | fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu,
  libnotify-bin
 Suggests:
  dbus-broker

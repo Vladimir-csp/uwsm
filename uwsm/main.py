@@ -2795,13 +2795,18 @@ def prepare_env_gen_sh(random_mark):
 def filter_varnames(data):
     """
     Filters variable names (some environments can introduce garbage).
+    Also silently removes some shell-specific vars.
     Accepts dicts of env assignments, or lists, tuples, sets of env names.
     Returns same data structure, but only with valid names.
     """
     if not isinstance(data, (dict, set, list, tuple, str)):
         raise TypeError(f"Expected dict|set|list|tuple, received {type(data)}")
+    drop_sh_vars = ["_", "SHELL", "PWD", "OLDWD"]
 
     if isinstance(data, str):
+        if data in drop_sh_vars:
+            print_debug(f"Dropped {data} var")
+            return None
         if not Val.sh_varname.search(data):
             print_warning(f'Encountered illegal var "{data}".')
             return None
@@ -2810,7 +2815,10 @@ def filter_varnames(data):
 
     if isinstance(data, dict):
         for var in list(data.keys()):
-            if not Val.sh_varname.search(var):
+            if var in drop_sh_vars:
+                print_debug(f"Dropped {var} var")
+                data.pop(var)
+            elif not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}".')
                 data.pop(var)
         return data
@@ -2818,7 +2826,9 @@ def filter_varnames(data):
     if isinstance(data, (set, list, tuple)):
         new_data = []
         for var in data:
-            if not Val.sh_varname.search(var):
+            if var in drop_sh_vars:
+                print_debug(f"Dropped {var} var")
+            elif not Val.sh_varname.search(var):
                 print_warning(f'Encountered illegal var "{var}".')
             else:
                 new_data.append(var)
@@ -4492,8 +4502,10 @@ def main():
 
     #### START
     elif Args.parsed.mode == "start":
-        # send output to log
+
+        # also send output to log
         LogFlag.log = True
+
         # Get ID from whiptail menu
         if Args.parsed.wm_cmdline[0] in ["select", "default"]:
             try:
@@ -4695,8 +4707,10 @@ def main():
 
     #### STOP
     elif Args.parsed.mode == "stop":
-        # send output to log
+
+        # also send output to log
         LogFlag.log = True
+
         try:
             stop_wm()
             stop_rc = 0
@@ -4719,6 +4733,10 @@ def main():
 
     #### FINALIZE
     elif Args.parsed.mode == "finalize":
+
+        # enable loglevel prefix
+        LogFlag.prefix = True
+
         try:
             finalize(
                 Args.parsed.env_names + os.getenv("UWSM_FINALIZE_VARNAMES", "").split()
@@ -4728,6 +4746,10 @@ def main():
 
     #### APP
     elif Args.parsed.mode == "app":
+
+        # enable loglevel prefix
+        LogFlag.prefix = True
+
         try:
             app(
                 cmdline=Args.parsed.cmdline,
@@ -4873,6 +4895,10 @@ def main():
 
     #### AUX
     elif Args.parsed.mode == "aux":
+
+        # enable loglevel prefix
+        LogFlag.prefix = True
+
         manager_pid = int(os.getenv("MANAGERPID", "0"))
         ppid = int(os.getppid())
         print_debug(f"manager_pid: {manager_pid}, ppid: {ppid}")
