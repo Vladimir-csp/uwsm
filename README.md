@@ -507,7 +507,7 @@ In order to let uwsm manage applications launched by your launcher.
 
 | Launcher | Action                                                                             |
 | -------- | ---------------------------------------------------------------------------------- |
-| fuzzel   | start with `fuzzel --launch-prefix="uwsm app -- "`                                 |
+| fuzzel   | start with `fuzzel --launch-prefix="uwsm app -- "`. Alternatively, uncomment and set `launch-prefix='uwsm app -- '` in your config                                |
 | walker   | set `app_launch_prefix = "uwsm app -- "` in your config                            |
 | wofi     | start with `uwsm app -- $(wofi --show drun --define=drun-print_desktop_file=true)` |
 | tofi     | start with `uwsm app -- $(tofi-drun)`                                              |
