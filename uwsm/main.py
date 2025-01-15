@@ -3599,7 +3599,7 @@ def app(
         )
 
         # discard explicit -e or execarg for terminal
-        # only if follwed by something, otherwise it will error out on Command not found below
+        # only if followed by something, otherwise it will error out on Command not found below
         if len(cmdline) > 1 and [cmdline[0]] in (terminal_execarg, ["-e"]):
             print_debug(f"discarded explicit terminal exec arg {cmdline[0]}")
             cmdline = cmdline[1:]
