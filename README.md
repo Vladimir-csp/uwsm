@@ -239,11 +239,10 @@ sudo apt install ../uwsm_${current_version}_all.deb
 </details>
 
 <details><summary>
-Arch AUR package.
+Arch.
 </summary>
 
-https://aur.archlinux.org/packages/uwsm
-
+pacman -S uwsm
 </details>
 
 <details><summary>
