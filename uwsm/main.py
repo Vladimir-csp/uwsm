@@ -1951,17 +1951,17 @@ class Args:
         parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_slice"].add_argument(
             "-S",
-            action="store_true",
-            dest="use_session_slice",
-            default=use_session_slice,
-            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice else ''}.",
-        )
-        parsers["start_slice"].add_argument(
-            "-A",
             action="store_false",
             dest="use_session_slice",
             default=use_session_slice,
-            help=f"Launch compositor in app.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if not use_session_slice else ' (default)' if use_session_slice is None else ''}.",
+            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice else ' (default)' if use_session_slice is None else ''}.",
+        )
+        parsers["start_slice"].add_argument(
+            "-A",
+            action="store_true",
+            dest="use_session_slice",
+            default=use_session_slice,
+            help=f"Launch compositor in app.slice{'' if use_session_slice is None else ' (already preset by UWSM_USE_SESSION_SLICE env var)' if not use_session_slice else ''}.",
         )
         parsers["start"].add_argument(
             "-F",

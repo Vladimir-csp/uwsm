@@ -384,27 +384,26 @@ application launching in compositor via:
 uwsm app -- {executable|entry.desktop[:action]} [args ...]
 ```
 
-When app launching is properly configured, compositor service itself can be
-placed into `session.slice` by either:
-
-- Setting environment variable `UWSM_USE_SESSION_SLICE=true` before generating
-  units. Best places to put this is to export in `~/.profile` before `uwsm`
-  invocation
-- Adding `-S` argument to `uwsm start` subcommand.
+Compositor itself runs in `session.slice` which has priority in some resource
+allocation. It would be a bad practice to accumulate apps there, let alone
+inside compositor's unit itself.
 
 <details><summary>
 Background and details
 </summary>
 
-By default `uwsm` launches the compositor service in `app.slice` and all
+By default `uwsm` launches the compositor service in `session.slice` and all
 processes spawned by the compositor will be part of the
-`wayland-wm@${compositor}.service` unit. This works, but is not an optimal
-solution.
+`wayland-wm@${compositor}.service` unit. Most apps do not need to be in
+`session.slice`, and being inside comopositor's unit opens the way for them
+to interfere with notification socket for unit.
 
 Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
-recommends running compositors in `session.slice` and launching apps as scopes
-or services in `app.slice`.
+recommends launching apps as their own units (scopes or services). `app.slice`
+would be the default destination, `background.slice` and `session.slice` are
+available for low-priority non-interactive tasks and high-prioirity
+responsiveness-aware tasks respectively, (see `man systemd.special`)
 
 `uwsm` provides a convenient way of handling this: it generates special nested
 slices that will also receive stop action ordered before

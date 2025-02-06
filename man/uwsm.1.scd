@@ -156,12 +156,8 @@ apps to live in and be terminated on session end:
 A helper *app* subcommand is provided to handle all the systemd-run invocations
 for you (see _app_ subcommand section).
 
-If app launching is configured as recommended, *uwsm* can be set to launch
-the compositor in *session.slice* (as recommended by *systemd.special*(7)) by
-adding "-S" to *start* subcommand, or adding this to the environment in which
-"*uwsm start*" is launched:
-
-	UWSM_USE_SESSION_SLICE=true
+The compositor is launched in *session.slice* by default (as recommended by
+*systemd.special*(7)).
 
 ## Shutdown
 
@@ -254,7 +250,7 @@ them.
 :  Fancy description for compositor (filled from Desktop
    Entry by default).
 |      *-S*
-:  Launch compositor in session.slice.
+:  Launch compositor in session.slice (default).
 |      *-A*
 :  Launch compositor in app.slice.
 |      *-o*
