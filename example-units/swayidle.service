@@ -15,7 +15,8 @@ Slice=background-graphical.slice
 
 [Install]
 WantedBy=graphical-session.target
-# Alternatively can be wanted by specific WMs
+# Alternatively can be wanted by specific WMs' targets
+# Should also be duplicated in 'After=' to avoid ordering loop
 #WantedBy=wayland-session@sway.desktop.target
 #WantedBy=wayland-session@wayfire.desktop.target
 #WantedBy=wayland-session@labwc.desktop.target
