@@ -13,6 +13,15 @@ session/XDG autostart management in Systemd-managed environments.
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
 
+> [!IMPORTANT]
+> v0.21.0 highlights:
+> Environment of `uwsm start` command is now transferred to environment
+> preloader to capture variables originated from PAM.
+> `session.slice` is now default for compositor unit. Selection may be
+> deprecated in future releases. `-S` or `UWSM_USE_SESSION_SLICE=true` are
+> no longer needed.
+> `start` and `stop` commands now also log their output to be seen in journal.
+
 > [!NOTE]
 > It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
