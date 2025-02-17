@@ -2,6 +2,7 @@ project(
   'uwsm',
   version: run_command('sh', 'version.sh', check: true).stdout().strip(),
   license: 'MIT',
+  meson_version: '>=1.1'
 )
 
 PYTHON = import('python')
@@ -61,7 +62,7 @@ os.makedirs(os.path.dirname(args["output"]), exist_ok=True)
 
 shutil.copy2(args["input"], args["output"])
 '''
-GENERATED_DIR = meson.build_root() / 'uwsm-generated'
+GENERATED_DIR = meson.project_build_root() / 'uwsm-generated'
 
 subdir('uwsm')
 subdir('uwsm-plugins')
