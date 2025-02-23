@@ -4486,7 +4486,7 @@ def main():
     elif Args.parsed.mode == "start":
 
         # also send output to log
-        LogFlag.log = True
+        LogFlag.log = not Args.parsed.dry_run
 
         # Get ID from whiptail menu
         if Args.parsed.wm_cmdline[0] in ["select", "default"]:
