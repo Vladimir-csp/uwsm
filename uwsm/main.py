@@ -1257,7 +1257,7 @@ def generate_units():
     # sourcery skip: assign-if-exp, extract-duplicate-method, remove-redundant-if, split-or-ifs
     "Generates basic unit structure"
 
-    if Args.parsed.use_session_slice:
+    if Args.parsed.use_session_slice is None or Args.parsed.use_session_slice:
         wayland_wm_slice = "session.slice"
     else:
         wayland_wm_slice = "app.slice"
@@ -1939,26 +1939,26 @@ class Args:
             ),
         )
         use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", None)
-        if use_session_slice in ("true", "false"):
+        if use_session_slice is None:
+           pass
+        elif use_session_slice in ("true", "false"):
             use_session_slice = {"true": True, "false": False}[use_session_slice]
-        elif use_session_slice is None:
-            pass
         else:
             print_warning(
-                f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to soft "false".'
+                f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to soft "true".'
             )
             use_session_slice = None
         parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_slice"].add_argument(
             "-S",
-            action="store_false",
+            action="store_true",
             dest="use_session_slice",
             default=use_session_slice,
             help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice else ' (default)' if use_session_slice is None else ''}.",
         )
         parsers["start_slice"].add_argument(
             "-A",
-            action="store_true",
+            action="store_false",
             dest="use_session_slice",
             default=use_session_slice,
             help=f"Launch compositor in app.slice{'' if use_session_slice is None else ' (already preset by UWSM_USE_SESSION_SLICE env var)' if not use_session_slice else ''}.",
@@ -2045,12 +2045,7 @@ class Args:
                 f"""
                 It is highly recommended to configure your compositor to launch apps
                 via this command to fully utilize user-level systemd unit management.\n
-                When this is done, compositor itself can be put in session.slice by adding
-                "-S" to "start" subcommand, or setting this variable in the environment
-                where "{BIN_NAME} start" is executed:\n
-                \n
-                  UWSM_USE_SESSION_SLICE=true\n
-                \n
+                It would not be prudent to accumulate app processes in compositor's unit.
                 """
             ),
         )
