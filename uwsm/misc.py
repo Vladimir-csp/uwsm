@@ -100,7 +100,9 @@ def print_normal(*what, **how):
     print(*what, **how, flush=True)
 
     if log:
-        syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, str(*what))
+        sep = how.get('sep', ' ')
+        msg = sep.join(str(s) for s in what)
+        syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, msg)
 
 
 def print_fancy(*what, **how):
@@ -139,6 +141,8 @@ def print_fancy(*what, **how):
     else:
         print(*what, **how, file=file, flush=True)
 
+    sep = how.get('sep', ' ')
+    msg = sep.join(str(s) for s in what)
     if log:
         sl_level = [
             syslog.LOG_EMERG,
@@ -150,12 +154,11 @@ def print_fancy(*what, **how):
             syslog.LOG_INFO,
             syslog.LOG_DEBUG,
         ][loglevel]
-        syslog.syslog(sl_level | syslog.LOG_USER, str(*what))
+        syslog.syslog(sl_level | syslog.LOG_USER, msg)
 
     if notify and (not file.isatty() or notify == 2):
         try:
             bus_session = DbusInteractions("session")
-            msg = str(*what)
             bus_session.notify(summary="Message", body=msg, urgency=notify_urgency)
         except Exception as caught_exception:
             print_warning(caught_exception, notify=0)
