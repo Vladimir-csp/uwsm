@@ -2334,11 +2334,11 @@ class Args:
 
 
 def append_to_cleanup_file(varnames, skip_always_cleanup=False, create=True):
-    "Append varnames to cleanup file, expects wm_id, varnames, create (bool)"
+    "Append varnames to cleanup file, expects varnames, skip_always_cleanup (bool), create (bool)"
     cleanup_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
         BIN_NAME,
-        f"env_cleanup.list",
+        "env_cleanup.list",
     )
 
     varnames = set(filter_varnames(varnames)) - Varnames.never_cleanup
@@ -3020,37 +3020,23 @@ def cleanup_env():
     bus_session = DbusInteractions("session")
     print_debug("bus_session initial", bus_session)
 
-    cleanup_file_dir = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME
+    cleanup_file = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True),
+        BIN_NAME,
+        "env_cleanup.list"
     )
-    cleanup_files = []
 
-    # TODO leave only env_cleanup.list after a few releases
-    if os.path.isdir(cleanup_file_dir):
-        for cleanup_file in os.listdir(cleanup_file_dir):
-            if not (
-                cleanup_file == "env_cleanup.list"
-                or (
-                    cleanup_file.startswith("env_cleanup_")
-                    and cleanup_file.endswith(".list")
-                )
-            ):
-                continue
-            cleanup_file = os.path.join(cleanup_file_dir, cleanup_file)
-            if os.path.isfile(cleanup_file):
-                print_normal(f'Found cleanup file "{os.path.basename(cleanup_file)}".')
-                cleanup_files.append(cleanup_file)
-
-    if not cleanup_files:
-        print_warning("No cleanup files found.")
+    if os.path.isfile(cleanup_file):
+        print_normal('Found environment cleanup file "env_cleanup.list".')
+    else:
+        print_warning(f'Environment leanup file "{cleanup_file}" not found.')
 
     current_cleanup_varnames = set()
-    for cleanup_file in cleanup_files:
-        if os.path.isfile(cleanup_file):
-            with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
-                current_cleanup_varnames = current_cleanup_varnames | {
-                    l.strip() for l in open_cleanup_file.readlines() if l.strip()
-                }
+    if os.path.isfile(cleanup_file):
+        with open(cleanup_file, "r", encoding="UTF-8") as open_cleanup_file:
+            current_cleanup_varnames = current_cleanup_varnames | {
+                l.strip() for l in open_cleanup_file.readlines() if l.strip()
+            }
 
     systemd_vars = bus_session.get_systemd_vars()
     systemd_varnames = set(systemd_vars.keys())
@@ -3077,13 +3063,14 @@ def cleanup_env():
         print_normal("Restoring initial systemd vars.")
         set_systemd_vars(env_pre, verbose=False, bus_session=bus_session)
 
-    for cleanup_file in cleanup_files + [
-        os.path.join(BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "env_pre")
+    for drop_file in [
+        cleanup_file,
+        env_pre_file
     ]:
-        if not os.path.exists(cleanup_file):
+        if not os.path.exists(drop_file):
             continue
-        os.remove(cleanup_file)
-        print_ok(f'Removed "{os.path.basename(cleanup_file)}".')
+        os.remove(drop_file)
+        print_ok(f'Removed "{os.path.basename(drop_file)}".')
 
 
 def path2url(arg):
