@@ -2737,9 +2737,6 @@ def prepare_env_gen_sh(random_mark):
         }
 
         #### Basic environment
-        [ -f /etc/profile ] && . /etc/profile
-        [ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
-        export PATH
         export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
         export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
         export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
@@ -2898,6 +2895,10 @@ def prepare_env():
     # save initial systemd state for later restoration on cleanup
     save_env("env_pre", env_pre)
 
+    # merge systemd environment with login environment, 
+    # with login environment overriding systemd
+    env_merged = env_pre | env_login
+
     # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark)
@@ -2912,7 +2913,7 @@ def prepare_env():
         text=True,
         input=shell_code,
         capture_output=True,
-        env=env_pre,
+        env=env_merged,
         check=False,
     )
     print_debug(sprc)
@@ -2953,12 +2954,6 @@ def prepare_env():
         else:
             print_error(f"No value: {env}!")
     env_post = filter_varnames(env_post)
-
-    # include vars from login session that are missing from env_post
-    for var, value in env_login.items():
-        if var not in env_post:
-            print_debug(f'back-adding from login env: {var}="{value}"')
-            env_post.update({var: value})
 
     ## Dict of vars to put into systemd user manager
     # raw difference dict between env_post and env_pre
