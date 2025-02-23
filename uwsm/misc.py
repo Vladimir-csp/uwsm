@@ -100,7 +100,10 @@ def print_normal(*what, **how):
     print(*what, **how, flush=True)
 
     if log:
-        syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, str(*what))
+        # print to fake file before printing to log
+        print_string = StringIO()
+        print(*what, **how, file=print_string, flush=True)
+        syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, print_string.getvalue().strip())
 
 
 def print_fancy(*what, **how):
@@ -140,6 +143,9 @@ def print_fancy(*what, **how):
         print(*what, **how, file=file, flush=True)
 
     if log:
+        # print to fake file before printing to log
+        print_string = StringIO()
+        print(*what, **how, file=print_string, flush=True)
         sl_level = [
             syslog.LOG_EMERG,
             syslog.LOG_ALERT,
@@ -150,7 +156,7 @@ def print_fancy(*what, **how):
             syslog.LOG_INFO,
             syslog.LOG_DEBUG,
         ][loglevel]
-        syslog.syslog(sl_level | syslog.LOG_USER, str(*what))
+        syslog.syslog(sl_level | syslog.LOG_USER, print_string.getvalue().strip())
 
     if notify and (not file.isatty() or notify == 2):
         try:
