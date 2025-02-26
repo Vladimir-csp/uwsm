@@ -251,7 +251,7 @@ sudo apt install ../uwsm_${current_version}_all.deb
 Arch.
 </summary>
 
-pacman -S uwsm
+`pacman -S uwsm`
 </details>
 
 <details><summary>
