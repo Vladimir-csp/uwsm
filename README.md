@@ -251,7 +251,8 @@ sudo apt install ../uwsm_${current_version}_all.deb
 Arch.
 </summary>
 
-pacman -S uwsm
+`pacman -S uwsm`
+
 </details>
 
 <details><summary>
@@ -396,6 +397,25 @@ uwsm app -- {executable|entry.desktop[:action]} [args ...]
 Compositor itself runs in `session.slice` which has priority in some resource
 allocation. It would be a bad practice to accumulate apps there, let alone
 inside compositor's unit itself.
+
+<details><summary>
+Faster alternatives
+</summary>
+
+`uwsm app` can be quite slow on some setups due to repeated python startup
+overhead.
+
+Included optional `uwsm-app` script uitilizes uwsm's on-demand app daemon for
+more responsiveness.
+
+[app2unit](https://github.com/Vladimir-csp/app2unit) is a faster shell
+alternative, with feature parity. It can also be used outside uwsm environment
+and can integrate with [Fuzzel](https://codeberg.org/dnkl/fuzzel/).
+
+[runapp](https://github.com/c4rlo/runapp) a fast C++ executable, although it is
+not feature-complete yet.
+
+</details>
 
 <details><summary>
 Background and details
@@ -998,5 +1018,10 @@ Inspired by and adapted some techniques from:
 - [sway](https://github.com/swaywm/sway)
 - [Presentation by Martin Pitt](https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf)
 
-Special thanks to @skewballfox for help with python and pointing me to useful
-tools.
+Special thanks to:
+
+- @skewballfox for help with python and pointing me to useful tools.
+- @notpeelz for improving commit process, meson, modularization, creating AUR
+  package.
+- @YaLTeR for an idea that lead to automatic compositor startup detection.
+- @izmyname for integration and documentation work on Hyprland's side.
