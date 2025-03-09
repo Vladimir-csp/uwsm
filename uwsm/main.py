@@ -42,6 +42,7 @@ from uwsm.dbus import DbusInteractions
 
 class CompGlobals:
     "Compositor global vars"
+
     # Full final compositor cmdline
     cmdline: List[str] = []
     # Compositor arguments that were given on CLI (without arg 0)
@@ -72,6 +73,7 @@ class CompGlobals:
 
 class Terminal:
     "XDG Terminal selector"
+
     entry: any = None
     entry_id: str = ""
     entry_action_id: str = ""
@@ -80,6 +82,7 @@ class Terminal:
 
 class UnitsState:
     "Holds flag to mark changes in systemd units"
+
     changed: bool = False
 
 
@@ -113,6 +116,7 @@ class HelpFormatterNewlines(argparse.HelpFormatter):
 
 class Varnames:
     "Sets of varnames"
+
     always_export = {
         "PATH",
         "XDG_CURRENT_DESKTOP",
@@ -1940,7 +1944,7 @@ class Args:
         )
         use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", None)
         if use_session_slice is None:
-           pass
+            pass
         elif use_session_slice in ("true", "false"):
             use_session_slice = {"true": True, "false": False}[use_session_slice]
         else:
@@ -2734,6 +2738,7 @@ def prepare_env_gen_sh(random_mark, load_profile: bool = False):
 
         #### Basic environment
         if [ "${__LOAD_PROFILE__}" = "true" ]; then
+        	echo "Loading shell profile."
         	[ -f /etc/profile ] && . /etc/profile
         	[ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
         	export PATH
@@ -3018,9 +3023,7 @@ def cleanup_env():
     print_debug("bus_session initial", bus_session)
 
     cleanup_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True),
-        BIN_NAME,
-        "env_cleanup.list"
+        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "env_cleanup.list"
     )
 
     if os.path.isfile(cleanup_file):
@@ -3060,10 +3063,7 @@ def cleanup_env():
         print_normal("Restoring initial systemd vars.")
         set_systemd_vars(env_pre, verbose=False, bus_session=bus_session)
 
-    for drop_file in [
-        cleanup_file,
-        env_pre_file
-    ]:
+    for drop_file in [cleanup_file, env_pre_file]:
         if not os.path.exists(drop_file):
             continue
         os.remove(drop_file)

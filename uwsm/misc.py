@@ -11,6 +11,7 @@ from typing import List
 
 class DebugFlag:
     "Checks for DEBUG env value and holds 'debug' boolean, 'warning' string"
+
     debug = os.getenv("DEBUG", "0")
     warning = None
     if debug.isnumeric():
@@ -28,6 +29,7 @@ class DebugFlag:
 
 class LogFlag:
     "Holds global state of syslog logging and loglevel prefix switches"
+
     # log using syslog module
     log = False
     # prefix lines with <N> codes for stdin/stderr journal parsing
@@ -36,6 +38,7 @@ class LogFlag:
 
 class Styles:
     "Terminal control characters for color and style"
+
     reset = "\033[0m"
     red = "\033[31m"
     green = "\033[32m"
@@ -53,6 +56,7 @@ class Styles:
 
 class Val:
     "Compiled re patterns for validation"
+
     wm_id = re.compile(r"\A[a-zA-Z0-9_:.-]+\Z", re.MULTILINE)
     dn_colon = re.compile(r"\A[a-zA-Z0-9_.-]+(:[a-zA-Z0-9_.-]+)*\Z", re.MULTILINE)
     entry_id = re.compile(r"\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*.desktop\Z", re.MULTILINE)
@@ -103,7 +107,9 @@ def print_normal(*what, **how):
         # print to fake file before printing to log
         print_string = StringIO()
         print(*what, **how, file=print_string, flush=True)
-        syslog.syslog(syslog.LOG_INFO | syslog.LOG_USER, print_string.getvalue().strip())
+        syslog.syslog(
+            syslog.LOG_INFO | syslog.LOG_USER, print_string.getvalue().strip()
+        )
 
 
 def print_fancy(*what, **how):
