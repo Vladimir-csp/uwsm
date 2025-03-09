@@ -4487,8 +4487,8 @@ def main():
     #### START
     elif Args.parsed.mode == "start":
 
-        # also send output to log
-        LogFlag.log = not Args.parsed.dry_run
+        # also send output to log if starting for real
+        LogFlag.log = not Args.parsed.dry_run and not Args.parsed.only_generate
 
         # Get ID from whiptail menu
         if Args.parsed.wm_cmdline[0] in ["select", "default"]:
@@ -4692,8 +4692,8 @@ def main():
     #### STOP
     elif Args.parsed.mode == "stop":
 
-        # also send output to log
-        LogFlag.log = True
+        # also send output to log if not dry run
+        LogFlag.log = not Args.parsed.dry_run
 
         try:
             stop_wm()
