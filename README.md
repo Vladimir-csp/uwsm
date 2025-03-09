@@ -14,13 +14,9 @@ session/XDG autostart management in Systemd-managed environments.
 > `feat!: ...`, etc.).
 
 > [!IMPORTANT]
-> v0.21.0 highlights:
-> Environment of `uwsm start` command is now transferred to environment
-> preloader to capture variables originated from PAM.
-> `session.slice` is now default for compositor unit. Selection may be
-> deprecated in future releases. `-S` or `UWSM_USE_SESSION_SLICE=true` are
-> no longer needed.
-> `start` and `stop` commands now also log their output to be seen in journal.
+> v0.21.2 highlights:
+> Environment preloader no longer sources POSIX shell profile if environment
+> from the context of `uwsm start` was successfully used.
 
 > [!NOTE]
 > It is highly recommended to use
@@ -91,7 +87,8 @@ Idempotently (well, best-effort-idempotently) handles environment.
 </summary>
 
 - On startup a specialized unit prepares environment by:
-  - sourcing shell profile
+  - either loading environment context saved by `uwsm start` command or sourcing
+    shell profile by itself
   - sourcing `uwsm/env`, `uwsm/env-${desktop}` files from each dir of reversed
     sequence `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}` (in
     increasing priority), where `${desktop}` is each item of
@@ -524,9 +521,16 @@ Summary of where to put a user-level var for the first two categories:
 - For uwsm-managed graphical session of specific compositor: export in
   `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`
 
-Choose whatever scope suits your needs. Note on shell profile: uwsm environment
-preloader uses POSIX shell (`/bin/sh`) and sources `/etc/profile`,
-`${HOME}/.profile`. Other shells compatibility with these files may vary.
+Choose whatever scope suits your needs.
+
+If startup was initiated via `uwsm start` command, its environment will be
+saved and picked up by environment preloader (since `uwsm start` is supposed to
+be started from login session context, it is assumed that profile of the login
+shell was already sourced).
+
+Otherwise, environment preloader will source POSIX shell (`/bin/sh`) profile by
+itself (`/etc/profile`, `${HOME}/.profile`). Other shells compatibility with
+these files may vary.
 
 ### 5. Launchers
 
@@ -640,8 +644,9 @@ fi
 ```
 
 The main statement **should** be protected by a condition that will return false
-when uwsm environment preloader sources the profile, otherwise an undesirable
-loop will be attempted and failed.
+when uwsm environment preloader sources the profile (it can do that if
+compositor's unit was activated without the use of `uwsm start` command),
+otherwise an undesirable loop will be attempted and failed.
 
 `uwsm check may-start` subcommand serves as a collection of useful checks.
 By default: parent is a login shell (process name starts with `-`), tty1 is in
@@ -803,11 +808,13 @@ When `wayland-wm-env@.service` is started during `graphical-session-pre.target`
 startup, `uwsm aux prepare-env ${compositor}` is launched (with shared set of
 custom arguments).
 
-It runs shell code to prepare environment, that sources shell profile,
-`uwsm/env*` files, anything that plugins dictate. Environment state at the end
-of shell code is given back to the main process. `uwsm` is also smart enough to
-find login session associated with current TTY and set `$XDG_SESSION_ID`,
-`$XDG_VTNR`.
+It looks for environment saved by `uwsm start` command, then runs shell code to
+prepare environment. The code sources POSIX shell profile (if environment from
+`uwsm start` was not found), `uwsm/env*` files, anything that plugins dictate.
+Environment state at the end of shell code is given back to the main process.
+`uwsm` is also smart enough to find login session associated with current TTY
+and set `$XDG_SESSION_ID`, `$XDG_VTNR` if it was not found in the context saved
+by `uwsm start`.
 
 The difference between initial env (that is the state of activation environment)
 and after all the sourcing and setting is done, plus `Varnames.always_export`,
@@ -909,7 +916,12 @@ if [ "${0}" != "${0#-}" ] &&
 then
     # generate units
     uwsm start -o ${MY_COMPOSITOR}
-    # bind wayland session to login shell PID $$
+
+    # save login environment
+    mkdir -p "$XDG_RUNTIME_DIR/uwsm"
+    env -0 > "$XDG_RUNTIME_DIR/uwsm/env_login"
+
+    # bind wayland session to login shell PID $$ and start compositor
     echo Starting ${MY_COMPOSITOR} compositor
     systemctl --user start wayland-session-bindpid@$$.service &&
     exec systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service

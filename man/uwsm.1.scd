@@ -119,11 +119,12 @@ A set of runtime units bound to standard user session targets is generated:
 Compositor ID (Desktop Entry ID or executable name) becomes the specifier
 for all templated units.
 
-At the stage of *graphical-session-pre.target*, the environment is sourced from
-the shell profile and from uwsm environment _files_. The delta is exported to
-the systemd and D-Bus activation environments by the environment preloader
-service and is marked for cleanup at shutdown stage. Preloader shell context for
-convenience has *IN_UWSM_ENV_PRELOADER* var set to *true*.
+At the stage of *graphical-session-pre.target*, the environment saved from
+"*uwsm start*" context is loaded (or POSIX shell profile is sourced), uwsm
+environment _files_ are sourced. The delta is exported to the systemd and D-Bus
+activation environments by the environment preloader service and is marked for
+cleanup at shutdown stage. Preloader shell context for convenience has
+*IN_UWSM_ENV_PRELOADER* var set to *true*.
 
 At the stage of *graphical-session.target* (before it) the main compositor unit
 *wayland-wm@*_${ID}_*.service* and *wayland-session-waitenv.service* are
@@ -436,7 +437,7 @@ This just starts a specific compositor depending on foreground VT:
 
 Using "*uwsm check may-start*" as a condition is *essential*, not only to
 prevent accidental startup attempts where they are not expected, but also since
-startup involves sourcing shell profile, which might lead to nasty loops.
+startup may involve sourcing shell profile, which might lead to nasty loops.
 
 See _check_ subcommand section for info on *may-start* checker.
 
