@@ -2583,7 +2583,7 @@ def get_session_by_vt(vtnr: int, verbose: bool = False):
     return None
 
 
-def prepare_env_gen_sh(random_mark):
+def prepare_env_gen_sh(random_mark, load_profile: bool = False):
     """
     Takes a known random string, returns string with shell code for sourcing env.
     Code echoes given string to mark the beginning of "env -0" output
@@ -2600,6 +2600,7 @@ def prepare_env_gen_sh(random_mark):
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(CompGlobals.desktop_names))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(CompGlobals.desktop_names[0])}
         __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if CompGlobals.cli_desktop_names_exclusive else 'false'}
+        __LOAD_PROFILE__={'true' if load_profile else 'false'}
         __OIFS__=" \t\n"
         # context marker for profile scripting
         IN_UWSM_ENV_PRELOADER=true
@@ -2737,6 +2738,12 @@ def prepare_env_gen_sh(random_mark):
         }
 
         #### Basic environment
+        if [ "${__LOAD_PROFILE__}" = "true" ]; then
+        	[ -f /etc/profile ] && . /etc/profile
+        	[ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
+        	export PATH
+        fi
+
         export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
         export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
         export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
@@ -2895,13 +2902,13 @@ def prepare_env():
     # save initial systemd state for later restoration on cleanup
     save_env("env_pre", env_pre)
 
-    # merge systemd environment with login environment, 
+    # merge systemd environment with login environment,
     # with login environment overriding systemd
     env_merged = env_pre | env_login
 
     # Run shell code with env_pre environment to prepare env and print results
     random_mark = f"MARK_{random_hex(16)}_MARK"
-    shell_code = prepare_env_gen_sh(random_mark)
+    shell_code = prepare_env_gen_sh(random_mark, load_profile=(env_login == {}))
 
     sh_path = which("sh")
     if not sh_path:
