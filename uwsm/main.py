@@ -2750,6 +2750,7 @@ def prepare_env_gen_sh(random_mark, load_profile: bool = False):
         export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
         export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
         export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+        export XDG_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
 
         export XDG_CURRENT_DESKTOP="${__WM_DESKTOP_NAMES__}"
         export XDG_SESSION_DESKTOP="${__WM_FIRST_DESKTOP_NAME__}"
