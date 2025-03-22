@@ -998,6 +998,77 @@ def simple_systemd_escape(string: str, start: bool = True) -> str:
     return "".join(out)
 
 
+def wait_for_unit(
+    unit: str, bus, timeout: int, states: list = ["active"], quiet: bool = False
+):
+    "Waits for 'unit' via 'bus' for time 'timeout' to be in 'states', returns bool."
+
+    if set(states) not in (
+        {"active", "activating"},
+        {"active"},
+        {"activating"},
+        {"inactive", "deactivating"},
+        {"inactive"},
+        {"deactivating"},
+    ):
+        raise ValueError(
+            "Can only query for states: active, activating or inactive, deactivating"
+        )
+
+    # initial check
+    units = bus.list_units_by_patterns(states, [unit])
+    print_debug(f"'{unit}' query units", units)
+
+    # unit is already in desired state
+    if len(units) > 0:
+        return True
+
+    # no timeout - no wait
+    if timeout == 0:
+        return False
+
+    # check if unit is queued,
+    # wait if it is, recheck when it leaves queue.
+    if "active" in states or "activating" in states:
+        job_state = "start"
+    elif "inactive" in states or "deactivating" in states:
+        job_state = "stop"
+
+    unit_seen_in_queue = False
+    spacer = ""
+    for attempt in range(timeout, -1, -1):
+        jobs = (
+            (str(unit), str(state))
+            for _, unit, state, _, _, _ in bus.list_systemd_jobs()
+        )
+        print_debug("queried jobs", jobs)
+        if (unit, job_state) in jobs:
+            unit_seen_in_queue = True
+            if not quiet and attempt == timeout:
+                print_normal(
+                    f"{unit} is queued for start, waiting for {timeout}s...",
+                )
+            elif not quiet and (attempt % 10 == 0 or attempt == 15 or attempt < 10):
+                print_normal(f"{spacer}{attempt}", end="")
+                spacer = " "
+            if attempt != 0:
+                time.sleep(1)
+        else:
+            break
+
+    if not quiet and unit_seen_in_queue:
+        print_normal("")
+
+    # recheck unit state
+    units = bus.list_units_by_patterns(states, [unit])
+    print_debug(f"{unit} query units", units)
+    if len(units) < 1:
+        if not quiet and unit_seen_in_queue:
+            print_warning("Timed out.")
+        return False
+    return True
+
+
 def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
     "Returns tuple: 0) path in category, level dir, 1) unit subpath"
     if os.path.isabs(unit):
@@ -1975,6 +2046,14 @@ class Args:
             help="Hardcode resulting command line (with path) to unit drop-ins.",
         )
         parsers["start"].add_argument(
+            "-g",
+            type=int,
+            dest="gst_seconds",
+            metavar="S",
+            default=60,
+            help="Seconds to wait for graphical.target in queue (default: 60; -1 to suppress warning).",
+        )
+        parsers["start"].add_argument(
             "-o",
             action="store_true",
             dest="only_generate",
@@ -2201,10 +2280,10 @@ class Args:
             "vtnr",
             metavar="N",
             type=int,
-            # default does not work here
+            # default may not work in some python versions
             default=[1],
             nargs="*",
-            help="VT numbers allowed for startup (default: 1).",
+            help="VT numbers allowed for startup (default: 1; disable check: 0).",
         )
         parsers["may_start_verbosity"] = parsers[
             "may_start"
@@ -4550,24 +4629,34 @@ def main():
                 print_warning("Only unit creation was requested. Will not go further.")
                 sys.exit(0)
 
-            bus_system = DbusInteractions("system")
-            print_debug("bus_system initial", bus_system)
+            # check for graphical target
+            if Args.parsed.gst_seconds >= 0:
+                try:
+                    bus_system = DbusInteractions("system")
+                    print_debug("bus_system initial", bus_system)
 
-            # query systemd dbus for active matching units
-            units = bus_system.list_units_by_patterns(
-                ["active", "activating"], ["graphical.target"]
-            )
-            if len(units) < 1:
-                print_warning(
-                    dedent(
-                        """
-                        System has not reached graphical.target.
-                        It might be a good idea to screen for this with a condition.
-                        Will continue in 5 seconds...
-                        """
-                    )
-                )
-                time.sleep(5)
+                    if not wait_for_unit(
+                        "graphical.target",
+                        bus=bus_system,
+                        states=["active", "activating"],
+                        timeout=Args.parsed.gst_seconds,
+                        quiet=False,
+                    ):
+                        print_warning(
+                            dedent(
+                                """
+                                System has not reached graphical.target.
+                                It might be a good idea to screen for this with a condition.
+                                Will continue in 5 seconds...
+                                """
+                            )
+                        )
+                        time.sleep(5)
+
+                except Exception as caught_exception:
+                    print_error("Could not check if graphical.target is reached!")
+                    print_error(caught_exception)
+                    sys.exit(1)
 
             if Args.parsed.dry_run:
                 print_normal(f"Will start {CompGlobals.id}...")
@@ -4792,18 +4881,20 @@ def main():
             if not parent_cmdline.startswith("-"):
                 dealbreakers.append("Not in login shell")
 
-        # check foreground VT
-        fgvt = get_fg_vt()
-        if fgvt is None:
-            print_error("Could not determine foreground VT")
-            sys.exit(1)
-        else:
-            # argparse does not pass default for this
-            allowed_vtnr = Args.parsed.vtnr or [1]
-            if fgvt not in allowed_vtnr:
-                dealbreakers.append(
-                    f"Foreground VT ({fgvt}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
-                )
+        # argparse does not pass default for this in some python versions
+        allowed_vtnr = Args.parsed.vtnr or [0]
+        if allowed_vtnr != [0]:
+
+            # check foreground VT
+            fgvt = get_fg_vt()
+            if fgvt is None:
+                print_error("Could not determine foreground VT")
+                sys.exit(1)
+            else:
+                if fgvt not in allowed_vtnr:
+                    dealbreakers.append(
+                        f"Foreground VT ({fgvt}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
+                    )
 
         # check for graphical target
         if Args.parsed.gst_seconds > 0:
@@ -4811,54 +4902,15 @@ def main():
                 bus_system = DbusInteractions("system")
                 print_debug("bus_system initial", bus_system)
 
-                # initial check
-                units = bus_system.list_units_by_patterns(
-                    ["active", "activating"], ["graphical.target"]
-                )
-                print_debug("graphical.target units", units)
+                if not wait_for_unit(
+                    "graphical.target",
+                    bus=bus_system,
+                    states=["active", "activating"],
+                    timeout=Args.parsed.gst_seconds,
+                    quiet=Args.parsed.quiet,
+                ):
+                    dealbreakers.append("System has not reached graphical.target")
 
-                if len(units) < 1:
-                    # check if graphical.target is queued for startup,
-                    # wait if it is, recheck when it leaves queue.
-                    gst_seen_in_queue = False
-                    spacer = ""
-                    for attempt in range(Args.parsed.gst_seconds, -1, -1):
-                        jobs = (
-                            (str(unit), str(state))
-                            for _, unit, state, _, _, _ in bus_system.list_systemd_jobs()
-                        )
-                        print_debug("system jobs", jobs)
-                        if ("graphical.target", "start") in jobs:
-                            gst_seen_in_queue = True
-                            if (
-                                not Args.parsed.quiet
-                                and attempt == Args.parsed.gst_seconds
-                            ):
-                                print_normal(
-                                    f"graphical.target is queued for start, waiting for {Args.parsed.gst_seconds}s...",
-                                )
-                            elif not Args.parsed.quiet and (
-                                attempt % 10 == 0 or attempt == 15 or attempt < 10
-                            ):
-                                print_normal(f"{spacer}{attempt}", end="")
-                                spacer = " "
-                            if attempt != 0:
-                                time.sleep(1)
-                        else:
-                            break
-
-                    if not Args.parsed.quiet and gst_seen_in_queue:
-                        print_normal("")
-
-                    # recheck graphical.target
-                    units = bus_system.list_units_by_patterns(
-                        ["active", "activating"], ["graphical.target"]
-                    )
-                    print_debug("graphical.target units", units)
-                    if len(units) < 1:
-                        if not Args.parsed.quiet and gst_seen_in_queue:
-                            print_warning("Timed out.")
-                        dealbreakers.append("System has not reached graphical.target")
             except Exception as caught_exception:
                 print_error("Could not check if graphical.target is reached!")
                 print_error(caught_exception)
