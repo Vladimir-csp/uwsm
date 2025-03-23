@@ -254,10 +254,16 @@ them.
 :  Launch compositor in session.slice (default).
 |      *-A*
 :  Launch compositor in app.slice.
+|      *-g* _S_
+:  Wait for S seconds for system graphical.target in queue and warn if timed out
+   or not in queue (default: 60, negative to disable).
+|      *-G* _S_
+:  Wait for S seconds for system graphical.target in queue and abort if timed
+   out or not in queue (overrides -g, default: -1, (disabled)).
 |      *-o*
 :  Only generate units, but do not start.
 |      *-n*
-:  Do not write or start anything.
+:  Dry run, do not write or start anything.
 
 The first argument of the compositor command line acts as an ID and should be
 either one of:

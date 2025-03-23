@@ -557,7 +557,7 @@ uwsm start [options] -- ${compositor} [arguments]
 ```
 
 Always use `--` to disambiguate command line if any dashed arguments are
-intended for launched compositor.
+intended for the launched compositor.
 
 `${compositor}` can be an executable or a valid
 [desktop entry ID](https://specifications.freedesktop.org/desktop-entry-spec/latest/file-naming.html#desktop-file-id)
@@ -588,7 +588,15 @@ Some details
 </summary>
 
 ```
-uwsm start [-[a|e]D DesktopName1[:DesktopName2:...]] [-N Name] [-C "Compositor description"] [-F] -- ${compositor} [with "any complex" --arguments]
+uwsm start \
+	[-[a|e]D DesktopName1[:DesktopName2:...]] \
+	[-N Name] \
+	[-C "Compositor description"] \
+	[-F] \
+	[-g|-G seconds] \
+	[-o] \
+	[-n] \
+	-- ${compositor} [with "any complex" --arguments]
 ```
 
 If `${compositor}` is a desktop entry ID, `uwsm` will find it in
@@ -616,6 +624,11 @@ right away in case of `default`). Selected entry is used as instance ID.
 There is also a separate `select` action (`uwsm select`) that only selects and
 saves default `${compositor}` and does nothing else, which is handy for seamless
 shell profile integration.
+
+`uwsm` will also wait for activation of system `graphical.target` and either
+warn or abort if timed out, or if `graphical.target` was not found in queue.
+This behavior can be controlled via `-g|-G` option. It can not however stop
+automatically if system `graphical.target` becomes deactivated.
 
 Things `uwsm start ...` will do:
 
