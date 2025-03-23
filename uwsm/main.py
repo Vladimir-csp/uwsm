@@ -1057,6 +1057,7 @@ def wait_for_unit(
             break
 
     if not quiet and unit_seen_in_queue:
+        # effectively newline
         print_normal("")
 
     # recheck unit state
@@ -2005,7 +2006,8 @@ class Args:
             parents=[parsers["wm_args"], parsers["wm_meta"]],
             epilog=dedent(
                 f"""
-                Compositor should finalize its startup by running this:\n
+                Compositor should either put WAYLAND_DISPLAY var into systemd user service environment
+                itself, or finalize its startup by running this:\n
                 \n
                   {BIN_NAME} finalize [VAR ...]\n
                 \n
@@ -2045,13 +2047,22 @@ class Args:
             default=False,
             help="Hardcode resulting command line (with path) to unit drop-ins.",
         )
-        parsers["start"].add_argument(
+        parsers["start_gt"] = parsers["start"].add_mutually_exclusive_group()
+        parsers["start_gt"].add_argument(
             "-g",
             type=int,
-            dest="gst_seconds",
+            dest="gst_warn_seconds",
             metavar="S",
             default=60,
-            help="Seconds to wait for graphical.target in queue (default: 60; -1 to suppress warning).",
+            help="Seconds to wait for graphical.target in queue and warn if timed out (default: 60; negative to disable).",
+        )
+        parsers["start_gt"].add_argument(
+            "-G",
+            type=int,
+            dest="gst_abort_seconds",
+            metavar="S",
+            default=-1,
+            help="Seconds to wait for graphical.target in queue and abort if timed out (takes precedence over -g, default: -1 (disabled)).",
         )
         parsers["start"].add_argument(
             "-o",
@@ -4570,6 +4581,52 @@ def main():
         # also send output to log if starting for real
         LogFlag.log = not Args.parsed.dry_run and not Args.parsed.only_generate
 
+        # check for graphical target if starting for real
+        if (
+            (Args.parsed.gst_warn_seconds >= 0 or Args.parsed.gst_abort_seconds >= 0)
+            and not Args.parsed.dry_run
+            and not Args.parsed.only_generate
+        ):
+            # gst_abort_seconds takes precedence
+            timeout = (
+                Args.parsed.gst_abort_seconds
+                if Args.parsed.gst_abort_seconds >= 0
+                else Args.parsed.gst_warn_seconds
+            )
+            try:
+                bus_system = DbusInteractions("system")
+                print_debug("bus_system initial", bus_system)
+
+                if not wait_for_unit(
+                    "graphical.target",
+                    bus=bus_system,
+                    states=["active", "activating"],
+                    timeout=timeout,
+                    quiet=False,
+                ):
+                    if Args.parsed.gst_abort_seconds >= 0:
+                        print_error(
+                            "System has not reached graphical.target. Aborting."
+                        )
+                        sys.exit(1)
+                    elif Args.parsed.gst_warn_seconds >= 0:
+                        print_warning(
+                            dedent(
+                                """
+                                System has not reached graphical.target.
+                                It might be a good idea to check default system target or screen for this
+                                with a condition, i.e. via "uwsm check may-start".
+                                Will continue in 5 seconds...
+                                """
+                            )
+                        )
+                        time.sleep(5)
+
+            except Exception as caught_exception:
+                print_error("Could not check if graphical.target is reached!")
+                print_error(caught_exception)
+                sys.exit(1)
+
         # Get ID from whiptail menu
         if Args.parsed.wm_cmdline[0] in ["select", "default"]:
             try:
@@ -4628,35 +4685,6 @@ def main():
             if Args.parsed.only_generate:
                 print_warning("Only unit creation was requested. Will not go further.")
                 sys.exit(0)
-
-            # check for graphical target
-            if Args.parsed.gst_seconds >= 0:
-                try:
-                    bus_system = DbusInteractions("system")
-                    print_debug("bus_system initial", bus_system)
-
-                    if not wait_for_unit(
-                        "graphical.target",
-                        bus=bus_system,
-                        states=["active", "activating"],
-                        timeout=Args.parsed.gst_seconds,
-                        quiet=False,
-                    ):
-                        print_warning(
-                            dedent(
-                                """
-                                System has not reached graphical.target.
-                                It might be a good idea to screen for this with a condition.
-                                Will continue in 5 seconds...
-                                """
-                            )
-                        )
-                        time.sleep(5)
-
-                except Exception as caught_exception:
-                    print_error("Could not check if graphical.target is reached!")
-                    print_error(caught_exception)
-                    sys.exit(1)
 
             if Args.parsed.dry_run:
                 print_normal(f"Will start {CompGlobals.id}...")
