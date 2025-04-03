@@ -13,11 +13,6 @@ session/XDG autostart management in Systemd-managed environments.
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
 
-> [!IMPORTANT]
-> v0.21.2 highlights:
-> Environment preloader no longer sources POSIX shell profile if environment
-> from the context of `uwsm start` was successfully used.
-
 > [!NOTE]
 > It is highly recommended to use
 > [dbus-broker](https://github.com/bus1/dbus-broker) as the D-Bus daemon
@@ -198,7 +193,8 @@ Provides helpers and tools for various operations.
   drop-in replacement of `uwsm app`. The daemon (started on-demand) handles
   finding requested desktop entries, parsing and generation of commands for
   client to execute. This avoids the overhead of repeated python startup and
-  increases app launch speed.
+  increases app launch speed. Intended for interactive launching, as it can fail
+  on simultaneous requests.
 - `uuctl`: graphical (via dmenu-like menus) tool for managing user units.
 - `fumon`: background service for notifying about failed units.
 
@@ -384,16 +380,68 @@ Timeout for unit startup is 10 seconds.
 
 ### 3. Applications and Slices
 
-To properly put applications into `app-graphical.slice` (or the like), configure
-application launching in compositor via:
+Applications should be lanuched in their own user-level systemd units.
+
+Some applications (usually those intended to be autostarted in a graphical
+session) are shipped with their own units. Check and enable them with:
+`systemctl --user enable ...`.
+
+<details><summary>
+More info
+</summary>
+
+* `systemctl --user enable this-app.service` (if it provides
+  `WantedBy=graphical-session.target`)
+* `systemctl --user add-wants graphical-session.target that-app.service` (if it
+  does not)
+
+In the end autostarted unit should have both dependency and ordering (be wanted
+by a target and ordered after it) see [example-units](./example-units/).
+
+Or just start with `systemctl --user start not-a-service.service`.
+
+Units can be fully or partially overridden/edited via standard systemd
+mechanisms.
+
+</details>
+
+Other apps are shipped with XDG autostart entries. Systemd automatically
+converts them to `app-*@autostart.service` units and starts.
+
+<details><summary>
+More info
+</summary>
+
+Their `OnlyShowIn=`/`NotShowIn=` lists should align with `$XDG_CURRENT_DESKTOP`
+items or be absent. Autostart entries can be overridden by copying and editing
+them in `${XDG_CONFIG_HOME}/autostart/`. Also generated
+`app-*@autostart.service` units are editable via drop-ins.
+
+Also see [example-units](./example-units/) and refer to
+[Desktop Application Autostart Specification](https://xdg.pages.freedesktop.org/xdg-specs/autostart-spec/latest/)
+
+</details>
+
+To launch any other app use:
 
 ```
 uwsm app -- {executable|entry.desktop[:action]} [args ...]
 ```
 
+A one-shot app launcher can be started directly, but configured to run
+things via `uwsm app` if it supports command prefixes. Some examples:
+
+| Launcher | Action                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------- |
+| fuzzel   | command: `fuzzel --launch-prefix="uwsm app -- "`. Or config: `launch-prefix='uwsm app -- '` |
+| walker   | config: `app_launch_prefix = "uwsm app -- "`                                                |
+| wofi     | command: `uwsm app -- $(wofi --show drun --define=drun-print_desktop_file=true)`            |
+| tofi     | command: `uwsm app -- $(tofi-drun)`                                                         |
+| rofi     | command: `rofi -show drun -run-command "uwsm app -- {cmd}"`                                 |
+
 Compositor itself runs in `session.slice` which has priority in some resource
-allocation. It would be a bad practice to accumulate apps there, let alone
-inside compositor's unit itself.
+allocation. It would be a bad practice to accumulate all apps there, and
+extremely bad practice to accumulate processes inside compositor's unit itself.
 
 <details><summary>
 Faster alternatives
@@ -403,7 +451,8 @@ Faster alternatives
 overhead.
 
 Included optional `uwsm-app` script uitilizes uwsm's on-demand app daemon for
-more responsiveness.
+more responsiveness in interactive launching, but can fail on simultaneous
+requests.
 
 [app2unit](https://github.com/Vladimir-csp/app2unit) is a faster shell
 alternative, with feature parity. It can also be used outside uwsm environment
@@ -418,11 +467,13 @@ not feature-complete yet.
 Background and details
 </summary>
 
-By default `uwsm` launches the compositor service in `session.slice` and all
-processes spawned by the compositor will be part of the
-`wayland-wm@${compositor}.service` unit. Most apps do not need to be in
-`session.slice`, and being inside comopositor's unit opens the way for them
-to interfere with notification socket for unit.
+By default `uwsm` launches the compositor's service as
+`wayland-wm@${compositor}.service` in `session.slice`.
+
+Processes descendent from the compositor will be a part of its unit which
+*might* be mostly OK for short-lived one-off commands, i.e. volume adjustment.
+But processes inside comopositor's unit have access to its notification socket,
+which may lead to unforseen consequences.
 
 Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
@@ -432,15 +483,15 @@ available for low-priority non-interactive tasks and high-prioirity
 responsiveness-aware tasks respectively, (see `man systemd.special`)
 
 `uwsm` provides a convenient way of handling this: it generates special nested
-slices that will also receive stop action ordered before
+slices that will also receive stop action before
 `wayland-wm@${compositor}.service` shutdown:
 
-- `app-graphical.slice`
+- `app-graphical.slice` (default destination)
 - `background-graphical.slice`
 - `session-graphical.slice`
 
-`app-*@autostart.service` units are also modified to be started in
-`app-graphical.slice`.
+`app-*@autostart.service` units of XDG autostart entries are also modified to be
+started in `app-graphical.slice`.
 
 To launch an app inside one of those slices, use:
 
@@ -463,11 +514,11 @@ Specifying paths to executables or desktop entry files is also supported.
 Always use `--` to disambiguate command line if any dashed arguments are
 intended for the app being launched.
 
-Scopes are the default type of units for launching apps via `uwsm app`, they are
-executed in-place and behave like simple commands, inheriting environment and
-pty of origin.
+*Scopes* are the default type of units for launching apps via `uwsm app`, they
+are executed in-place and behave like simple commands, inheriting environment
+and pty of origin.
 
-Services are launched in the background by the systemd user manager and are
+*Services* are launched in the background by the systemd user manager and are
 given an environment based on the current state of the activation environment of
 systemd; their output is routed to the journal. `uwsm app` will return
 immediately after launch. This allows more control over the application, i.e.
@@ -483,7 +534,7 @@ default terminal:
 
 Fuzzel has a very handy launch-prefix option:
 
-`bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='uwsm app --' --log-no-syslog --log-level=warning`
+`bindsym --to-code $mod+r exec exec fuzzel --launch-prefix='uwsm app --'`
 
 Walker can prefix launching apps by setting `app_launch_prefix` variable in the config, so `"app_launch_prefix": "uwsm app -- "`.
 
@@ -516,7 +567,7 @@ Summary of where to put a user-level var for the first two categories:
   `${XDG_CONFIG_HOME}/environment.d/*.conf`. It does not affect login sessions
   or systemd user manager itself (see `man 5 environment.d`).
 - For login shell context and uwsm environment preloader, including plugins:
-  export in `~/.profile` (may have caveats, see your shell's manual).
+  export in your shell's profile.
 - For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm/env`
 - For uwsm-managed graphical session of specific compositor: export in
   `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`
@@ -531,18 +582,6 @@ shell was already sourced).
 Otherwise, environment preloader will source POSIX shell (`/bin/sh`) profile by
 itself (`/etc/profile`, `${HOME}/.profile`). Other shells compatibility with
 these files may vary.
-
-### 5. Launchers
-
-In order to let uwsm manage applications launched by your launcher.
-
-| Launcher | Action                                                                             |
-| -------- | ---------------------------------------------------------------------------------- |
-| fuzzel   | start with `fuzzel --launch-prefix="uwsm app -- "`. Alternatively, uncomment and set `launch-prefix='uwsm app -- '` in your config                                |
-| walker   | set `app_launch_prefix = "uwsm app -- "` in your config                            |
-| wofi     | start with `uwsm app -- $(wofi --show drun --define=drun-print_desktop_file=true)` |
-| tofi     | start with `uwsm app -- $(tofi-drun)`                                              |
-| rofi     | start with `rofi -show drun -run-command "uwsm app -- {cmd}"`                      |
 
 ## Operation
 
