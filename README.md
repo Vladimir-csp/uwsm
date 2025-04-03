@@ -414,7 +414,7 @@ More info
 
 Their `OnlyShowIn=`/`NotShowIn=` lists should align with `$XDG_CURRENT_DESKTOP`
 items or be absent. Autostart entries can be overridden by copying and editing
-them in `${XDG_CONFIG_HOME}/autostart/`. Also generated
+them in `${XDG_CONFIG_HOME}/autostart/`. Generated
 `app-*@autostart.service` units are editable via drop-ins.
 
 Also see [example-units](./example-units/) and refer to
@@ -471,7 +471,7 @@ By default `uwsm` launches the compositor's service as
 `wayland-wm@${compositor}.service` in `session.slice`.
 
 Processes descendent from the compositor will be a part of its unit which
-*might* be mostly OK for short-lived one-off commands, i.e. volume adjustment.
+**might** be mostly OK for short-lived one-off commands, i.e. volume adjustment.
 But processes inside comopositor's unit have access to its notification socket,
 which may lead to unforseen consequences.
 
@@ -514,11 +514,11 @@ Specifying paths to executables or desktop entry files is also supported.
 Always use `--` to disambiguate command line if any dashed arguments are
 intended for the app being launched.
 
-*Scopes* are the default type of units for launching apps via `uwsm app`, they
+**Scopes** are the default type of units for launching apps via `uwsm app`, they
 are executed in-place and behave like simple commands, inheriting environment
 and pty of origin.
 
-*Services* are launched in the background by the systemd user manager and are
+**Services** are launched in the background by the systemd user manager and are
 given an environment based on the current state of the activation environment of
 systemd; their output is routed to the journal. `uwsm app` will return
 immediately after launch. This allows more control over the application, i.e.
@@ -687,7 +687,7 @@ Things `uwsm start ...` will do:
 #### Shell profile integration
 
 To launch automatically after login on virtual console 1, if systemd is at
-`graphical.target`, add this code to your shell profile:
+`graphical.target`, add this code (or equivalent) to your shell's profile:
 
 ```
 if uwsm check may-start && uwsm select; then
@@ -696,9 +696,9 @@ fi
 ```
 
 The main statement **should** be protected by a condition that will return false
-when uwsm environment preloader sources the profile (it can do that if
-compositor's unit was activated without the use of `uwsm start` command),
-otherwise an undesirable loop will be attempted and failed.
+in situations when running `uwsm start` is not desired. I.e. if this is
+`~/.profile` and uwsm environment preloader sources it by itself (it can do that
+if compositor's unit was activated without the use of `uwsm start` command).
 
 `uwsm check may-start` subcommand serves as a collection of useful checks.
 By default: parent is a login shell (process name starts with `-`), tty1 is in
@@ -728,11 +728,11 @@ entries. Example `/usr/local/share/wayland-sessions/my-compositor-uwsm.desktop`:
 Name=My compositor (with UWSM)
 Comment=My cool compositor, UWSM session
 
-# either full command line with metadata and executable
-Exec=uwsm start -N "My compositor" -D mycompositor:mylib -C "My cool compositor" -- mywm
-
-# or a reference to another entry
+# a reference to another entry (preferred since some DMs may fail on quoted arguments)
 Exec=uwsm start -- my-compositor.desktop
+
+# or a full command line with metadata and executable
+#Exec=uwsm start -N "My compositor" -D mycompositor:mylib -C "My cool compositor" -- mywm
 
 DesktopNames=mycompositor;mylib
 Type=Application
