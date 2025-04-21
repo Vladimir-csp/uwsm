@@ -68,7 +68,7 @@ be used for distro level defaults.
 |  *UWSM_WAIT_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
-:  Variables to wait for in activation environemnt before proceeding to
+:  Variables to wait for in activation environment before proceeding to
    graphical session (in addition to *WAYLAND_DISPLAY*)
 |  *UWSM_WAIT_VARNAMES_SETTLETIME*
 :  (float value)
