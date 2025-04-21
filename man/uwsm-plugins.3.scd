@@ -62,14 +62,14 @@ It is used as plugin id and suffix in function names.
 *source\_file*
 	sources *$1* file if exists, providing messages for log.
 
-See code inside *uwsm/main.py* for more auxillary funcions.
+See code inside *uwsm/main.py* for more auxiliary functions.
 
 ## Functions that can be added by plugins
 
 *quirks\_\_*$_{\_\_WM\_BIN\_ID\_\_}_++
 	called before env loading.
 
-These functions will be called instead of standard funcions if defined:
+These functions will be called instead of standard functions if defined:
 
 *load\_wm\_env\_\_*$_{\_\_WM\_BIN\_ID\_\_}_++
 *process\_config\_dirs\_reversed\_\_*$_{\_\_WM\_BIN\_ID\_\_}_++
