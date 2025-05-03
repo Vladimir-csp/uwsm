@@ -4150,7 +4150,7 @@ def fill_comp_globals():
                     entry_uwsm_args.parsed.desktop_names
                 ):
                     raise ValueError(
-                        f'Entry "{CompGlobals.id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.parsed.desktop_names}"!'
+                        f'{BIN_NAME} in entry "{CompGlobals.id}" uses {BIN_NAME} with malformed desktop names: "{entry_uwsm_args.parsed.desktop_names}"!'
                     )
 
                 # parse secondary entry
@@ -4476,9 +4476,11 @@ def waitpid(pid: int):
     return
 
 
-def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
-    "Waits for varnames to appear in activation environment"
-
+def waitenv(varnames: List[str] = None, timeout=None, step=0.5, end_buffer=3):
+    """Wait for variables to appear in activation environment"""
+    if timeout is None:
+        # Get timeout from env var or use default
+        timeout = float(os.getenv("UWSM_WAIT_TIMEOUT", "10"))
     if varnames is None:
         varnames = ["WAYLAND_DISPLAY"]
     else:
