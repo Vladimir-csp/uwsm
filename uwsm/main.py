@@ -1828,7 +1828,7 @@ def remove_units(only=None) -> None:
                 continue
             print_debug("checking for removal:", file_path)
             try:
-                with open(file_path, "r", encoding="UTF=8") as unit_file:
+                with open(file_path, "r", encoding="utf-8") as unit_file:
                     for line in unit_file.readlines():
                         if (only and line.strip() == mark_attr) or (
                             not only and line.strip().startswith(mark_attr)
