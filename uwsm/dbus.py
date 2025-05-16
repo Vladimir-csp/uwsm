@@ -10,12 +10,10 @@ class DbusInteractions:
         if dbus_level in ["system", "session"]:
             print_debug("initiate dbus interaction", dbus_level)
             self.dbus_level = dbus_level
+            self._level = dbus_level
+            self._bus = None
             self.dbus_objects = {}
-            if "bus" not in self.dbus_objects:
-                if dbus_level == "system":
-                    self.dbus_objects["bus"] = dbus.SystemBus()
-                else:
-                    self.dbus_objects["bus"] = dbus.SessionBus()
+            self.dbus_objects["bus"] = self._get_bus()
         else:
             raise ValueError(
                 f"dbus_level can be 'system' or 'session', got '{dbus_level}'"
@@ -24,6 +22,12 @@ class DbusInteractions:
     def __str__(self):
         "Prints currently held dbus_objects for debug purposes"
         return f"DbusInteractions, instance level: {self.dbus_level}, instance objects:\n{str(self.dbus_objects)}"
+    
+    def _get_bus(self):
+        """Lazily return and cache the system or session bus."""
+        if self._bus is None:
+            self._bus = dbus.SystemBus() if self._level == "system" else dbus.SessionBus()
+        return self._bus
 
     # Internal functions (adding objects)
 
