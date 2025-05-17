@@ -431,13 +431,15 @@ uwsm app -- {executable|entry.desktop[:action]} [args ...]
 A one-shot app launcher can be started directly, but configured to run
 things via `uwsm app` if it supports command prefixes. Some examples:
 
-| Launcher | Action                                                                                                           |
-| -------- | -----------------------------------------------------------------------------------------------------------------|
-| fuzzel   | command: `fuzzel --launch-prefix="uwsm app -- "`. Or config: `launch-prefix='uwsm app -- '`                      |
-| walker   | config: `app_launch_prefix = "uwsm app -- "`                                                                     |
-| wofi     | command: `uwsm app -- $(wofi --show drun --define=drun-print_desktop_file=true) \| sed -E "s/(\.desktop) /\1:/"` |
-| tofi     | command: `uwsm app -- $(tofi-drun)`                                                                              |
-| rofi     | command: `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                      |
+| Launcher | Where     | What                                                                                                                                                                             |
+| -------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| fuzzel   | config    | `launch-prefix='uwsm app -- '`                                                                                                                                                   |
+| fuzzel   | command   | `fuzzel --launch-prefix="uwsm app -- "`                                                                                                                                          |
+| walker   | config    | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             |
+| wofi     | shell     | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        |
+| wofi     | shell     | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` |
+| tofi     | shell     | `uwsm app -- $(tofi-drun)`                                                                                                                                                       |
+| rofi     | command   | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               |
 
 Compositor itself runs in `session.slice` which has priority in some resource
 allocation. It would be a bad practice to accumulate all apps there, and
