@@ -428,13 +428,14 @@ To launch any other app use:
 uwsm app -- {executable|entry.desktop[:action]} [args ...]
 ```
 
-A one-shot app launcher can be started directly, but configured to run
-things via `uwsm app` if it supports command prefixes. Some examples:
+A one-shot app launcher can be started directly, but either configured to run
+things via `uwsm app` or wrapped in a shell expression to handle output.
+Some examples:
 
 | Launcher | Where     | What                                                                                                                                                                             |
 | -------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| fuzzel   | config    | `launch-prefix='uwsm app -- '`                                                                                                                                                   |
 | fuzzel   | command   | `fuzzel --launch-prefix="uwsm app -- "`                                                                                                                                          |
+| fuzzel   | config    | `launch-prefix='uwsm app -- '`                                                                                                                                                   |
 | walker   | config    | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             |
 | wofi     | shell     | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        |
 | wofi     | shell     | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` |
