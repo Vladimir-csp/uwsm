@@ -25,6 +25,7 @@ class DbusInteractions:
             self._bus = None
             self.dbus_objects = {}
             self.dbus_objects["bus"] = self._get_bus()
+            self._proxies = {}
         else:
             raise ValueError(
                 f"dbus_level can be 'system' or 'session', got '{dbus_level}'"
@@ -42,15 +43,19 @@ class DbusInteractions:
             )
         return self._bus
 
+    def _get_proxy(self, service_key: str):
+        """Retrieve and cache a DBus object proxy for the given service."""
+        if service_key not in self._proxies:
+            bus_name, path = self._SERVICES[service_key]
+            self._proxies[service_key] = self._get_bus().get_object(bus_name, path)
+        return self._proxies[service_key]
+
     # Internal functions (adding objects)
 
     def add_systemd(self):
         """Adds /org/freedesktop/systemd1 object"""
         if "systemd" not in self.dbus_objects:
-            bus_name, path = self._SERVICES["systemd"]
-            self.dbus_objects["systemd"] = self.dbus_objects["bus"].get_object(
-                bus_name, path
-            )
+            self.dbus_objects["systemd"] = self._get_proxy("systemd")
 
     def add_systemd_manager_interface(self):
         "Adds org.freedesktop.systemd1.Manager method interface"
@@ -101,10 +106,7 @@ class DbusInteractions:
     def add_dbus(self):
         """Adds /org/freedesktop/DBus object"""
         if "dbus" not in self.dbus_objects:
-            bus_name, path = self._SERVICES["dbus"]
-            self.dbus_objects["dbus"] = self.dbus_objects["bus"].get_object(
-                bus_name, path
-            )
+            self.dbus_objects["dbus"] = self._get_proxy("dbus")
 
     def add_dbus_interface(self):
         "Adds org.freedesktop.DBus interface"
@@ -117,10 +119,7 @@ class DbusInteractions:
     def add_notifications(self):
         "Adds org.freedesktop.Notifications object"
         if "notifications" not in self.dbus_objects:
-            bus_name, path = self._SERVICES["notifications"]
-            self.dbus_objects["notifications"] = self.dbus_objects["bus"].get_object(
-                bus_name, path
-            )
+            self.dbus_objects["notifications"] = self._get_proxy("notifications")
 
     def add_notifications_interface(self):
         "Adds org.freedesktop.Notifications interface"
@@ -134,10 +133,7 @@ class DbusInteractions:
     def add_login(self):
         "Adds /org/freedesktop/login1 object"
         if "login" not in self.dbus_objects:
-            bus_name, path = self._SERVICES["login"]
-            self.dbus_objects["login"] = self.dbus_objects["bus"].get_object(
-                bus_name, path
-            )
+            self.dbus_objects["login"] = self._get_proxy("login")
 
     def add_login_manager_interface(self):
         "Adds org.freedesktop.login1.Manager method interface"
