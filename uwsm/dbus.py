@@ -5,6 +5,17 @@ from uwsm.misc import print_debug
 class DbusInteractions:
     "Handles UWSM interactions via DBus"
 
+    # mapping of logical service keys to (bus_name, object_path)
+    _SERVICES = {
+        "systemd": ("org.freedesktop.systemd1", "/org/freedesktop/systemd1"),
+        "dbus": ("org.freedesktop.DBus", "/org/freedesktop/DBus"),
+        "login": ("org.freedesktop.login1", "/org/freedesktop/login1"),
+        "notifications": (
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+        ),
+    }
+
     def __init__(self, dbus_level: str):
         "Takes dbus_level as 'system' or 'session'"
         if dbus_level in ["system", "session"]:
@@ -22,20 +33,23 @@ class DbusInteractions:
     def __str__(self):
         "Prints currently held dbus_objects for debug purposes"
         return f"DbusInteractions, instance level: {self.dbus_level}, instance objects:\n{str(self.dbus_objects)}"
-    
+
     def _get_bus(self):
         """Lazily return and cache the system or session bus."""
         if self._bus is None:
-            self._bus = dbus.SystemBus() if self._level == "system" else dbus.SessionBus()
+            self._bus = (
+                dbus.SystemBus() if self._level == "system" else dbus.SessionBus()
+            )
         return self._bus
 
     # Internal functions (adding objects)
 
     def add_systemd(self):
-        "Adds /org/freedesktop/systemd1 object"
+        """Adds /org/freedesktop/systemd1 object"""
         if "systemd" not in self.dbus_objects:
+            bus_name, path = self._SERVICES["systemd"]
             self.dbus_objects["systemd"] = self.dbus_objects["bus"].get_object(
-                "org.freedesktop.systemd1", "/org/freedesktop/systemd1"
+                bus_name, path
             )
 
     def add_systemd_manager_interface(self):
@@ -85,10 +99,11 @@ class DbusInteractions:
             )
 
     def add_dbus(self):
-        "Adds /org/freedesktop/DBus object"
+        """Adds /org/freedesktop/DBus object"""
         if "dbus" not in self.dbus_objects:
+            bus_name, path = self._SERVICES["dbus"]
             self.dbus_objects["dbus"] = self.dbus_objects["bus"].get_object(
-                "org.freedesktop.DBus", "/org/freedesktop/DBus"
+                bus_name, path
             )
 
     def add_dbus_interface(self):
@@ -102,8 +117,9 @@ class DbusInteractions:
     def add_notifications(self):
         "Adds org.freedesktop.Notifications object"
         if "notifications" not in self.dbus_objects:
+            bus_name, path = self._SERVICES["notifications"]
             self.dbus_objects["notifications"] = self.dbus_objects["bus"].get_object(
-                "org.freedesktop.Notifications", "/org/freedesktop/Notifications"
+                bus_name, path
             )
 
     def add_notifications_interface(self):
@@ -118,8 +134,9 @@ class DbusInteractions:
     def add_login(self):
         "Adds /org/freedesktop/login1 object"
         if "login" not in self.dbus_objects:
+            bus_name, path = self._SERVICES["login"]
             self.dbus_objects["login"] = self.dbus_objects["bus"].get_object(
-                "org.freedesktop.login1", "/org/freedesktop/login1"
+                bus_name, path
             )
 
     def add_login_manager_interface(self):
