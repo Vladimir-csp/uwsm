@@ -80,7 +80,7 @@ be used for distro level defaults.
 :  Default unit type for launching apps
 |  *DEBUG*
 :  Dump debug info to stderr
-|  *UWSM_WAIT_TIMEOUT*
+|  *UWSM_WAITENV_TIMEOUT*
 :  (float value)
 | 
 :  Seconds to wait for variables to appear in activation environment
