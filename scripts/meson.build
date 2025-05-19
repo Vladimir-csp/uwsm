@@ -49,10 +49,3 @@ if get_option('uwsm-app').allowed()
     pointing_to: 'uwsm-app',
   )
 endif
-
-install_data(
-  'uwsm-status.sh',
-  rename: 'uwsm-status',
-  install_dir: get_option('bindir'), 
-  install_mode: 'rwxr-xr-x'
-)
