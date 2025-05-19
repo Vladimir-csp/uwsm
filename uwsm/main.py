@@ -1828,7 +1828,7 @@ def remove_units(only=None) -> None:
                 continue
             print_debug("checking for removal:", file_path)
             try:
-                with open(file_path, "r", encoding="UTF=8") as unit_file:
+                with open(file_path, "r", encoding="utf-8") as unit_file:
                     for line in unit_file.readlines():
                         if (only and line.strip() == mark_attr) or (
                             not only and line.strip().startswith(mark_attr)
@@ -3507,6 +3507,7 @@ def app(
     fork=False,
     return_cmdline=False,
     silent=None,
+    workdir=None,
 ):
     """
     Exec given command or Desktop Entry via systemd-run in specific slice.
@@ -3558,6 +3559,13 @@ def app(
             print_debug("entry requested a terminal")
             terminal = True
 
+        # get workdir from Path
+        workdir = entry.getPath() or None
+        if workdir and not os.path.isdir(workdir):
+            raise OSError(
+                f'"Path" requested by entry "{main_arg.entry_id}" is not a directory: "{workdir}"'
+            )
+
         # set app name to entry id without extension if no override
         if not app_name:
             app_name = os.path.splitext(main_arg.entry_id)[0]
@@ -3607,6 +3615,7 @@ def app(
                         fork=True,
                         return_cmdline=return_cmdline,
                         silent=silent,
+                        workdir=workdir,
                     )
                 )
                 # add placeholder for rc
@@ -3826,7 +3835,7 @@ def app(
             f"--description={unit_description}",
             "--quiet",
             "--collect",
-            "--same-dir",
+            f"--working-directory={workdir}" if workdir else "--same-dir",
             "--",
             *(terminal_cmdline + terminal_execarg),
             *cmdline,
