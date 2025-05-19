@@ -4480,7 +4480,7 @@ def waitenv(varnames: List[str] = None, timeout=None, step=0.5, end_buffer=3):
     """Wait for variables to appear in activation environment"""
     if timeout is None:
         # Get timeout from env var or use default
-        timeout = float(os.getenv("UWSM_WAIT_TIMEOUT", "10"))
+        timeout = float(os.getenv("UWSM_WAITENV_TIMEOUT", "10"))
     if varnames is None:
         varnames = ["WAYLAND_DISPLAY"]
     else:
