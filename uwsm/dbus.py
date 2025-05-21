@@ -78,6 +78,16 @@ class DbusInteractions:
             self._interfaces[cache_key] = dbus.Interface(proxy, iface_name)
         return self._interfaces[cache_key]
 
+    def get_properties(
+        self, service_key: str, iface_key: str, iface_service: str, keys: list[str]
+    ):
+        """Retrieve and return the given properties from the specified DBus interface."""
+        iface: dbus.Interface = self._get_interface(service_key, iface_key)
+        props = {}
+        for key in keys:
+            props[key] = iface.Get(iface_service, key)
+        return props
+
     # Internal functions (adding objects)
 
     def add_systemd(self):
@@ -104,16 +114,9 @@ class DbusInteractions:
     def get_systemd_properties(self, keys):
         "Takes list of keys, returns dict of requested properties of systemd daemon"
         self.add_systemd_properties_interface()
-        props = {}
-        for key in keys:
-            props.update(
-                {
-                    key: self.dbus_objects["systemd_properties_interface"].Get(
-                        "org.freedesktop.systemd1.Manager", key
-                    )
-                }
-            )
-        return props
+        return self.get_properties(
+            "systemd", "properties", "org.freedesktop.systemd1.Manager", keys
+        )
 
     def add_systemd_unit_properties(self, unit_id):
         "Adds unit properties interface of unit_id into nested unit_properties dict"
@@ -177,16 +180,9 @@ class DbusInteractions:
     def get_login_properties(self, keys):
         "Takes list of keys, returns dict of requested properties of login daemon"
         self.add_login_properties_interface()
-        props = {}
-        for key in keys:
-            props.update(
-                {
-                    key: self.dbus_objects["login_properties_interface"].Get(
-                        "org.freedesktop.login1.Manager", key
-                    )
-                }
-            )
-        return props
+        return self.get_properties(
+            "login", "properties", "org.freedesktop.login1.Manager", keys
+        )
 
     # External functions (doing stuff via objects)
 
