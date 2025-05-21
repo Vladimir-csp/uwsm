@@ -16,6 +16,24 @@ class DbusInteractions:
         ),
     }
 
+    # mapping of service key -> { iface_key: iface_name, ... }
+    _INTERFACES = {
+        "systemd": {
+            "manager": "org.freedesktop.systemd1.Manager",
+            "properties": "org.freedesktop.DBus.Properties",
+        },
+        "dbus": {
+            "dbus": "org.freedesktop.DBus",
+        },
+        "login": {
+            "manager": "org.freedesktop.login1.Manager",
+            "properties": "org.freedesktop.DBus.Properties",
+        },
+        "notifications": {
+            "notify": "org.freedesktop.Notifications",
+        },
+    }
+
     def __init__(self, dbus_level: str):
         "Takes dbus_level as 'system' or 'session'"
         if dbus_level in ["system", "session"]:
@@ -26,6 +44,7 @@ class DbusInteractions:
             self.dbus_objects = {}
             self.dbus_objects["bus"] = self._get_bus()
             self._proxies = {}
+            self._interfaces = {}
         else:
             raise ValueError(
                 f"dbus_level can be 'system' or 'session', got '{dbus_level}'"
@@ -50,6 +69,15 @@ class DbusInteractions:
             self._proxies[service_key] = self._get_bus().get_object(bus_name, path)
         return self._proxies[service_key]
 
+    def _get_interface(self, service_key: str, iface_key: str):
+        """Retrieve and cache a DBus Interface for the given service and interface."""
+        cache_key = f"{service_key}_{iface_key}"
+        if cache_key not in self._interfaces:
+            proxy = self._get_proxy(service_key)
+            iface_name = self._INTERFACES[service_key][iface_key]
+            self._interfaces[cache_key] = dbus.Interface(proxy, iface_name)
+        return self._interfaces[cache_key]
+
     # Internal functions (adding objects)
 
     def add_systemd(self):
@@ -61,18 +89,16 @@ class DbusInteractions:
         "Adds org.freedesktop.systemd1.Manager method interface"
         self.add_systemd()
         if "systemd_manager_interface" not in self.dbus_objects:
-            self.dbus_objects["systemd_manager_interface"] = dbus.Interface(
-                self.dbus_objects["systemd"],
-                "org.freedesktop.systemd1.Manager",
+            self.dbus_objects["systemd_manager_interface"] = self._get_interface(
+                "systemd", "manager"
             )
 
     def add_systemd_properties_interface(self):
         "Adds org.freedesktop.systemd1.Manager properties interface"
         self.add_systemd()
         if "systemd_properties_interface" not in self.dbus_objects:
-            self.dbus_objects["systemd_properties_interface"] = dbus.Interface(
-                self.dbus_objects["systemd"],
-                "org.freedesktop.DBus.Properties",
+            self.dbus_objects["systemd_properties_interface"] = self._get_interface(
+                "systemd", "properties"
             )
 
     def get_systemd_properties(self, keys):
@@ -112,9 +138,7 @@ class DbusInteractions:
         "Adds org.freedesktop.DBus interface"
         self.add_dbus()
         if "dbus_interface" not in self.dbus_objects:
-            self.dbus_objects["dbus_interface"] = dbus.Interface(
-                self.dbus_objects["dbus"], "org.freedesktop.DBus"
-            )
+            self.dbus_objects["dbus_interface"] = self._get_interface("dbus", "dbus")
 
     def add_notifications(self):
         "Adds org.freedesktop.Notifications object"
@@ -125,9 +149,8 @@ class DbusInteractions:
         "Adds org.freedesktop.Notifications interface"
         self.add_notifications()
         if "notifications_interface" not in self.dbus_objects:
-            self.dbus_objects["notifications_interface"] = dbus.Interface(
-                self.dbus_objects["notifications"],
-                "org.freedesktop.Notifications",
+            self.dbus_objects["notifications_interface"] = self._get_interface(
+                "notifications", "notify"
             )
 
     def add_login(self):
@@ -139,18 +162,16 @@ class DbusInteractions:
         "Adds org.freedesktop.login1.Manager method interface"
         self.add_login()
         if "login_manager_interface" not in self.dbus_objects:
-            self.dbus_objects["login_manager_interface"] = dbus.Interface(
-                self.dbus_objects["login"],
-                "org.freedesktop.login1.Manager",
+            self.dbus_objects["login_manager_interface"] = self._get_interface(
+                "login", "manager"
             )
 
     def add_login_properties_interface(self):
         "Adds org.freedesktop.login1.Manager properties interface"
         self.add_login()
         if "login_properties_interface" not in self.dbus_objects:
-            self.dbus_objects["login_properties_interface"] = dbus.Interface(
-                self.dbus_objects["login"],
-                "org.freedesktop.DBus.Properties",
+            self.dbus_objects["login_properties_interface"] = self._get_interface(
+                "login", "properties"
             )
 
     def get_login_properties(self, keys):
