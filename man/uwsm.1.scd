@@ -360,7 +360,7 @@ Application-to-unit launcher with Desktop Entry support.
 
 
 Application can be provided as a command with optional arguments, or a Desktop
-Entry ID, optionally suffixed with "*:*"-delimited Action ID. If Destop Entry
+Entry ID, optionally suffixed with "*:*"-delimited Action ID. If Desktop Entry
 is being launched, arguments should be compatible with it.
 
 Always use "*--*" to disambiguate dashed arguments intended for application

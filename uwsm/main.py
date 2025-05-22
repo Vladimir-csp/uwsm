@@ -491,7 +491,7 @@ def entry_parser_session(entry_id, entry_path):
 def entry_parser_by_ids(entry_id, entry_path, match_entry_id, match_entry_action):
     """
     Takes entry_id, entry_path, match_entry_id, match_entry_action
-    matches, performs basic checks if mached
+    matches, performs basic checks if matched
     returns ('return', entry) on success, ('drop', None) if not matched,
     or raises RuntimeError on validation failure
     """
@@ -665,7 +665,7 @@ def find_entries(
 
 
 def get_default_comp_entry():
-    "Gets compositor Desktop Entry ID from {BIN_NAME}/default-id file in config hierarchy and fallback system data hiearchy"
+    "Gets compositor Desktop Entry ID from {BIN_NAME}/default-id file in config hierarchy and fallback system data hierarchy"
     config_file = ""
     for check_config_file in BaseDirectory.load_config_paths(f"{BIN_NAME}/default-id"):
         if os.path.isfile(check_config_file):
@@ -2716,7 +2716,7 @@ def prepare_env_gen_sh(random_mark, load_profile: bool = False):
     shell_main_body = dedent(
         r"""
         reverse() {
-        	# returns list $1 delimited by ${2:-:} in reverese
+        	# returns list $1 delimited by ${2:-:} in reverse
         	__REVERSE_OUT__=''
         	IFS="${2:-:}"
         	for __ITEM__ in $1; do
@@ -3087,7 +3087,7 @@ def prepare_env():
     cleanup_varnames = set(set_env.keys()) - Varnames.never_cleanup
 
     # write cleanup file
-    # first get exitsing vars if cleanup file already exists
+    # first get existing vars if cleanup file already exists
     append_to_cleanup_file(cleanup_varnames, create=True)
 
     # export env to systemd user manager
@@ -3471,7 +3471,7 @@ def read_neg_cache(name: str) -> dict:
         except Exception as caught_exception:
             # just remove it if something is wrong
             print_debug(
-                f"Removing cahce file {neg_cache_path} due to: {caught_exception}"
+                f"Removing cache file {neg_cache_path} due to: {caught_exception}"
             )
             os.remove(neg_cache_path)
     else:
@@ -4450,7 +4450,7 @@ def stop_wm():
         print_ok("Compositor is not running.")
         return False
 
-    # this really shoud not happen
+    # this really should not happen
     if len(units) > 1:
         print_warning(f"Multiple compositor units found: {', '.join(units)}!")
 

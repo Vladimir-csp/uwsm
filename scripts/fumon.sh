@@ -23,7 +23,7 @@ list_contains() {
 }
 
 list_add() {
-	# append list with item, retrun new list, separated by separator
+	# append list with item, return new list, separated by separator
 	ALIST=$1
 	AITEM=$2
 	ASEP=${3:- }
@@ -35,7 +35,7 @@ list_add() {
 }
 
 list_del() {
-	# deprive list of item, retrun new list
+	# deprive list of item, return new list
 	DLIST=$1
 	DITEM=$2
 	DSEP=${3:- }
@@ -82,7 +82,7 @@ simple_sub() {
 	OUT=''
 
 	while [ -n "$RIGHT" ]; do
-		# get LEFT from first $SEARCH occurance
+		# get LEFT from first $SEARCH occurrence
 		LEFT="${RIGHT%%"${SEARCH}"*}"
 		# return if nothing else to replace
 		if [ "$LEFT" = "$RIGHT" ]; then
@@ -91,7 +91,7 @@ simple_sub() {
 		fi
 		# APPEND substituted LEFT to OUT
 		OUT="${OUT}${LEFT}${SUB}"
-		# get RIGHT from first $SEARCH occurance
+		# get RIGHT from first $SEARCH occurrence
 		RIGHT=${RIGHT#*"${SEARCH}"}
 	done
 	printf "%s" "$OUT"
