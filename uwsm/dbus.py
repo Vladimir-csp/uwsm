@@ -41,8 +41,6 @@ class DbusInteractions:
             self.dbus_level = dbus_level
             self._level = dbus_level
             self._bus = None
-            self.dbus_objects = {}
-            self.dbus_objects["bus"] = self._get_bus()
             self._proxies = {}
             self._interfaces = {}
         else:
@@ -52,7 +50,7 @@ class DbusInteractions:
 
     def __str__(self):
         "Prints currently held dbus_objects for debug purposes"
-        return f"DbusInteractions, instance level: {self.dbus_level}, instance objects:\n{str(self.dbus_objects)}"
+        return f"DbusInteractions, instance level: {self.dbus_level}, instance objects:\n{str(self._interfaces)}"
 
     def _get_bus(self):
         """Lazily return and cache the system or session bus."""
