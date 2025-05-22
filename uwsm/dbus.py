@@ -104,84 +104,14 @@ class DbusInteractions:
             props[key] = iface.Get(iface_service, key)
         return props
 
-    # Internal functions (adding objects)
-
-    def add_systemd(self):
-        """Adds /org/freedesktop/systemd1 object"""
-        if "systemd" not in self.dbus_objects:
-            self.dbus_objects["systemd"] = self._get_proxy("systemd")
-
-    def add_systemd_manager_interface(self):
-        "Adds org.freedesktop.systemd1.Manager method interface"
-        self.add_systemd()
-        if "systemd_manager_interface" not in self.dbus_objects:
-            self.dbus_objects["systemd_manager_interface"] = self._get_interface(
-                "systemd", "manager"
-            )
-
-    def add_systemd_properties_interface(self):
-        "Adds org.freedesktop.systemd1.Manager properties interface"
-        self.add_systemd()
-        if "systemd_properties_interface" not in self.dbus_objects:
-            self.dbus_objects["systemd_properties_interface"] = self._get_interface(
-                "systemd", "properties"
-            )
-
     def get_systemd_properties(self, keys):
         "Takes list of keys, returns dict of requested properties of systemd daemon"
-        self.add_systemd_properties_interface()
         return self.get_properties(
             "systemd", "properties", "org.freedesktop.systemd1.Manager", keys
         )
 
-    def add_dbus(self):
-        """Adds /org/freedesktop/DBus object"""
-        if "dbus" not in self.dbus_objects:
-            self.dbus_objects["dbus"] = self._get_proxy("dbus")
-
-    def add_dbus_interface(self):
-        "Adds org.freedesktop.DBus interface"
-        self.add_dbus()
-        if "dbus_interface" not in self.dbus_objects:
-            self.dbus_objects["dbus_interface"] = self._get_interface("dbus", "dbus")
-
-    def add_notifications(self):
-        "Adds org.freedesktop.Notifications object"
-        if "notifications" not in self.dbus_objects:
-            self.dbus_objects["notifications"] = self._get_proxy("notifications")
-
-    def add_notifications_interface(self):
-        "Adds org.freedesktop.Notifications interface"
-        self.add_notifications()
-        if "notifications_interface" not in self.dbus_objects:
-            self.dbus_objects["notifications_interface"] = self._get_interface(
-                "notifications", "notify"
-            )
-
-    def add_login(self):
-        "Adds /org/freedesktop/login1 object"
-        if "login" not in self.dbus_objects:
-            self.dbus_objects["login"] = self._get_proxy("login")
-
-    def add_login_manager_interface(self):
-        "Adds org.freedesktop.login1.Manager method interface"
-        self.add_login()
-        if "login_manager_interface" not in self.dbus_objects:
-            self.dbus_objects["login_manager_interface"] = self._get_interface(
-                "login", "manager"
-            )
-
-    def add_login_properties_interface(self):
-        "Adds org.freedesktop.login1.Manager properties interface"
-        self.add_login()
-        if "login_properties_interface" not in self.dbus_objects:
-            self.dbus_objects["login_properties_interface"] = self._get_interface(
-                "login", "properties"
-            )
-
     def get_login_properties(self, keys):
         "Takes list of keys, returns dict of requested properties of login daemon"
-        self.add_login_properties_interface()
         return self.get_properties(
             "login", "properties", "org.freedesktop.login1.Manager", keys
         )
@@ -195,33 +125,27 @@ class DbusInteractions:
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"
-        self.add_systemd_manager_interface()
         return self.dbus_objects["systemd_manager_interface"].Reload()
 
     def list_systemd_jobs(self):
         "Lists systemd jobs"
-        self.add_systemd_manager_interface()
         return self.dbus_objects["systemd_manager_interface"].ListJobs()
 
     def set_dbus_vars(self, vars_dict: dict):
         "Takes dict of ENV vars, puts them to dbus activation environment"
-        self.add_dbus_interface()
         self.dbus_objects["dbus_interface"].UpdateActivationEnvironment(vars_dict)
 
     def set_systemd_vars(self, vars_dict: dict):
         "Takes dict of ENV vars, puts them to systemd activation environment"
-        self.add_systemd_manager_interface()
         assignments = [f"{var}={value}" for var, value in vars_dict.items()]
         self.dbus_objects["systemd_manager_interface"].SetEnvironment(assignments)
 
     def unset_systemd_vars(self, vars_list: list):
         "Takes list of ENV var names, unsets them from systemd activation environment"
-        self.add_systemd_manager_interface()
         self.dbus_objects["systemd_manager_interface"].UnsetEnvironment(vars_list)
 
     def get_systemd_vars(self):
         "Returns dict of ENV vars from systemd activation environment"
-        self.add_systemd_properties_interface()
         assignments = self.dbus_objects["systemd_properties_interface"].Get(
             "org.freedesktop.systemd1.Manager", "Environment"
         )
@@ -235,23 +159,19 @@ class DbusInteractions:
 
     def list_units_by_patterns(self, states: list, patterns: list):
         "Takes a list of unit states and a list of unit patterns, returns list of dbus structs"
-        self.add_systemd_manager_interface()
         return self.dbus_objects["systemd_manager_interface"].ListUnitsByPatterns(
             states, patterns
         )
 
     def stop_unit(self, unit: str, job_mode: str = "fail"):
-        self.add_systemd_manager_interface()
         return self.dbus_objects["systemd_manager_interface"].StopUnit(unit, job_mode)
 
     def list_login_sessions(self):
         "Lists login sessions"
-        self.add_login_manager_interface()
         return self.dbus_objects["login_manager_interface"].ListSessions()
 
     def list_login_sessions_ex(self):
         "Lists login sessions"
-        self.add_login_manager_interface()
         return self.dbus_objects["login_manager_interface"].ListSessionsEx()
 
     def notify(
@@ -279,7 +199,6 @@ class DbusInteractions:
             raise ValueError(f"Urgency range is 0-2, got {urgency}")
         # plain integer does not work
         hints.update({"urgency": dbus.Byte(urgency)})
-        self.add_notifications_interface()
         self.dbus_objects["notifications_interface"].Notify(
             app_name,
             replaces_id,
