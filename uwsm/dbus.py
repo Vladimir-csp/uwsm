@@ -125,28 +125,28 @@ class DbusInteractions:
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"
-        return self.dbus_objects["systemd_manager_interface"].Reload()
+        return self._get_interface("systemd", "manager").Reload()
 
     def list_systemd_jobs(self):
         "Lists systemd jobs"
-        return self.dbus_objects["systemd_manager_interface"].ListJobs()
+        return self._get_interface("systemd", "manager").ListJobs()
 
     def set_dbus_vars(self, vars_dict: dict):
         "Takes dict of ENV vars, puts them to dbus activation environment"
-        self.dbus_objects["dbus_interface"].UpdateActivationEnvironment(vars_dict)
+        self._get_interface("dbus", "dbus").UpdateActivationEnvironment(vars_dict)
 
     def set_systemd_vars(self, vars_dict: dict):
         "Takes dict of ENV vars, puts them to systemd activation environment"
         assignments = [f"{var}={value}" for var, value in vars_dict.items()]
-        self.dbus_objects["systemd_manager_interface"].SetEnvironment(assignments)
+        self._get_interface("systemd", "manager").SetEnvironment(assignments)
 
     def unset_systemd_vars(self, vars_list: list):
         "Takes list of ENV var names, unsets them from systemd activation environment"
-        self.dbus_objects["systemd_manager_interface"].UnsetEnvironment(vars_list)
+        self._get_interface("systemd", "manager").UnsetEnvironment(vars_list)
 
     def get_systemd_vars(self):
         "Returns dict of ENV vars from systemd activation environment"
-        assignments = self.dbus_objects["systemd_properties_interface"].Get(
+        assignments = self._get_interface("systemd", "properties").Get(
             "org.freedesktop.systemd1.Manager", "Environment"
         )
         # Environment is returned as array of assignment strings
@@ -159,20 +159,20 @@ class DbusInteractions:
 
     def list_units_by_patterns(self, states: list, patterns: list):
         "Takes a list of unit states and a list of unit patterns, returns list of dbus structs"
-        return self.dbus_objects["systemd_manager_interface"].ListUnitsByPatterns(
+        return self._get_interface("systemd", "manager").ListUnitsByPatterns(
             states, patterns
         )
 
     def stop_unit(self, unit: str, job_mode: str = "fail"):
-        return self.dbus_objects["systemd_manager_interface"].StopUnit(unit, job_mode)
+        return self._get_interface("systemd", "manager").StopUnit(unit, job_mode)
 
     def list_login_sessions(self):
         "Lists login sessions"
-        return self.dbus_objects["login_manager_interface"].ListSessions()
+        return self._get_interface("login", "manager").ListSessions()
 
     def list_login_sessions_ex(self):
         "Lists login sessions"
-        return self.dbus_objects["login_manager_interface"].ListSessionsEx()
+        return self._get_interface("login", "manager").ListSessionsEx()
 
     def notify(
         self,
@@ -181,13 +181,14 @@ class DbusInteractions:
         app_name: str = "UWSM",
         replaces_id: int = 0,
         app_icon: str = "desktop",
-        actions: list = None,
-        hints: dict = None,
+        actions: list | None = None,
+        hints: dict | None = None,
         expire_timeout: int = -1,
         # custom helpers
         urgency: int = 1,
     ):
         "Sends notification via Dbus"
+        iface = self._get_interface("notifications", "notify")
         if actions is None:
             # actions = dbus.Array([], signature='as')
             actions = []
@@ -198,8 +199,8 @@ class DbusInteractions:
         if not 0 <= urgency <= 2:
             raise ValueError(f"Urgency range is 0-2, got {urgency}")
         # plain integer does not work
-        hints.update({"urgency": dbus.Byte(urgency)})
-        self.dbus_objects["notifications_interface"].Notify(
+        hints["urgency"] = dbus.Byte(urgency)
+        iface.Notify(
             app_name,
             replaces_id,
             app_icon,
