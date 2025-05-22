@@ -2136,7 +2136,7 @@ class Args:
             help="Application unit launcher",
             description="Launches application as a scope or service in specific slice.",
             epilog=dedent(
-                f"""
+                """
                 It is highly recommended to configure your compositor to launch apps
                 via this command to fully utilize user-level systemd unit management.\n
                 It would not be prudent to accumulate app processes in compositor's unit.
@@ -2954,7 +2954,7 @@ def prepare_env():
     # get login session environment saved by uwsm start
     env_login = load_env("env_login", delete=True)
     if env_login:
-        print_normal(f"Got saved login session variables.")
+        print_normal("Got saved login session variables.")
 
     # if XDG_SEAT or XDG_SESSION_ID from login context are not known, deduce them.
     if (
