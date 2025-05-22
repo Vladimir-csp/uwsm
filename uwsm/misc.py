@@ -36,6 +36,13 @@ class LogFlag:
     prefix = False
 
 
+class NoStdOutFlag:
+    "Holds global state for inhibiting stdout printing"
+
+    nostdout = False
+    nowarn = False
+
+
 class Styles:
     "Terminal control characters for color and style"
 
@@ -100,8 +107,11 @@ def print_normal(*what, **how):
     optional 'log': False
     """
     log = how.pop("log", LogFlag.log)
+    nostdout = how.pop("nostdout", NoStdOutFlag.nostdout)
+    file = how.get("file", sys.stdout)
 
-    print(*what, **how, flush=True)
+    if not (nostdout and file == sys.stdout):
+        print(*what, **how, flush=True)
 
     if log:
         # print to fake file before printing to log
@@ -129,12 +139,14 @@ def print_fancy(*what, **how):
     log = how.pop("log", LogFlag.log)
     loglevel = how.pop("loglevel", 5)
     logprefix = how.pop("logprefix", LogFlag.prefix)
+    nostdout = how.pop("nostdout", NoStdOutFlag.nostdout)
 
     # print colored text for interactive output
     if file.isatty():
-        print(color, end="", file=file, flush=True)
-        print(*what, **how, file=file, flush=True)
-        print(Styles.reset, end="", file=file, flush=True)
+        if not (nostdout and file == sys.stdout):
+            print(color, end="", file=file, flush=True)
+            print(*what, **how, file=file, flush=True)
+            print(Styles.reset, end="", file=file, flush=True)
     # print lines prefixed with loglevel for journal
     elif logprefix:
         # print to fake file, add line prefixes, print for real
@@ -168,6 +180,7 @@ def print_fancy(*what, **how):
         try:
             # TODO: revisit import placement
             from uwsm.dbus import DbusInteractions
+
             bus_session = DbusInteractions("session")
             msg = str(*what)
             bus_session.notify(summary="Message", body=msg, urgency=notify_urgency)
@@ -223,6 +236,8 @@ def print_warning(*what, **how):
     log = how.pop("log", LogFlag.log)
     loglevel = how.pop("loglevel", 4)
     logprefix = how.pop("logprefix", LogFlag.prefix)
+    # special handling for warnings
+    nostdout = how.pop("nostdout", NoStdOutFlag.nostdout and NoStdOutFlag.nowarn)
 
     print_fancy(
         *what,
@@ -234,6 +249,7 @@ def print_warning(*what, **how):
         log=log,
         loglevel=loglevel,
         logprefix=logprefix,
+        nostdout=nostdout,
     )
 
 
@@ -295,6 +311,7 @@ if DebugFlag.debug:
             log=log,
             loglevel=loglevel,
             logprefix=logprefix,
+            nostdout=False,
         )
 
 else:
@@ -302,13 +319,3 @@ else:
     def print_debug(*what, **how):
         "Does nothing"
         pass
-
-
-def print_style(stls, *what, **how):
-    "Prints selected style(s), then args, then resets"
-    if isinstance(stls, str):
-        stls = [stls]
-    for style in stls:
-        print(style, end="", flush=True)
-    print(*what, **how, flush=True)
-    print(Styles.reset, end="", file=sys.stderr, flush=True)

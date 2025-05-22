@@ -78,13 +78,20 @@ be used for distro level defaults.
 :  (*service*|*scope*)
 | 
 :  Default unit type for launching apps
-|  *DEBUG*
-:  Dump debug info to stderr
 |  *UWSM_WAITENV_TIMEOUT*
-:  (float value)
+:  (int value)
 | 
 :  Seconds to wait for variables to appear in activation environment
    (default: 10)
+|  *UWSM_SILENT_START*
+:  (int or boolean value)
+| 
+:  _True_ or *1* to inhibit stdout messages from *uwsm start*. *2* to also
+   inhibit warnings.
+|  *DEBUG*
+:  (int or boolean value)
+| 
+:  _True_ or positive number to dump debug info to stderr
 
 # OPERATION OVERVIEW
 

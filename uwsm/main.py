@@ -4604,6 +4604,30 @@ def main():
         # also send output to log if starting for real
         LogFlag.log = not Args.parsed.dry_run and not Args.parsed.only_generate
 
+        # silent start mode
+        silent_start = os.getenv("UWSM_SILENT_START", "0")
+        if silent_start.isnumeric():
+            silent_start = int(silent_start)
+            NoStdOutFlag.nowarn = silent_start > 1
+            silent_start = silent_start > 0
+        elif not silent_start:
+            silent_start = False
+        elif silent_start.lower().capitalize() in ("Yes", "True", "Y"):
+            silent_start = True
+        elif not silent_start or silent_start.lower().capitalize() in (
+            "No",
+            "False",
+            "N",
+        ):
+            silent_start = False
+        else:
+            print_warning(
+                f'Expected boolean or numeric or empty value for UWSM_SILENT_START, got "{silent_start}", assuming False'
+            )
+            silent_start = False
+
+        NoStdOutFlag.nostdout = silent_start
+
         # check for graphical target if starting for real
         if (
             (Args.parsed.gst_warn_seconds >= 0 or Args.parsed.gst_abort_seconds >= 0)
@@ -4632,7 +4656,7 @@ def main():
                             "System has not reached graphical.target. Aborting."
                         )
                         sys.exit(1)
-                    elif Args.parsed.gst_warn_seconds >= 0:
+                    elif Args.parsed.gst_warn_seconds >= 0 and not NoStdOutFlag.nowarn:
                         print_warning(
                             dedent(
                                 """
