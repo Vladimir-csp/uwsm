@@ -4485,9 +4485,23 @@ def waitpid(pid: int):
     return
 
 
-def waitenv(varnames: List[str] = None, timeout=10, step=0.5, end_buffer=3):
-    "Waits for varnames to appear in activation environment"
-
+def waitenv(varnames: List[str] = None, timeout=None, step=0.5, end_buffer=3):
+    """Wait for variables to appear in activation environment"""
+    if timeout is None:
+        # Get timeout from env var or use default
+        timeout = os.getenv("UWSM_WAITENV_TIMEOUT", "10")
+        if timeout.isnumeric():
+            timeout = int(timeout)
+            if timeout < 1:
+                print_warning(
+                    f"Expected positive value from UWSM_WAITENV_TIMEOUT var, got: {timeout}"
+                )
+                timeout = 10
+        else:
+            print_warning(
+                f"Expected numeric value from UWSM_WAITENV_TIMEOUT var, got: {timeout}"
+            )
+            timeout = 10
     if varnames is None:
         varnames = ["WAYLAND_DISPLAY"]
     else:
