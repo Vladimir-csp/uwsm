@@ -166,6 +166,8 @@ def print_fancy(*what, **how):
 
     if notify and (not file.isatty() or notify == 2):
         try:
+            # TODO: revisit import placement
+            from uwsm.dbus import DbusInteractions
             bus_session = DbusInteractions("session")
             msg = str(*what)
             bus_session.notify(summary="Message", body=msg, urgency=notify_urgency)
