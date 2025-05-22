@@ -78,6 +78,22 @@ class DbusInteractions:
             self._interfaces[cache_key] = dbus.Interface(proxy, iface_name)
         return self._interfaces[cache_key]
 
+    def _get_unit_properties_iface(self, unit_id: str):
+        """Retrieve and cache a DBus.Properties interface for the given systemd unit."""
+        cache_key = f"unit_props_{unit_id}"
+        if cache_key not in self._interfaces:
+            # manager interface for systemd
+            manager: dbus.Interface = self._get_interface("systemd", "manager")
+            # get the unit object path
+            unit_path = manager.GetUnit(unit_id)
+            # fetch the raw object proxy
+            unit_obj = self._get_bus().get_object("org.freedesktop.systemd1", unit_path)
+            # wrap it in the standard Properties interface
+            self._interfaces[cache_key] = dbus.Interface(
+                unit_obj, "org.freedesktop.DBus.Properties"
+            )
+        return self._interfaces[cache_key]
+
     def get_properties(
         self, service_key: str, iface_key: str, iface_service: str, keys: list[str]
     ):
@@ -117,20 +133,6 @@ class DbusInteractions:
         return self.get_properties(
             "systemd", "properties", "org.freedesktop.systemd1.Manager", keys
         )
-
-    def add_systemd_unit_properties(self, unit_id):
-        "Adds unit properties interface of unit_id into nested unit_properties dict"
-        self.add_systemd_manager_interface()
-        unit_path = self.dbus_objects["bus"].get_object(
-            "org.freedesktop.systemd1",
-            self.dbus_objects["systemd_manager_interface"].GetUnit(unit_id),
-        )
-        if "unit_properties" not in self.dbus_objects:
-            self.dbus_objects["unit_properties"] = {}
-        if unit_id not in self.dbus_objects["unit_properties"]:
-            self.dbus_objects["unit_properties"][unit_id] = dbus.Interface(
-                unit_path, "org.freedesktop.DBus.Properties"
-            )
 
     def add_dbus(self):
         """Adds /org/freedesktop/DBus object"""
@@ -188,10 +190,8 @@ class DbusInteractions:
 
     def get_unit_property(self, unit_id, unit_property):
         "Returns value of unit property"
-        self.add_systemd_unit_properties(unit_id)
-        return self.dbus_objects["unit_properties"][unit_id].Get(
-            "org.freedesktop.systemd1.Unit", unit_property
-        )
+        iface = self._get_unit_properties_iface(unit_id)
+        return iface.Get("org.freedesktop.systemd1.Unit", unit_property)
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"
