@@ -380,7 +380,7 @@ Timeout for unit startup is 10 seconds.
 
 ### 3. Applications and Slices
 
-Applications should be lanuched in their own user-level systemd units.
+Applications should be launched in their own user-level systemd units.
 
 Some applications (usually those intended to be autostarted in a graphical
 session) are shipped with their own units. Check and enable them with:
@@ -476,7 +476,7 @@ By default `uwsm` launches the compositor's service as
 Processes descendent from the compositor will be a part of its unit which
 **might** be mostly OK for short-lived one-off commands, i.e. volume adjustment.
 But processes inside comopositor's unit have access to its notification socket,
-which may lead to unforseen consequences.
+which may lead to unforeseen consequences.
 
 Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
@@ -744,7 +744,7 @@ Type=Application
 Things to keep in mind:
 
 - Command in `Exec=` should start with `uwsm start`.
-- If command references an exeutable, keys of the entry should be mirrored in
+- If command references an executable, keys of the entry should be mirrored in
   arguments, because otherwise `uwsm` will not have access to those strings.
 - It should not point to itself (as a combination of Desktop Entry ID and Action
   ID).
