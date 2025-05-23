@@ -6,7 +6,7 @@ UWSM(1)
 
 # SYNOPSIS
 
-*uwsm* [-h] {_subcommand_} [_options_ ...]
+*uwsm* [-h|-v] {_subcommand_} [_options_ ...]
 
 # DESCRIPTION
 

@@ -35,7 +35,7 @@ from xdg.util import which
 from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
-from uwsm.params import BIN_NAME, BIN_PATH
+from uwsm.params import BIN_NAME, BIN_PATH, PROJECT_VERSION
 from uwsm.misc import *
 from uwsm.dbus import DbusInteractions
 
@@ -2405,6 +2405,13 @@ class Args:
             nargs="*",
             metavar="VAR_NAME",
             help="Names of additional variables to wait for",
+        )
+        parsers["version"] = parsers["main"].add_argument(
+            "-v",
+            "--version",
+            help="print version and exit",
+            action="version",
+            version=f"{BIN_NAME} {PROJECT_VERSION}",
         )
 
         if custom_args is None:
