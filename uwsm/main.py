@@ -35,7 +35,7 @@ from xdg.util import which
 from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
-from uwsm.params import *
+from uwsm.params import BIN_NAME, BIN_PATH
 from uwsm.misc import *
 from uwsm.dbus import DbusInteractions
 
