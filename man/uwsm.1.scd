@@ -60,29 +60,32 @@ be used for distro level defaults.
 |[ *UWSM_USE_SESSION_SLICE*
 :< (*true*|*false*)
 | 
-:  Put compositor unit in *session.slice*
+:  Whether to put compositor unit in *session.slice*.
+   (default: *true*)
 |  *UWSM_FINALIZE_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
-:  Additional variables for "*uwsm finalize*"
+:  Additional variables for "*uwsm finalize*".
 |  *UWSM_WAIT_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
 :  Variables to wait for in activation environment before proceeding to
-   graphical session (in addition to *WAYLAND_DISPLAY*)
+   graphical session (in addition to *WAYLAND_DISPLAY*).
+|  *UWSM_WAIT_VARNAMES_TIMEOUT*
+:  (int value)
+| 
+:  Seconds to wait for variables to appear in activation environment.
+   Essentially, startup timeout.
+   (default: 10)
 |  *UWSM_WAIT_VARNAMES_SETTLETIME*
 :  (float value)
 | 
-:  Seconds to pause after all expected vars found in activation environment
+:  Seconds to pause after all expected vars found in activation environment.
+   (default: 0.2)
 |  *UWSM_APP_UNIT_TYPE*
 :  (*service*|*scope*)
 | 
-:  Default unit type for launching apps
-|  *UWSM_WAITENV_TIMEOUT*
-:  (int value)
-| 
-:  Seconds to wait for variables to appear in activation environment
-   (default: 10)
+:  Default unit type for launching apps.
 |  *UWSM_SILENT_START*
 :  (int or boolean value)
 | 
@@ -91,7 +94,7 @@ be used for distro level defaults.
 |  *DEBUG*
 :  (int or boolean value)
 | 
-:  _True_ or positive number to dump debug info to stderr
+:  _True_ or positive number to dump debug info to stderr.
 
 # OPERATION OVERVIEW
 

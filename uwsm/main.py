@@ -1421,6 +1421,7 @@ def generate_units():
     )
 
     # services
+    waitenv_timeout = get_waitenv_timeout()
     update_unit(
         "wayland-wm-env@.service",
         dedent(
@@ -1482,7 +1483,7 @@ def generate_units():
             NotifyAccess=all
             ExecStart={BIN_PATH} aux exec -- %I
             Restart=no
-            TimeoutStartSec=10
+            TimeoutStartSec={waitenv_timeout}
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
             Slice={wayland_wm_slice}
@@ -1511,7 +1512,7 @@ def generate_units():
             RemainAfterExit=no
             ExecStart={BIN_PATH} aux waitenv
             Restart=no
-            TimeoutStartSec=10
+            TimeoutStartSec={waitenv_timeout}
             SyslogIdentifier={BIN_NAME}_waitenv
             Slice=background.slice
             """
@@ -4492,23 +4493,31 @@ def waitpid(pid: int):
     return
 
 
-def waitenv(varnames: List[str] = None, timeout=None, step=0.5, end_buffer=3):
+def get_waitenv_timeout(default=10):
+    "Gets waitenv timeout from UWSM_WAIT_VARNAMES_TIMEOUT env var or use default"
+    timeout = os.getenv("UWSM_WAIT_VARNAMES_TIMEOUT", str(default))
+    if timeout.isnumeric():
+        timeout = int(timeout)
+        if timeout < 1:
+            print_warning(
+                f"Expected positive value from UWSM_WAIT_VARNAMES_TIMEOUT var, got: {timeout}"
+            )
+            timeout = default
+    else:
+        print_warning(
+            f"Expected integer value from UWSM_WAIT_VARNAMES_TIMEOUT var, got: {timeout}"
+        )
+        timeout = default
+
+    return timeout
+
+
+def waitenv(
+    varnames: List[str] = None, timeout: int | None = None, step=0.5, end_buffer=3
+):
     """Wait for variables to appear in activation environment"""
     if timeout is None:
-        # Get timeout from env var or use default
-        timeout = os.getenv("UWSM_WAITENV_TIMEOUT", "10")
-        if timeout.isnumeric():
-            timeout = int(timeout)
-            if timeout < 1:
-                print_warning(
-                    f"Expected positive value from UWSM_WAITENV_TIMEOUT var, got: {timeout}"
-                )
-                timeout = 10
-        else:
-            print_warning(
-                f"Expected numeric value from UWSM_WAITENV_TIMEOUT var, got: {timeout}"
-            )
-            timeout = 10
+        timeout = get_waitenv_timeout()
     if varnames is None:
         varnames = ["WAYLAND_DISPLAY"]
     else:
