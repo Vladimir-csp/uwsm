@@ -9,22 +9,40 @@ from io import StringIO
 from typing import List
 
 
+def str2bool_plus(string: str, numeric: bool = False):
+    "Takes boolean'ish or numeric string, converts to bool or int"
+    if string.isnumeric():
+        number = int(string)
+        if numeric:
+            return number
+        return number > 0
+    elif not string or string.lower().capitalize() in (
+        "No",
+        "False",
+        "N",
+    ):
+        if numeric:
+            return 0
+        return False
+    elif string.lower().capitalize() in ("Yes", "True", "Y"):
+        if numeric:
+            return 1
+        return True
+    else:
+        raise ValueError(f'Expected boolean or numeric or empty value, got "{string}"')
+
+
 class DebugFlag:
     "Checks for DEBUG env value and holds 'debug' boolean, 'warning' string"
 
-    debug = os.getenv("DEBUG", "0")
+    debug_raw = os.getenv("DEBUG", "0")
     warning = None
-    if debug.isnumeric():
-        debug = int(debug) > 0
-    elif not debug:
+    try:
+        debug = str2bool_plus(debug_raw)
+    except ValueError:
+        warning = f'Expected boolean or numeric or empty value for DEBUG, got "{debug_raw}", assuming False'
         debug = False
-    elif debug.lower().capitalize() in ("Yes", "True", "Y"):
-        debug = True
-    elif not debug or debug.lower().capitalize() in ("No", "False", "N"):
-        debug = False
-    else:
-        warning = f'Expected boolean or numeric or empty value for DEBUG, got "{debug}", assuming False'
-        debug = False
+    del debug_raw
 
 
 class LogFlag:

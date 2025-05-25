@@ -58,10 +58,10 @@ be used for distro level defaults.
 ## Environment vars
 
 |[ *UWSM_USE_SESSION_SLICE*
-:< (*true*|*false*)
+:< (boolean value)
 | 
 :  Whether to put compositor unit in *session.slice*.
-   (default: *true*)
+   (default: _True_)
 |  *UWSM_FINALIZE_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 

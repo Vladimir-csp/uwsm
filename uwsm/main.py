@@ -2016,16 +2016,18 @@ class Args:
                 """
             ),
         )
-        use_session_slice = os.getenv("UWSM_USE_SESSION_SLICE", None)
-        if use_session_slice is None:
-            pass
-        elif use_session_slice in ("true", "false"):
-            use_session_slice = {"true": True, "false": False}[use_session_slice]
-        else:
-            print_warning(
-                f'invalid UWSM_USE_SESSION_SLICE value "{use_session_slice}" ignored, set to soft "true".'
-            )
+        use_session_slice_raw = os.getenv("UWSM_USE_SESSION_SLICE", None)
+        if use_session_slice_raw is None:
             use_session_slice = None
+        else:
+            try:
+                use_session_slice = str2bool_plus(use_session_slice_raw)
+            except ValueError:
+                print_warning(
+                    f"Expected boolean value from UWSM_USE_SESSION_SLICE, got: {use_session_slice_raw}"
+                )
+                use_session_slice = None
+        del use_session_slice_raw
         parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_slice"].add_argument(
             "-S",
@@ -4621,28 +4623,18 @@ def main():
         LogFlag.log = not Args.parsed.dry_run and not Args.parsed.only_generate
 
         # silent start mode
-        silent_start = os.getenv("UWSM_SILENT_START", "0")
-        if silent_start.isnumeric():
-            silent_start = int(silent_start)
-            NoStdOutFlag.nowarn = silent_start > 1
-            silent_start = silent_start > 0
-        elif not silent_start:
-            silent_start = False
-        elif silent_start.lower().capitalize() in ("Yes", "True", "Y"):
-            silent_start = True
-        elif not silent_start or silent_start.lower().capitalize() in (
-            "No",
-            "False",
-            "N",
-        ):
-            silent_start = False
-        else:
+        silent_start_raw = os.getenv("UWSM_SILENT_START", "0")
+        try:
+            silent_start = str2bool_plus(silent_start_raw, numeric=True)
+        except ValueError:
             print_warning(
-                f'Expected boolean or numeric or empty value for UWSM_SILENT_START, got "{silent_start}", assuming False'
+                f'Expected boolean or numeric or empty value for UWSM_SILENT_START, got "{silent_start_raw}", assuming False'
             )
-            silent_start = False
+            silent_start = 0
 
-        NoStdOutFlag.nostdout = silent_start
+        NoStdOutFlag.nostdout = silent_start > 0
+        NoStdOutFlag.nowarn = silent_start > 1
+        del silent_start
 
         # check for graphical target if starting for real
         if (
