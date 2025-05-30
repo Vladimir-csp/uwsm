@@ -4,11 +4,15 @@ if scdoc.found()
   mandir = get_option('mandir')
   man_files = [
     'uwsm.1.scd',
+    'uwsm-app.1.scd',
     'uwsm-plugins.3.scd',
   ]
 
   if get_option('fumon').allowed()
     man_files = man_files + ['fumon.1.scd']
+  endif
+  if get_option('uuctl').allowed()
+    man_files = man_files + ['uuctl.1.scd']
   endif
 
   foreach filename : man_files

@@ -341,7 +341,7 @@ Application-to-unit launcher with Desktop Entry support.
 
 	*uwsm* app [-h] [-s {*a*,*b*,*s*,_custom_.slice}] [-t {scope,service}]
 	\[-a _app_name_] [-u _unit_name_] [-d _unit_description_]
-	\[-S ] [-T] -- _application_[_args_ ...]
+	\[-S ] [-T] -- _application_ [_args_ ...]
 
 |[ *-s* {*a*,*b*,*s*,_custom_.slice}
 :< Slice selector (default: *a*):
