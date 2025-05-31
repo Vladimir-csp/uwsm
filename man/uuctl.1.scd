@@ -13,6 +13,19 @@ UUCTL(1)
 Utilizing one of dmenu-like apps, presents a menu of user units, then actions
 to be performed on the selected one.
 
+Supported actions inclue standard systemctl actions (applicabilty may vary with
+different units): start, reload, restart, stop, kill, reset-failed, enable,
+disable, freeze, thaw, mask, unmask.
+
+There are also custom actions: silence, unsilence. These can be used to modify
+unit's logging behavior by selectively suppressing stdout or stderr writing to
+journal.
+
+If daemon reload action is detected to be needed, it would be suggested before
+unit selection.
+
+# MENU
+
 Suported menu apps:
 
 - walker
