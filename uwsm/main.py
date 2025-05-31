@@ -3357,8 +3357,16 @@ def find_terminal_entry():
     unexcluded_terminal_entries = []
 
     ## read configs, compose preferred terminal entry list
-    # iterate config dirs
-    for config_dir in BaseDirectory.xdg_config_dirs:
+    # iterate config dirs and xdg-terminal-exec dirs in system part of data dirs
+    term_config_dirs = BaseDirectory.xdg_config_dirs.copy()
+    for path in BaseDirectory.xdg_data_dirs:
+        path = os.path.normpath(path)
+        if path == os.path.normpath(BaseDirectory.xdg_data_home) or path.startswith(
+            os.path.normpath(os.path.expanduser("~"))
+        ):
+            continue
+        term_config_dirs.append(os.path.join(path, "xdg-terminal-exec"))
+    for config_dir in term_config_dirs:
         # iterate configs
         for config_file in [
             f"{desktop}-xdg-terminals.list"
