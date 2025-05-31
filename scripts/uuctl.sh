@@ -116,8 +116,21 @@ for arg in "$@"; do
 done
 
 if [ "$#" -le "1" ]; then
-	dmenu_candidates="$1 walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
-	for dmenu_candidate in $dmenu_candidates; do
+	dmenu_candidates="walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
+
+	case " $dmenu_candidates " in
+	*" $1 "*) true ;;
+	*)
+		{
+			echo "Supported menu tools: $dmenu_candidates"
+			echo "'$1' is not among them. Provide its full command line ending with prompt argument"
+			echo "(-p or analogous)"
+		} >&2
+		exit 1
+		;;
+	esac
+
+	for dmenu_candidate in $1 $dmenu_candidates; do
 		! command -v "$dmenu_candidate" > /dev/null || break
 	done
 
@@ -148,7 +161,7 @@ if [ "$#" -le "1" ]; then
 		;;
 	'' | *)
 		# shellcheck disable=SC2086
-		echo "Could not find a menu tool among: " $dmenu_candidates
+		echo "Could not find a menu tool among:" $dmenu_candidates
 		exit 1
 		;;
 	esac
