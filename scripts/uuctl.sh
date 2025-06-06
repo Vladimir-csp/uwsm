@@ -118,17 +118,19 @@ done
 if [ "$#" -le "1" ]; then
 	dmenu_candidates="walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
 
-	case " $dmenu_candidates " in
-	*" $1 "*) true ;;
-	*)
-		{
-			echo "Supported menu tools: $dmenu_candidates"
-			echo "'$1' is not among them. Provide its full command line ending with prompt argument"
-			echo "(-p or analogous)"
-		} >&2
-		exit 1
-		;;
-	esac
+	if [ "$#" = "1" ]; then
+		case " $dmenu_candidates " in
+		*" $1 "*) true ;;
+		*)
+			{
+				echo "Supported menu tools: $dmenu_candidates"
+				echo "'$1' is not among them. Provide its full command line ending with prompt argument"
+				echo "(-p or analogous)"
+			} >&2
+			exit 1
+			;;
+		esac
+	fi
 
 	for dmenu_candidate in $1 $dmenu_candidates; do
 		! command -v "$dmenu_candidate" > /dev/null || break
@@ -202,7 +204,12 @@ get_units() {
 		case "$prop" in
 		Id)
 			case "$value" in
-			graphical-*.target | wayland-wm-env@*.service | wayland-wm@*.service | init.scope)
+			# unconditionally skip
+			blockdev@*.target)
+				C_SKIP=1
+				;;
+			# filter dangerous units
+			basic.target | default.target | graphical-session-pre.target | graphical-session.target | paths.target | shutdown.target | sockets.target | sound.target | timers.target | wayland-session-pre@*.target | wayland-session@*.target | wayland-session-shutdown.target)
 				if [ -n "$ALL" ]; then
 					C_UNIT="${value}"
 				else
@@ -246,7 +253,7 @@ get_units() {
 			;;
 		esac
 	done <<- EOF
-		$(systemctl --user show --type=service,scope,socket --all --no-pager --quiet --property=Id,ActiveState,Description,Names,UnitFileState,NeedDaemonReload)
+		$(systemctl --user show --type=service,scope,socket,target --all --no-pager --quiet --property=Id,ActiveState,Description,Names,UnitFileState,NeedDaemonReload)
 		END
 	EOF
 }
@@ -283,6 +290,8 @@ CAN_START=
 CAN_STOP=
 CAN_RELOAD=
 CAN_FREEZE=
+RM_START=
+RM_STOP=
 FREEZER_STATE=
 ACTIVE_STATE=
 UNIT_FILE_STATE=
@@ -304,9 +313,11 @@ while IFS="=" read -r prop value; do
 	WantedBy) WANTED_BY=$value ;;
 	RequiredBy) REQUIRED_BY=$value ;;
 	UpheldBy) UPHELD_BY=$value ;;
+	RefuseManualStart) RM_START=$value ;;
+	RefuseManualStop) RM_STOP=$value ;;
 	esac
 done <<- EOF
-	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState,UnitFileState,WantedBy,RequiredBy,UpheldBy "$UNIT")
+	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState,UnitFileState,WantedBy,RequiredBy,UpheldBy,RefuseManualStart,RefuseManualStop "$UNIT")
 EOF
 
 SILENT_STATE=false
@@ -326,6 +337,7 @@ case "$UNIT" in
 	;;
 *.scope) UNIT_TYPE=scope ;;
 *.socket) UNIT_TYPE=socket ;;
+*.target) UNIT_TYPE=target ;;
 esac
 
 # compose actions
@@ -333,21 +345,25 @@ ACTIONS=''
 DISABLE_ACTIONS=''
 ENABLE_ACTIONS=''
 for ACTION in start reload restart stop kill reset-failed enable disable freeze thaw silence unsilence mask unmask; do
-	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
-	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
+	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+rmstart:${RM_START:-unknown}+rmstop:${RM_STOP:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
+	case "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+rmstart:${RM_START:-unknown}+rmstop:${RM_STOP:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++" in
 	## skip various combinations
 	# actions unsuited for scopes
 	start+*+type:scope+* | restart+*+type:scope+* | reload+*+type:scope+* | enable+*+type:scope+* | disable+*+type:scope+* | silence+*+type:scope+* | unsilence+*+type:scope+*) continue ;;
 	# actions unsuited for sockets
 	kill+*+type:socket+* | freeze+*+type:socket+* | thaw+*+type:socket+* | silence+*+type:socket+* | unsilence+*+type:socket+*) continue ;;
-	# start for active, reloading, can not start, masked
-	start+*+as:activ* | start+*+as:reloading+* | start+*+cstart:no+* | start+*+ufs:masked+*) continue ;;
-	# stop for inactive, deactivating, can not stop, masked
-	stop+*+as:failed+* | stop+*+as:inactive+* | stop+*+as:deactivating+* | stop+*+cstop:no+* | stop+*+ufs:masked+*) continue ;;
+	# actions unsuited for targets
+	kill+*+type:target+* | freeze+*+type:target+* | thaw+*+type:target+* | silence+*+type:target+* | unsilence+*+type:target+*) continue ;;
+	# start for active, reloading, can not start, refuse manual, masked
+	start+*+as:activ* | start+*+as:reloading+* | start+*+cstart:no+* | start+*+rmstart:yes+* | start+*+ufs:masked+*) continue ;;
+	# stop for inactive, deactivating, can not stop, refuse manual, masked
+	stop+*+as:failed+* | stop+*+as:inactive+* | stop+*+as:deactivating+* | stop+*+cstop:no+* | stop+*+rmstop:yes+* | stop+*+ufs:masked+*) continue ;;
 	# kill for inactive or masked
 	kill+*+as:failed+* | kill+*+as:inactive+* | kill+*+ufs:masked+*) continue ;;
 	# strictly speaking, restarting a stopped unit is valid, but exclude it anyway
 	restart+*+as:failed+* | restart+*+as:inactive+* | restart+*+as:deactivating+* | restart+*+ufs:masked+*) continue ;;
+	# restart won't work
+	restart+*+rmstart:yes+* | restart+*+rmstop:yes+*) continue ;;
 	# reload for inactive or can not reload
 	reload+*+as:failed+* | reload+*+as:inactive+* | reload+*+as:deactivating+* | reload+*+creload:no+*) continue ;;
 	# reset-failed for not failed
@@ -362,8 +378,8 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 	unmask+*+ufs:[!m][!a][!s][!k][!e][!d]*) continue ;;
 	# enable for empty install, generated, enabled, masked
 	enable+*+install:+* | enable+*+ufs:generated+* | enable+*+ufs:enabled+* | enable+*+ufs:runtime-enabled+* | enable+*+ufs:masked+*) continue ;;
-	# disable for generated, transient
-	disable+*+ufs:generated+* | disable+*+ufs:transient+*) continue ;;
+	# disable for empty install generated, transient
+	disable+*+install:+* | disable+*+ufs:generated+* | disable+*+ufs:transient+*) continue ;;
 	# silence states toggle
 	silence+*+silent:true+* | unsilence+*+silent:false+*) continue ;;
 	## special handling of some surviving actions
