@@ -11,4 +11,4 @@ example_files = [
   'waybar_override.conf',
 ]
 
-install_data(example_files, install_dir: PKG_DOC_DIR / 'example-units')
+install_data(example_files, install_dir: PKG_DOC_DIR / get_option('doc_examples_subdir'))
