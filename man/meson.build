@@ -1,6 +1,7 @@
 scdoc = dependency('scdoc', version: '>=1.9.2', native: true, required: get_option('man-pages'))
 if scdoc.found()
   scdoc_prog = find_program(scdoc.get_variable(pkgconfig: 'scdoc'), native: true)
+  tbl = find_program('tbl', native: true, required: true)
   mandir = get_option('mandir')
   man_files = [
     'uwsm.1.scd',
@@ -24,10 +25,12 @@ if scdoc.found()
       output,
       input: filename,
       output: output,
-      command: scdoc_prog,
+      command: [
+        'sh', '-c',
+        '@0@ < $1 | tbl > $2'.format(scdoc_prog.full_path()),
+        '', '@INPUT@', '@OUTPUT@'
+      ],
       install: true,
-      feed: true,
-      capture: true,
       install_dir: '@0@/man@1@'.format(mandir, section)
     )
   endforeach
