@@ -4,6 +4,12 @@ option(
   description: 'documentation directory',
 )
 option(
+  'doc_examples_subdir',
+  type: 'string',
+  value: 'example-units',
+  description: 'Directory name under doc/uwsm/ for example files'
+)
+option(
   'man-pages',
   type: 'feature',
   value: 'enabled',
