@@ -13,7 +13,7 @@ UUCTL(1)
 Utilizing one of dmenu-like apps, presents a menu of user units, then actions
 to be performed on the selected one.
 
-Supported actions inclue standard systemctl actions (applicabilty may vary with
+Supported actions include standard systemctl actions (applicabilty may vary with
 different units): start, reload, restart, stop, kill, reset-failed, enable,
 disable, freeze, thaw, mask, unmask.
 
@@ -26,7 +26,7 @@ unit selection.
 
 # MENU
 
-Suported menu apps:
+Supported menu apps:
 
 - walker
 - fuzzel
