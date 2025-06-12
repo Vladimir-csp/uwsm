@@ -78,6 +78,8 @@ class Terminal:
     entry_id: str = ""
     entry_action_id: str = ""
     neg_cache: dict = {}
+    opts: List[str] = []
+    print_opts: List[str] = []
 
 
 class UnitsState:
@@ -1857,9 +1859,11 @@ class Args:
     def __init__(self, custom_args=None, exit_on_error=True, store_parsers=False):
         "Parses sys.argv[1:] or custom_args"
 
+        precheck_args = sys.argv[1:] if custom_args is None else custom_args
+
         print_debug(
             f"parsing {'argv' if custom_args is None else 'custom args'}",
-            sys.argv[1:] if custom_args is None else custom_args,
+            precheck_args,
             f"exit_on_error: {exit_on_error}",
         )
 
@@ -2132,6 +2136,45 @@ class Args:
             ),
         )
 
+        # determine if -T is in the arguments after app, before --
+        terminal_requested = precheck_args[0:1] == ["app"] and [
+            arg for arg in precheck_args[1:] if arg in ("-T", "--")
+        ][0:1] == ["-T"]
+
+        # pre-filter and collect unknown options as terminal options between "-T" and "--"
+        # fill Terminal.opts
+        if terminal_requested:
+            Terminal.opts = []
+            Terminal.print_opts = []
+            pop_idx = []
+            capture = False
+            for idx, arg in enumerate(sys.argv if custom_args is None else custom_args):
+                if not capture and arg == "-T":
+                    capture = True
+                    continue
+                if arg == "--":
+                    break
+                if (
+                    capture
+                    and arg.startswith("-")
+                    and arg not in ["-s", "-t", "-a", "-u", "-d", "-S", "-T"]
+                ):
+                    pop_idx.append(idx)
+            idx_shift = 0
+            for idx in pop_idx:
+                if custom_args is None:
+                    arg = sys.argv.pop(idx - idx_shift)
+                else:
+                    arg = custom_args.pop(idx - idx_shift)
+                idx_shift += 1
+                if arg.startswith("--print-"):
+                    Terminal.print_opts.append(arg)
+                else:
+                    Terminal.opts.append(arg)
+            print_debug(
+                "extracted terminal opts from args:", Terminal.print_opts, Terminal.opts
+            )
+
         # app subcommand
         parsers["app"] = parsers["main_subparsers"].add_parser(
             "app",
@@ -2149,17 +2192,8 @@ class Args:
         parsers["app"].add_argument(
             "cmdline",
             metavar="args",
-            # allow empty cmdline if '-T' is given and comes before '--'
-            nargs=(
-                "*"
-                if [
-                    arg
-                    for arg in (sys.argv[1:] if custom_args is None else custom_args)
-                    if arg in ("-T", "--")
-                ][0:1]
-                == ["-T"]
-                else "+"
-            ),
+            # allow empty cmdline if '-T' is given
+            nargs=("*" if terminal_requested else "+"),
             help=dedent(
                 """
                 Application command line. The first argument can be either one of:\n
@@ -3699,6 +3733,51 @@ def app(
         terminal_execarg = (
             [entry_expand_str(terminal_execarg)] if terminal_execarg else []
         )
+
+        # convert and append terminal options
+        for opt in Terminal.opts:
+            if opt.startswith("--app-id="):
+                app_id_arg = ""
+                if Terminal.entry.hasKey("TerminalArgAppId"):
+                    app_id_arg = Terminal.entry.get("TerminalArgAppId")
+                elif Terminal.entry.hasKey("X-TerminalArgAppId"):
+                    app_id_arg = Terminal.entry.get("X-TerminalArgAppId")
+                if app_id_arg.endswith("="):
+                    terminal_cmdline.append(
+                        f"{app_id_arg}{opt.split('=', maxsplit=1)[1]}"
+                    )
+                elif app_id_arg:
+                    terminal_cmdline.extend([app_id_arg, opt.split("=", maxsplit=1)[1]])
+
+            elif opt.startswith("--title="):
+                app_id_arg = ""
+                if Terminal.entry.hasKey("TerminalArgTitle"):
+                    title_arg = Terminal.entry.get("TerminalArgTitle")
+                elif Terminal.entry.hasKey("X-TerminalArgTitle"):
+                    title_arg = Terminal.entry.get("X-TerminalArgTitle")
+                if title_arg.endswith("="):
+                    terminal_cmdline.append(
+                        f"{title_arg}{opt.split('=', maxsplit=1)[1]}"
+                    )
+                elif title_arg:
+                    terminal_cmdline.extend([title_arg, opt.split("=", maxsplit=1)[1]])
+
+            elif opt.startswith("--dir="):
+                dir_arg = ""
+                if Terminal.entry.hasKey("TerminalArgDir"):
+                    dir_arg = Terminal.entry.get("TerminalArgDir")
+                elif Terminal.entry.hasKey("X-TerminalArgDir"):
+                    dir_arg = Terminal.entry.get("X-TerminalArgDir")
+                if dir_arg.endswith("="):
+                    terminal_cmdline.append(f"{dir_arg}{opt.split('=', maxsplit=1)[1]}")
+                elif dir_arg:
+                    terminal_cmdline.extend([dir_arg, opt.split("=", maxsplit=1)[1]])
+
+            elif opt == "--hold":
+                if Terminal.entry.hasKey("TerminalArgHold"):
+                    terminal_cmdline.append(Terminal.entry.get("TerminalArgHold"))
+                elif Terminal.entry.hasKey("X-TerminalArgHold"):
+                    terminal_cmdline.append(Terminal.entry.get("X-TerminalArgHold"))
 
         # discard explicit -e or execarg for terminal
         # only if followed by something, otherwise it will error out on Command not found below
