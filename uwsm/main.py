@@ -2888,7 +2888,7 @@ def prepare_env_gen_sh(random_mark, load_profile: bool = False):
 
         export XDG_CURRENT_DESKTOP="${__WM_DESKTOP_NAMES__}"
         export XDG_SESSION_DESKTOP="${__WM_FIRST_DESKTOP_NAME__}"
-        export XDG_MENU_PREFIX="${__WM_FIRST_DESKTOP_NAME__}-"
+        export XDG_MENU_PREFIX="$(lowercase "${__WM_FIRST_DESKTOP_NAME__}")-"
 
         export XDG_SESSION_TYPE="wayland"
         export XDG_BACKEND="wayland"
