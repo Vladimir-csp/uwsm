@@ -116,10 +116,17 @@ class DbusInteractions:
 
     # External functions (doing stuff via objects)
 
-    def get_unit_property(self, unit_id, unit_property):
-        "Returns value of unit property"
+    def get_unit_property(self, unit_id, unit_property, skip_generic=False):
+        "Returns value of unit property, skip_generic=True to search in specific unit type interface"
         iface = self._get_unit_properties_iface(unit_id)
-        return iface.Get("org.freedesktop.systemd1.Unit", unit_property)
+        if not skip_generic:
+            try:
+                # try generic unit interface
+                return iface.Get("org.freedesktop.systemd1.Unit", unit_property)
+            except dbus.exceptions.DBusException:
+                pass
+        # try specific unit type interface
+        return iface.Get(f"org.freedesktop.systemd1.{unit_id.split('.')[-1].capitalize()}", unit_property)
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"

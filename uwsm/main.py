@@ -2601,11 +2601,26 @@ def finalize(additional_vars=None):
 
     # if no prior failures and unit is in activating state, exec systemd-notify
     if activating_wm_id:
-        print_normal(f"Declaring unit for {wm_id} ready.")
-        os.execlp("systemd-notify", "systemd-notify", "--ready")
+        print_normal(
+            f"Declaring unit for {wm_id} ready and restricting notification access."
+        )
+        os.execlp("systemd-notify", "systemd-notify", "READY=1", "NOTIFYACCESS=exec")
     else:
-        print_normal(f"Unit for {wm_id} is already active.")
-        sys.exit(0)
+        if (
+            bus_session.get_unit_property(
+                f"wayland-wm@{wm_id}.service", "NotifyAccess", skip_generic=True
+            )
+            == "all"
+        ):
+            print_normal(
+                f"Unit for {wm_id} is already active, restricting notification access."
+            )
+            os.execlp("systemd-notify", "systemd-notify", "NOTIFYACCESS=exec")
+        else:
+            print_normal(
+                f"Unit for {wm_id} is already active, notification access is restricted."
+            )
+            sys.exit(0)
 
     # we should not be here
     print_error("Something went wrong!")
@@ -4904,24 +4919,12 @@ def main():
                     if len(units) > 0:
                         break
 
-                # Strangely, MainPID unit property is not accessible via DBus.
-                # systemctl to the rescue!
-                sprc = subprocess.run(
-                    [
-                        "systemctl",
-                        "--user",
-                        "show",
-                        "--property",
-                        "MainPID",
-                        "--value",
-                        f"wayland-wm@{CompGlobals.id_unit_string}.service",
-                    ],
-                    check=True,
-                    text=True,
-                    capture_output=True,
+                cpid = bus_session.get_unit_property(
+                    f"wayland-wm@{CompGlobals.id_unit_string}.service",
+                    "MainPID",
+                    skip_generic=True,
                 )
-                cpid = sprc.stdout.strip()
-                if not cpid or not cpid.isnumeric():
+                if not cpid or not isinstance(cpid, int):
                     print_warning(
                         f"Could not get MainPID of wayland-wm@{CompGlobals.id_unit_string}.service"
                     )
@@ -4930,7 +4933,7 @@ def main():
                 print_normal(f"Holding until PID {cpid} exits")
                 # use lightweight waitpid if available
                 if which("waitpid"):
-                    os.execlp("waitpid", "waitpid", "-e", cpid)
+                    os.execlp("waitpid", "waitpid", "-e", str(int(cpid)))
                 else:
                     waitpid(int(cpid))
                     sys.exit(0)
@@ -5155,11 +5158,13 @@ def main():
                 childpid = os.fork()
                 if childpid == 0:
                     # we are the child
-                    # double-fork pattern: we now fork again, immediately exiting from the parent;
+                    # double-fork pattern: we now fork again, immediately exiting from the parent (intermediary);
                     # this causes the final child process to get reparented to the system init process
                     # (or possibly a sub-reaper) and hence prevents it from becoming a zombie.
                     if os.fork() != 0:
+                        # we are intermediary fork, exit
                         sys.exit(0)
+                    # we are the leaf fork
                     try:
                         waitenv(
                             varnames=["WAYLAND_DISPLAY"]
@@ -5171,7 +5176,7 @@ def main():
                             settle_time = float(settle_time)
                         except Exception:
                             print_warning(
-                                f'"UWSM_WAIT_VARNAMES_SETTLETIME" contains invalid value "{settle_time}", using "0.2"'
+                                f'Autoready: "UWSM_WAIT_VARNAMES_SETTLETIME" contains invalid value "{settle_time}", using "0.2"'
                             )
                             settle_time = 0.2
                         time.sleep(settle_time)
@@ -5193,7 +5198,8 @@ def main():
                                 )
                             except FileNotFoundError as caught_exception:
                                 print_error(
-                                    caught_exception, "Assuming env preloader failed"
+                                    "Autoready: Assuming env preloader failed:",
+                                    caught_exception,
                                 )
                                 os.kill(mainpid, signal.SIGTERM)
                                 sys.exit(1)
@@ -5201,18 +5207,42 @@ def main():
                         if get_active_wm_unit(
                             active=False, activating=True, bus_session=bus_session
                         ):
-                            print_normal(f"Declaring unit for {CompGlobals.id} ready.")
-                            os.execlp("systemd-notify", "systemd-notify", "--ready")
-                        else:
                             print_normal(
-                                f"Unit for {CompGlobals.id} is already active."
+                                f"Autoready: Declaring unit for {CompGlobals.id} ready and restricting notification access."
                             )
-                            sys.exit(0)
+                            os.execlp(
+                                "systemd-notify",
+                                "systemd-notify",
+                                "READY=1",
+                                "NOTIFYACCESS=exec",
+                            )
+                        else:
+                            if (
+                                bus_session.get_unit_property(
+                                    f"wayland-wm@{CompGlobals.id}.service",
+                                    "NotifyAccess",
+                                    skip_generic=True,
+                                )
+                                == "all"
+                            ):
+                                print_normal(
+                                    f"Autoready: Unit for {CompGlobals.id} is already active, restricting notification access."
+                                )
+                                os.execlp(
+                                    "systemd-notify",
+                                    "systemd-notify",
+                                    "NOTIFYACCESS=exec",
+                                )
+                            else:
+                                print_normal(
+                                    f"Autoready: Unit for {CompGlobals.id} is already active, notification access is restricted."
+                                )
+                                sys.exit(0)
                     except Exception as caught_exception:
                         print_warning("Autoready failed:", caught_exception)
                         sys.exit(1)
                 else:
-                    # we are the parent
+                    # we are the parent, wait until intermediate fork exits
                     os.waitpid(childpid, 0)
                 # execute compositor cmdline
                 os.execlp(CompGlobals.cmdline[0], *(CompGlobals.cmdline))
