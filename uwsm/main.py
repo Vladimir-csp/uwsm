@@ -2412,8 +2412,8 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Waits for WAYLAND_DISPLAY and optionally other vars (for wayland-session-waitenv.service, wayland-session@.target).",
             description=(
-                "Exits successfully when WAYLAND_DISPLAY (and optionally other vars) appear in systemd user manager activation environment. ",
-                "Optinal vars are read from command line and whitespace-separated UWSM_WAIT_VARNAMES var.",
+                "Exits successfully when WAYLAND_DISPLAY (and optionally other vars) appear in systemd user manager activation environment. "
+                "Optinal vars are read from command line and whitespace-separated UWSM_WAIT_VARNAMES var."
             ),
             epilog="Used in wayland-session-waitenv.service to delay activation of wayland-session@.target, graphical-session.target.",
         )
