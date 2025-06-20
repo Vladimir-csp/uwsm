@@ -2374,27 +2374,60 @@ class Args:
         parsers["prepare_env"] = parsers["aux_subparsers"].add_parser(
             "prepare-env",
             formatter_class=HelpFormatterNewlines,
-            help="Prepares environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
-            description="Used in ExecStart of wayland-wm-env@.service.",
+            help="Prepares environment (for wayland-wm-env@.service, wayland-session-pre@.target).",
+            description="Prepares environment variables, loads into systemd user activation environment.",
+            epilog="Used in ExecStart in wayland-wm-env@.service for wayland-session-pre@.target, graphical-session-pre.target.",
             parents=[parsers["wm_id"], parsers["wm_args_raw"], parsers["wm_meta"]],
         )
         parsers["cleanup_env"] = parsers["aux_subparsers"].add_parser(
             "cleanup-env",
             formatter_class=HelpFormatterNewlines,
-            help="Cleans up environment (for use in wayland-wm-env@.service in wayland-session-pre@.target).",
-            description="Used in ExecStop of wayland-wm-env@.service.",
+            help="Cleans up environment (for wayland-wm-env@.service, wayland-session-pre@.target).",
+            description="Cleans up systemd user activation environment from previously loaded session-related variables.",
+            epilog="Used in ExecStop in wayland-wm-env@.service for wayland-session-pre@.target, graphical-session-pre.target.",
         )
         parsers["exec"] = parsers["aux_subparsers"].add_parser(
             "exec",
             formatter_class=HelpFormatterNewlines,
-            help="Executes binary with arguments or Desktop Entry (for use in wayland-wm@.service in wayland-session@.target).",
-            description="Used in ExecStart of wayland-wm@.service.",
+            help="Executes binary with arguments or Desktop Entry (for wayland-wm@.service, wayland-session@.target).",
+            description="Executes compositor command line or Desktop Entry.",
+            epilog="Used in ExecStart of wayland-wm@.service for wayland-session@.target, graphical-session.target.",
             parents=[parsers["wm_id"], parsers["wm_args_raw"]],
+        )
+        parsers["waitpid"] = parsers["aux_subparsers"].add_parser(
+            "waitpid",
+            formatter_class=HelpFormatterNewlines,
+            help="Waits for a PID to exit (for wayland-session-bindpid@.service).",
+            description="Exits successfully when a process by given PID ends, or if it does not exist.",
+            epilog="Used in wayland-session-bindpid@.service as a shim for waitpid if it is unavailable.",
+        )
+        parsers["waitpid"].add_argument(
+            "pid",
+            type=int,
+            metavar="PID",
+            help="PID to wait for",
+        )
+        parsers["waitenv"] = parsers["aux_subparsers"].add_parser(
+            "waitenv",
+            formatter_class=HelpFormatterNewlines,
+            help="Waits for WAYLAND_DISPLAY and optionally other vars (for wayland-session-waitenv.service, wayland-session@.target).",
+            description=(
+                "Exits successfully when WAYLAND_DISPLAY (and optionally other vars) appear in systemd user manager activation environment. ",
+                "Optinal vars are read from command line and whitespace-separated UWSM_WAIT_VARNAMES var.",
+            ),
+            epilog="Used in wayland-session-waitenv.service to delay activation of wayland-session@.target, graphical-session.target.",
+        )
+        parsers["waitenv"].add_argument(
+            "env_names",
+            type=list,
+            nargs="*",
+            metavar="VAR_NAME",
+            help="Names of additional variables to wait for",
         )
         parsers["app_daemon"] = parsers["aux_subparsers"].add_parser(
             "app-daemon",
             formatter_class=HelpFormatterNewlines,
-            help="Daemon for fast app argument generation",
+            help="Daemon for fast app argument generation.",
             description="Receives app arguments from a named pipe, returns shell code",
             epilog=dedent(
                 f"""
@@ -2412,37 +2445,7 @@ class Args:
                 """
             ),
         )
-        parsers["waitpid"] = parsers["aux_subparsers"].add_parser(
-            "waitpid",
-            formatter_class=HelpFormatterNewlines,
-            help="Waits for a PID to exit (for use in wayland-session-bindpid@.service).",
-            description=(
-                "Exits successfully when a process by given PID ends, or if it does not exist. "
-                "Used in wayland-session-bindpid@.service as a shim for waitpid if it is unavailable."
-            ),
-        )
-        parsers["waitpid"].add_argument(
-            "pid",
-            type=int,
-            metavar="PID",
-            help="PID to wait for",
-        )
-        parsers["waitenv"] = parsers["aux_subparsers"].add_parser(
-            "waitenv",
-            formatter_class=HelpFormatterNewlines,
-            help="Waits for WAYLAND_DISPLAY (and optionally other vars) to appear in systemd user manager environment.",
-            description=(
-                "Exits successfully when WAYLAND_DISPLAY (and optionally other vars) appears in systemd user manager activation environment."
-            ),
-            epilog="Also waits for vars listed in whitespace-separated UWSM_WAIT_VARNAMES environment var.",
-        )
-        parsers["waitenv"].add_argument(
-            "env_names",
-            type=list,
-            nargs="*",
-            metavar="VAR_NAME",
-            help="Names of additional variables to wait for",
-        )
+
         parsers["version"] = parsers["main"].add_argument(
             "-v",
             "--version",
@@ -5217,14 +5220,6 @@ def main():
                 print_error(caught_exception)
                 sys.exit(1)
 
-        elif Args.parsed.aux_action == "app-daemon":
-            print_normal("Launching app daemon", file=sys.stderr)
-            try:
-                app_daemon()
-            except Exception as caught_exception:
-                print_error(caught_exception)
-                sys.exit(1)
-
         elif Args.parsed.aux_action == "waitpid":
             try:
                 waitpid(Args.parsed.pid)
@@ -5251,6 +5246,14 @@ def main():
                     settle_time = 0.2
                 time.sleep(settle_time)
                 sys.exit(0)
+            except Exception as caught_exception:
+                print_error(caught_exception)
+                sys.exit(1)
+
+        elif Args.parsed.aux_action == "app-daemon":
+            print_normal("Launching app daemon", file=sys.stderr)
+            try:
+                app_daemon()
             except Exception as caught_exception:
                 print_error(caught_exception)
                 sys.exit(1)
