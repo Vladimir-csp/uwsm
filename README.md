@@ -475,8 +475,10 @@ By default `uwsm` launches the compositor's service as
 
 Processes descendent from the compositor will be a part of its unit which
 **might** be mostly OK for short-lived one-off commands, i.e. volume adjustment.
-But processes inside comopositor's unit have access to its notification socket,
-which may lead to unforeseen consequences.
+But processes inside comopositor's unit will have brief access to its
+notification socket before it is restricted after startup is complete. This may
+lead to unforeseen consequences, like compositor unit being erroneously
+declared entering stopping state.
 
 Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
@@ -892,9 +894,9 @@ started state. Activation environments will also need to receive essential
 variables like `WAYLAND_DISPLAY` to launch graphical applications successfully.
 
 A forked process inside `wayland-wm@.service` waits for `WAYLAND_DISPLAY` and
-all vars mentioned in `UWSM_WAIT_VARNAMES`, then signals unit readiness. It
-also appends variable cleanup list with any delta it has seen since unit
-startup.
+all vars mentioned in `UWSM_WAIT_VARNAMES`, then signals unit readiness and
+restricts notification socket access from `all` to `exec`. It also appends
+variable cleanup list with any delta it has seen since unit startup.
 
 Separate `wayland-session-waitenv.service` does the same waiting thing and
 either exits successfully allowing `graphical-session.target` to proceed, or
@@ -906,7 +908,7 @@ performs actions analogous to:
 ```
 dbus-update-activation-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR3...]]
 systemctl --user import-environment WAYLAND_DISPLAY DISPLAY [VAR [VAR3...]]
-systemd-notify --ready
+systemd-notify READY=1 NOTIFYACCESS=exec
 ```
 
 (`dbus-update-activation-environment` action equivalent is redundant for
