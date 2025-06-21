@@ -4930,7 +4930,13 @@ def main():
                     )
                     sys.exit(1)
 
-                print_normal(f"Holding until PID {cpid} exits")
+                session_id = os.environ.get("XDG_SESSION_ID", "")
+                if session_id:
+                    print_normal(
+                        f"waitpid: Holding login session {session_id} open until PID {cpid} exits"
+                    )
+                else:
+                    print_normal(f"waitpid: Holding until PID {cpid} exits")
                 # use lightweight waitpid if available
                 if which("waitpid"):
                     os.execlp("waitpid", "waitpid", "-e", str(int(cpid)))
