@@ -1788,20 +1788,8 @@ def generate_dropins():
         ),
     )
     ## hotfix some portals
-    # upstream fix pending
-    update_unit(
-        "xdg-desktop-portal-gtk.service.d/order-tweak.conf",
-        dedent(
-            f"""
-            # injected by {BIN_NAME}, do not edit
-            [Unit]
-            X-UWSM-ID=GENERIC
-            PartOf=graphical-session.target
-            After=graphical-session.target
-            """
-        ),
-    )
     # with kde portal it's complicated
+    # upstream is ordered after plasma-core.target which may be not installed
     update_unit(
         "plasma-xdg-desktop-portal-kde.service.d/order-tweak.conf",
         dedent(
