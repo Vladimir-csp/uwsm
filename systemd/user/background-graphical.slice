@@ -1,0 +1,7 @@
+[Unit]
+Description=User Graphical Background Application Slice
+Documentation=man:uwsm(1) man:systemd.special(7)
+PartOf=graphical-session.target
+After=graphical-session.target
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=Environment preloader for %I
+Documentation=man:uwsm(1)
+BindsTo=wayland-session-pre@%i.target
+Before=wayland-session-pre@%i.target graphical-session-pre.target
+PropagatesStopTo=wayland-session-pre@%i.target
+OnSuccess=wayland-session-shutdown.target
+OnSuccessJobMode=replace-irreversibly
+OnFailure=wayland-session-shutdown.target
+OnFailureJobMode=replace-irreversibly
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+RefuseManualStart=yes
+RefuseManualStop=yes
+StopWhenUnneeded=yes
+CollectMode=inactive-or-failed
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@BIN_PATH@ aux prepare-env -- "%I"
+ExecStopPost=@BIN_PATH@ aux cleanup-env
+Restart=no
+SyslogIdentifier=uwsm_env-preloader
+Slice=session.slice

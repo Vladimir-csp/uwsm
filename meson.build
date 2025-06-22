@@ -12,6 +12,7 @@ if not PYTHON_VERSION.version_compare('>=3.10')
   error('python version >=3.10 required, found: @0@'.format(PYTHON_VERSION))
 endif
 
+
 PKG_DATA_DIR = join_paths(
   get_option('prefix'),
   get_option('datadir'),
@@ -36,6 +37,10 @@ if PKG_LICENSE_DIR == ''
     meson.project_name(),
   )
 endif
+SD_USER_DIR = join_paths(
+  get_option('prefix'),
+  'lib/systemd/user'
+)
 
 PROJECT_NAME = meson.project_name()
 PROJECT_VERSION = meson.project_version()
@@ -44,6 +49,28 @@ PYTHON_BIN = get_option('python-bin')
 if PYTHON_BIN == ''
   PYTHON_BIN = PYTHON_PROG.full_path()
 endif
+
+conf = configuration_data()
+conf.set('PROJECT_NAME', PROJECT_NAME)
+conf.set('PROJECT_VERSION', PROJECT_VERSION)
+conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
+conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
+conf.set('PYTHON_BIN', PYTHON_BIN)
+if get_option('static-units').allowed()
+  conf.set('STATIC_UNITS', true)
+else
+  conf.set('STATIC_UNITS', false)
+endif
+conf.set('BIN_NAME', 'uwsm')
+conf.set(
+  'BIN_PATH',
+  join_paths(
+    get_option('prefix'),
+    get_option('bindir'),
+    'uwsm',
+  ),
+)
+
 
 COPY_TO_SUBDIR_SCRIPT = '''
 import os
@@ -69,6 +96,7 @@ subdir('uwsm-plugins')
 subdir('example-units')
 subdir('scripts')
 subdir('man')
+subdir('systemd/user')
 
 uwsm_doc_files = [
   'README.md',

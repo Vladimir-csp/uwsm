@@ -1,0 +1,12 @@
+[Unit]
+Description=Session of %I Wayland compositor
+Documentation=man:uwsm(1) man:systemd.special(7)
+Requires=wayland-session-pre@%i.target wayland-wm@%i.service
+Wants=wayland-session-waitenv.service wayland-session-xdg-autostart@%i.target
+After=graphical-session-pre.target
+BindsTo=graphical-session.target
+Before=graphical-session.target
+PropagatesStopTo=graphical-session.target
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+StopWhenUnneeded=yes

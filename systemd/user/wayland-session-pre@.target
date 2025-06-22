@@ -1,0 +1,12 @@
+[Unit]
+Description=Preparation for session of %I Wayland compositor
+Documentation=man:uwsm(1) man:systemd.special(7)
+Requires=wayland-wm-env@%i.service
+BindsTo=graphical-session-pre.target
+Before=graphical-session-pre.target
+PropagatesStopTo=graphical-session-pre.target
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+RefuseManualStart=yes
+RefuseManualStop=yes
+StopWhenUnneeded=yes

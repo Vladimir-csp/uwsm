@@ -1,0 +1,26 @@
+[Unit]
+Description=Main service for %I
+Documentation=man:uwsm(1)
+Requires=wayland-session-pre@%i.target
+BindsTo=wayland-session@%i.target
+Before=wayland-session@%i.target graphical-session.target
+PropagatesStopTo=wayland-session@%i.target graphical-session.target
+After=wayland-session-pre@%i.target graphical-session-pre.target
+OnSuccess=wayland-session-shutdown.target
+OnSuccessJobMode=replace-irreversibly
+OnFailure=wayland-session-shutdown.target
+OnFailureJobMode=replace-irreversibly
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+CollectMode=inactive-or-failed
+[Service]
+# awaits for ready state notification from compositor's child
+# should be issued by 'uwsm finalize'
+Type=notify
+NotifyAccess=all
+ExecStart=@BIN_PATH@ aux exec -- %I
+Restart=no
+TimeoutStartSec=10
+TimeoutStopSec=10
+SyslogIdentifier=uwsm_%I
+Slice=session.slice

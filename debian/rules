@@ -11,7 +11,8 @@ override_dh_auto_configure:
 		-Dlicensedir=$(PREFIX)/share/doc/uwsm \
 		-Duuctl=enabled \
 		-Dfumon=enabled \
-		-Duwsm-app=enabled
+		-Duwsm-app=enabled \
+		-Dstatic-units=enabled
 
 override_dh_python3:
 	dh_python3 --depends=pyxdg --depends=dbus-python $(PREFIX)/share/uwsm/modules

@@ -35,7 +35,7 @@ from xdg.util import which
 from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
-from uwsm.params import BIN_NAME, BIN_PATH, PROJECT_VERSION
+from uwsm.params import BIN_NAME, BIN_PATH, PROJECT_VERSION, STATIC_UNITS
 from uwsm.misc import *
 from uwsm.dbus import DbusInteractions
 
@@ -1627,6 +1627,10 @@ def generate_units():
             """
         ),
     )
+
+
+def generate_dropins():
+    "Generates drop-ins for units"
 
     # compositor-specific additions from cli or desktop entry via drop-ins
     # paths
@@ -4835,7 +4839,10 @@ def main():
                 else:
                     print_ok("...but this is dry run, so the dream continues.")
 
-            generate_units()
+            if not STATIC_UNITS:
+                generate_units()
+
+            generate_dropins()
 
             if UnitsState.changed:
                 reload_systemd()

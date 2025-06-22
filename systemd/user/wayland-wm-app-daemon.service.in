@@ -1,0 +1,15 @@
+[Unit]
+Description=Fast application argument generator
+Documentation=man:uwsm(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+CollectMode=inactive-or-failed
+[Service]
+Type=exec
+ExecStart=@BIN_PATH@ aux app-daemon
+Restart=on-failure
+RestartMode=direct
+SyslogIdentifier=uwsm_app-daemon
+Slice=session.slice

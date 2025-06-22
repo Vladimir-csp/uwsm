@@ -1,0 +1,11 @@
+[Unit]
+Description=XDG Autostart for session of %I Wayland compositor
+Documentation=man:uwsm(1) man:systemd.special(7)
+PartOf=graphical-session.target
+After=wayland-session@%i.target graphical-session.target
+BindsTo=xdg-desktop-autostart.target
+Before=xdg-desktop-autostart.target
+PropagatesStopTo=xdg-desktop-autostart.target
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+StopWhenUnneeded=yes

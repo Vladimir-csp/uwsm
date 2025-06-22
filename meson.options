@@ -38,3 +38,9 @@ option(
   value: 'disabled',
   description: 'install uwsm-app',
 )
+option(
+  'static-units',
+  type: 'feature',
+  value: 'disabled',
+  description: 'install static units',
+)

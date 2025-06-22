@@ -22,22 +22,6 @@ if not has_system_xdg
   error('python xdg module not found')
 endif
 
-conf = configuration_data()
-conf.set('PROJECT_NAME', PROJECT_NAME)
-conf.set('PROJECT_VERSION', PROJECT_VERSION)
-conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
-conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
-conf.set('PYTHON_BIN', PYTHON_BIN)
-conf.set('BIN_NAME', 'uwsm')
-conf.set(
-  'BIN_PATH',
-  join_paths(
-    get_option('prefix'),
-    get_option('bindir'),
-    'uwsm',
-  ),
-)
-
 wrapper_file = configure_file(
   input: 'wrapper.py.in',
   output: 'uwsm',

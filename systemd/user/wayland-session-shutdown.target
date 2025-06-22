@@ -1,0 +1,7 @@
+[Unit]
+Description=Shutdown graphical session units
+Documentation=man:uwsm(1) man:systemd.special(7)
+DefaultDependencies=no
+Conflicts=graphical-session-pre.target graphical-session.target xdg-desktop-autostart.target
+After=graphical-session-pre.target graphical-session.target xdg-desktop-autostart.target
+StopWhenUnneeded=yes

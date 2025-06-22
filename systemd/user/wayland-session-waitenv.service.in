@@ -1,0 +1,19 @@
+[Unit]
+Description=Wait for WAYLAND_DISPLAY and other variables
+Documentation=man:uwsm(1)
+Before=graphical-session.target
+After=graphical-session-pre.target
+CollectMode=inactive-or-failed
+OnFailure=wayland-session-shutdown.target
+OnFailureJobMode=replace-irreversibly
+Conflicts=wayland-session-shutdown.target
+Before=wayland-session-shutdown.target
+CollectMode=inactive-or-failed
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=@BIN_PATH@ aux waitenv
+Restart=no
+TimeoutStartSec=10
+SyslogIdentifier=uwsm_waitenv
+Slice=background.slice
