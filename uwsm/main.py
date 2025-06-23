@@ -1343,11 +1343,6 @@ def generate_units(rung: str = "runtime"):
     # sourcery skip: assign-if-exp, extract-duplicate-method, remove-redundant-if, split-or-ifs
     "Generates basic unit structure"
 
-    if Args.parsed.use_session_slice is None or Args.parsed.use_session_slice:
-        wayland_wm_slice = "session.slice"
-    else:
-        wayland_wm_slice = "app.slice"
-
     UnitsState.changed = False
 
     # targets
@@ -1465,7 +1460,7 @@ def generate_units(rung: str = "runtime"):
             ExecStopPost={BIN_PATH} aux cleanup-env
             Restart=no
             SyslogIdentifier={BIN_NAME}_env-preloader
-            Slice={wayland_wm_slice}
+            Slice=session.slice
             """
         ),
         rung=rung,
@@ -1501,7 +1496,7 @@ def generate_units(rung: str = "runtime"):
             TimeoutStartSec={waitenv_timeout}
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
-            Slice={wayland_wm_slice}
+            Slice=session.slice
             """
         ),
         rung=rung,
@@ -1555,7 +1550,7 @@ def generate_units(rung: str = "runtime"):
             Restart=on-failure
             RestartMode=direct
             SyslogIdentifier={BIN_NAME}_app-daemon
-            Slice={wayland_wm_slice}
+            Slice=session.slice
             """
         ),
         rung=rung,
@@ -1773,6 +1768,9 @@ def generate_dropins(rung: str = "runtime"):
     else:
         # remove customization tweak
         remove_unit(wm_specific_service, rung=rung)
+
+def generate_tweaks(rung: str = "runtime"):
+    "Generates drop-ins for units"
 
     ## tweaks
     # ordering and slicing autostart apps
@@ -2048,32 +2046,25 @@ class Args:
                 """
             ),
         )
+        # TODO: drop this after a couple of releases
         use_session_slice_raw = os.getenv("UWSM_USE_SESSION_SLICE", None)
-        if use_session_slice_raw is None:
-            use_session_slice = None
-        else:
-            try:
-                use_session_slice = str2bool_plus(use_session_slice_raw)
-            except ValueError:
-                print_warning(
-                    f"Expected boolean value from UWSM_USE_SESSION_SLICE, got: {use_session_slice_raw}"
-                )
-                use_session_slice = None
+        if use_session_slice_raw is not None:
+            print_warning(
+                f"UWSM_USE_SESSION_SLICE is deprecated and ignored", file=sys.stderr
+            )
         del use_session_slice_raw
         parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_slice"].add_argument(
             "-S",
             action="store_true",
-            dest="use_session_slice",
-            default=use_session_slice,
-            help=f"Launch compositor in session.slice{' (already preset by UWSM_USE_SESSION_SLICE env var)' if use_session_slice else ' (default)' if use_session_slice is None else ''}.",
+            dest="warn_sa_deprecated",
+            help=f"Option is deprecated, session.slice is always used",
         )
         parsers["start_slice"].add_argument(
             "-A",
-            action="store_false",
-            dest="use_session_slice",
-            default=use_session_slice,
-            help=f"Launch compositor in app.slice{'' if use_session_slice is None else ' (already preset by UWSM_USE_SESSION_SLICE env var)' if not use_session_slice else ''}.",
+            action="store_true",
+            dest="warn_sa_deprecated",
+            help=f"Option is deprecated, session.slice is always used",
         )
         parsers["start"].add_argument(
             "-F",
@@ -4458,18 +4449,6 @@ def fill_comp_globals():
             elif entry.getComment():
                 CompGlobals.description = entry_expand_str(entry.getComment())
 
-            # inherit slice argument (for start mode only)
-            if (
-                Args.parsed.mode == "start"
-                and entry_uwsm_args is not None
-                and Args.parsed.use_session_slice is None
-            ):
-                print_debug(
-                    "inherited use_session_slice",
-                    entry_uwsm_args.parsed.use_session_slice,
-                )
-                Args.parsed.use_session_slice = entry_uwsm_args.parsed.use_session_slice
-
             # inherit hardcode argument
             if (
                 Args.parsed.mode == "start"
@@ -4754,6 +4733,11 @@ def main():
 
         # also send output to log if starting for real
         LogFlag.log = not Args.parsed.dry_run and not Args.parsed.only_generate
+
+        # TODO: drop this after a couple of releases
+        if Args.parsed.warn_sa_deprecated:
+            # argparse has deprecation functionality, but our warnings are fancier.
+            print_warning("Options -S|-A are deprecated, session.slice is always used", file=sys.stderr)
 
         # silent start mode
         silent_start_raw = os.getenv("UWSM_SILENT_START", "0")
