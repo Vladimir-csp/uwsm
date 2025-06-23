@@ -19,11 +19,6 @@ if get_option('fumon').allowed()
     install_dir: get_option('bindir'),
     install_mode: 'rwxr-xr-x',
   )
-  install_data(
-    'fumon.service',
-    install_dir: join_paths(get_option('prefix'), 'lib/systemd/user'),
-    install_mode: 'rw-r--r--',
-  )
 endif
 
 if get_option('uwsm-app').allowed()

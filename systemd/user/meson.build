@@ -75,3 +75,10 @@ if get_option('static-units').allowed()
     install_mode: 'rw-r--r--',
   )
 endif
+if get_option('fumon').allowed()
+  install_data(
+    'fumon.service',
+    install_dir: SD_USER_DIR,
+    install_mode: 'rw-r--r--',
+  )
+endif
