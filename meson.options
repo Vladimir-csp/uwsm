@@ -41,6 +41,6 @@ option(
 option(
   'static-units',
   type: 'feature',
-  value: 'disabled',
+  value: 'enabled',
   description: 'install static units',
 )
