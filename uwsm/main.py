@@ -1072,24 +1072,32 @@ def wait_for_unit(
     return True
 
 
-def get_unit_path(unit: str, category: str = "runtime", level: str = "user"):
-    "Returns tuple: 0) path in category, level dir, 1) unit subpath"
+def get_unit_path(unit: str, rung: str = "runtime", level: str = "user"):
+    """Takes unit file subpath, rung (runtime|home), level (user).
+    Returns tuple: 0) path in rung, level dir, 1) unit subpath"""
+
     if os.path.isabs(unit):
         raise RuntimeError("Passed absolute path to get_unit_path")
 
     unit = os.path.normpath(unit)
 
     unit_path: str = ""
-    if category == "runtime":
+    if rung == "runtime":
         try:
             unit_path = BaseDirectory.get_runtime_dir(strict=True)
         except Exception:
             pass
         if not unit_path:
-            print_error("Fatal: empty or undefined XDG_RUNTIME_DIR!")
-            sys.exit(0)
+            raise OSError("Fatal: empty or undefined XDG_RUNTIME_DIR!")
+    elif rung == "home":
+        try:
+            unit_path = BaseDirectory.xdg_config_home
+        except Exception:
+            pass
+        if not unit_path:
+            raise OSError("Fatal: could not determine XDG_CONFIG_HOME!")
     else:
-        raise RuntimeError(f"category {category} is not supported")
+        raise RuntimeError(f"rung {rung} is not supported")
 
     if level not in ["user"]:
         raise RuntimeError(f"level {level} is not supported")
@@ -1225,7 +1233,7 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False, bus_session=N
     return False
 
 
-def update_unit(unit, data):
+def update_unit(unit, data, rung: str = "runtime"):
     """
     Updates unit with data if differs
     Returns change in boolean
@@ -1243,7 +1251,7 @@ def update_unit(unit, data):
             raise ValueError(
                 f"Only single subdir supported for relative unit, got {unit.count('/')} ({unit})"
             )
-        unit_dir, unit = get_unit_path(unit)
+        unit_dir, unit = get_unit_path(unit, rung=rung)
     unit_path = os.path.join(unit_dir, unit)
 
     # create subdirs if missing
@@ -1284,7 +1292,7 @@ def update_unit(unit, data):
     return True
 
 
-def remove_unit(unit):
+def remove_unit(unit, rung: str = "runtime"):
     "Removes unit and subdir if empty"
 
     if not Val.unit_ext.search(unit):
@@ -1299,7 +1307,7 @@ def remove_unit(unit):
             raise ValueError(
                 f"Only single subdir supported for relative unit, got {unit.count('/')} ({unit})"
             )
-        unit_dir, unit = get_unit_path(unit)
+        unit_dir, unit = get_unit_path(unit, rung=rung)
     unit_path = os.path.join(unit_dir, unit)
 
     change = False
@@ -1331,7 +1339,7 @@ def remove_unit(unit):
     return change
 
 
-def generate_units():
+def generate_units(rung: str = "runtime"):
     # sourcery skip: assign-if-exp, extract-duplicate-method, remove-redundant-if, split-or-ifs
     "Generates basic unit structure"
 
@@ -1349,7 +1357,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Preparation for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
             Requires=wayland-wm-env@%i.service
@@ -1363,6 +1371,7 @@ def generate_units():
             StopWhenUnneeded=yes
             """
         ),
+        rung=rung,
     )
     update_unit(
         "wayland-session@.target",
@@ -1370,7 +1379,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
             Requires=wayland-session-pre@%i.target wayland-wm@%i.service
@@ -1384,6 +1393,7 @@ def generate_units():
             StopWhenUnneeded=yes
             """
         ),
+        rung=rung,
     )
     update_unit(
         "wayland-session-xdg-autostart@.target",
@@ -1391,7 +1401,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=XDG Autostart for session of %I Wayland compositor
             Documentation=man:uwsm(1) man:systemd.special(7)
             PartOf=graphical-session.target
@@ -1404,6 +1414,7 @@ def generate_units():
             StopWhenUnneeded=yes
             """
         ),
+        rung=rung,
     )
     update_unit(
         "wayland-session-shutdown.target",
@@ -1411,7 +1422,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Shutdown graphical session units
             Documentation=man:uwsm(1) man:systemd.special(7)
             DefaultDependencies=no
@@ -1420,6 +1431,7 @@ def generate_units():
             StopWhenUnneeded=yes
             """
         ),
+        rung=rung,
     )
 
     # services
@@ -1430,7 +1442,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Environment preloader for %I
             Documentation=man:uwsm(1)
             BindsTo=wayland-session-pre@%i.target
@@ -1456,6 +1468,7 @@ def generate_units():
             Slice={wayland_wm_slice}
             """
         ),
+        rung=rung,
     )
     update_unit(
         "wayland-wm@.service",
@@ -1463,7 +1476,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Main service for %I
             Documentation=man:uwsm(1)
             Requires=wayland-session-pre@%i.target
@@ -1491,6 +1504,7 @@ def generate_units():
             Slice={wayland_wm_slice}
             """
         ),
+        rung=rung,
     )
     update_unit(
         "wayland-session-waitenv.service",
@@ -1498,7 +1512,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Wait for WAYLAND_DISPLAY and other variables
             Documentation=man:uwsm(1)
             Before=graphical-session.target
@@ -1519,6 +1533,7 @@ def generate_units():
             Slice=background.slice
             """
         ),
+        rung=rung,
     )
     update_unit(
         "wayland-wm-app-daemon.service",
@@ -1526,7 +1541,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Fast application argument generator
             Documentation=man:uwsm(1)
             PartOf=graphical-session.target
@@ -1543,6 +1558,7 @@ def generate_units():
             Slice={wayland_wm_slice}
             """
         ),
+        rung=rung,
     )
     # for bindpid use lightweight waitpid binary if available,
     # otherwise use aux waitpid shim
@@ -1558,7 +1574,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=Bind graphical session to PID %i
             Documentation=man:uwsm(1)
             OnSuccess=wayland-session-shutdown.target
@@ -1576,6 +1592,7 @@ def generate_units():
             Slice=background.slice
             """
         ),
+        rung=rung,
     )
 
     # slices
@@ -1585,7 +1602,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=User Graphical Application Slice
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
@@ -1594,6 +1611,7 @@ def generate_units():
             Before=wayland-session-shutdown.target
             """
         ),
+        rung=rung,
     )
     update_unit(
         "background-graphical.slice",
@@ -1601,7 +1619,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=User Graphical Background Application Slice
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
@@ -1610,6 +1628,7 @@ def generate_units():
             Before=wayland-session-shutdown.target
             """
         ),
+        rung=rung,
     )
     update_unit(
         "session-graphical.slice",
@@ -1617,7 +1636,7 @@ def generate_units():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=generic
             Description=User Graphical Session Application Slice
             Documentation=man:systemd.special(7)
             PartOf=graphical-session.target
@@ -1626,10 +1645,11 @@ def generate_units():
             Before=wayland-session-shutdown.target
             """
         ),
+        rung=rung,
     )
 
 
-def generate_dropins():
+def generate_dropins(rung: str = "runtime"):
     "Generates drop-ins for units"
 
     # compositor-specific additions from cli or desktop entry via drop-ins
@@ -1646,7 +1666,7 @@ def generate_dropins():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID={CompGlobals.id}
+            X-UWSMMark={CompGlobals.id}
             """
         )
     ]
@@ -1655,7 +1675,7 @@ def generate_dropins():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID={CompGlobals.id}
+            X-UWSMMark={CompGlobals.id}
             """
         )
     ]
@@ -1736,10 +1756,11 @@ def generate_dropins():
             wm_specific_preloader,
             # those strings already have newlines
             "".join(wm_specific_preloader_data),
+            rung=rung,
         )
     else:
         # remove customization tweak
-        remove_unit(wm_specific_preloader)
+        remove_unit(wm_specific_preloader, rung=rung)
 
     if len(wm_specific_service_data) > 1:
         # add main service customization tweak
@@ -1747,10 +1768,11 @@ def generate_dropins():
             wm_specific_service,
             # those strings already have newlines
             "".join(wm_specific_service_data),
+            rung=rung,
         )
     else:
         # remove customization tweak
-        remove_unit(wm_specific_service)
+        remove_unit(wm_specific_service, rung=rung)
 
     ## tweaks
     # ordering and slicing autostart apps
@@ -1760,7 +1782,7 @@ def generate_dropins():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=tweak
             # make autostart apps stoppable/restartable by target
             PartOf=xdg-desktop-autostart.target
             After=xdg-desktop-autostart.target
@@ -1769,6 +1791,7 @@ def generate_dropins():
             Slice=app-graphical.slice
             """
         ),
+        rung=rung,
     )
     # ordering and slicing flatpaks
     update_unit(
@@ -1777,7 +1800,7 @@ def generate_dropins():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=tweak
             # terminate with session properly
             PartOf=graphical-session.target
             After=graphical-session.target
@@ -1786,6 +1809,7 @@ def generate_dropins():
             Slice=app-graphical.slice
             """
         ),
+        rung=rung,
     )
     ## hotfix some portals
     # with kde portal it's complicated
@@ -1796,24 +1820,33 @@ def generate_dropins():
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSM-ID=GENERIC
+            X-UWSMMark=tweak
             PartOf=graphical-session.target
             After=graphical-session.target
             """
         ),
+        rung=rung,
     )
 
 
-def remove_units(only=None) -> None:
+def remove_units(only: List[str] | None = None, rung: str = "runtime") -> None:
     """
-    Removes units by X-UWSM-ID= attribute.
-    if wm_id is given as argument, only remove X-UWSM-ID={wm_id}, else remove all.
+    Removes units by X-UWSMMark= attribute.
+    if only list is given as argument, only remove files with matching X-UWSMMark={item}, else remove all.
     """
+    # TODO: drop deprecated X-UWSM-ID after a few releases
     if not only:
-        only = ""
-    mark_attr = f"X-UWSM-ID={only}"
-    check_dir, _ = get_unit_path("")
+        only = []
+        match_lines = ["X-UWSM-ID=", "X-UWSMMark="]
+    else:
+        match_lines = [
+            f"X-UWSMMark={mark.strip()}" for mark in only if mark.strip()
+        ] + [f"X-UWSM-ID={mark.strip()}" for mark in only if mark.strip()]
+    check_dir, _ = get_unit_path("", rung=rung)
     unit_files = []
+    print_debug(
+        f"will check for removal, {'match' if only else 'startswith'}", match_lines
+    )
 
     for directory, _, files in sorted(os.walk(check_dir)):
         for file_name in sorted(files):
@@ -1825,19 +1858,22 @@ def remove_units(only=None) -> None:
             try:
                 with open(file_path, "r", encoding="utf-8") as unit_file:
                     for line in unit_file.readlines():
-                        if (only and line.strip() == mark_attr) or (
-                            not only and line.strip().startswith(mark_attr)
-                        ):
+                        if (
+                            not only
+                            and any(
+                                [line.strip().startswith(item) for item in match_lines]
+                            )
+                        ) or (only and line.strip() in match_lines):
                             unit_files.append(
                                 file_path.removeprefix(check_dir.rstrip("/") + "/")
                             )
-                            print_debug(f"found {mark_attr}")
+                            print_debug("matched")
                             break
             except Exception:
                 pass
 
     for file_path in unit_files:
-        remove_unit(file_path)
+        remove_unit(file_path, rung=rung)
 
 
 class Args:
@@ -2089,7 +2125,7 @@ class Args:
             metavar="compositor",
             default=False,
             dest="remove_units",
-            help="Also remove units (all or only compositor-specific).",
+            help='Also remove unit files, all or only with specific mark(s) (compositor ID, "tweaks", "generic" as comma-separated list).',
         )
         parsers["stop"].add_argument(
             "-n",
@@ -4827,10 +4863,18 @@ def main():
                 else:
                     print_ok("...but this is dry run, so the dream continues.")
 
-            if not STATIC_UNITS:
-                generate_units()
+            # get unit rung from environment variable
+            unit_rung = os.getenv("UWSM_UNIT_RUNG", "runtime")
+            if unit_rung not in ["runtime", "home"]:
+                print_warning(
+                    f'Expected "runtime" or "home" from UWSM_UNIT_RUNG, got: {unit_rung}\nReset to "runtime"'
+                )
+                unit_rung = "runtime"
 
-            generate_dropins()
+            if not STATIC_UNITS:
+                generate_units(rung=unit_rung)
+
+            generate_dropins(rung=unit_rung)
 
             if UnitsState.changed:
                 reload_systemd()
@@ -4969,9 +5013,20 @@ def main():
             print_error(caught_exception)
             stop_rc = 1
 
+        # get unit rung from environment variable
+        unit_rung = os.getenv("UWSM_UNIT_RUNG", "runtime")
+        if unit_rung not in ["runtime", "home"]:
+            print_warning(
+                f'Expected "runtime" or "home" from UWSM_UNIT_RUNG, got: {unit_rung}\nReset to "runtime"'
+            )
+            unit_rung = "runtime"
+
         # Args.parsed.remove_units is False when not given, None if given without argument
         if Args.parsed.remove_units is not False:
-            remove_units(Args.parsed.remove_units)
+            if Args.parsed.remove_units is None:
+                remove_units(rung=unit_rung)
+            else:
+                remove_units(Args.parsed.remove_units.split(","), rung=unit_rung)
             if UnitsState.changed:
                 try:
                     reload_systemd()
