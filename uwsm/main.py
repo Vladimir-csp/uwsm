@@ -1072,8 +1072,8 @@ def wait_for_unit(
     return True
 
 
-def get_unit_path(unit: str, rung: str = "runtime", level: str = "user"):
-    """Takes unit file subpath, rung (runtime|home), level (user).
+def get_unit_path(unit: str, rung: str = "run", level: str = "user"):
+    """Takes unit file subpath, rung (run|home), level (user).
     Returns tuple: 0) path in rung, level dir, 1) unit subpath"""
 
     if os.path.isabs(unit):
@@ -1082,7 +1082,7 @@ def get_unit_path(unit: str, rung: str = "runtime", level: str = "user"):
     unit = os.path.normpath(unit)
 
     unit_path: str = ""
-    if rung == "runtime":
+    if rung == "run":
         try:
             unit_path = BaseDirectory.get_runtime_dir(strict=True)
         except Exception:
@@ -1233,7 +1233,7 @@ def is_active(check_wm_id="", verbose=False, verbose_active=False, bus_session=N
     return False
 
 
-def update_unit(unit, data, rung: str = "runtime"):
+def update_unit(unit, data, rung: str = "run"):
     """
     Updates unit with data if differs
     Returns change in boolean
@@ -1267,9 +1267,9 @@ def update_unit(unit, data, rung: str = "runtime"):
         if not os.path.isdir(check_dir):
             if not Args.parsed.dry_run:
                 os.mkdir(check_dir)
-                print_ok(f'Created unit subdir "{path_element}/"')
+                print_ok(f'Created unit subdir "{path_element}/" ({rung}).')
             else:
-                print_ok(f'Will create unit subdir "{path_element}/"')
+                print_ok(f'Will create unit subdir "{path_element}/" ({rung}).')
 
     old_data = ""
     if os.path.isfile(unit_path):
@@ -1282,9 +1282,15 @@ def update_unit(unit, data, rung: str = "runtime"):
     if not Args.parsed.dry_run:
         with open(unit_path, "w", encoding="UTF-8") as unit_file:
             unit_file.write(data)
-        print_ok(f'Updated "{unit}".')
+        if old_data:
+            print_ok(f'Updated "{unit}" ({rung}).')
+        else:
+            print_ok(f'Created "{unit}" ({rung}).')
     else:
-        print_ok(f'Will update "{unit}".')
+        if old_data:
+            print_ok(f'Will update "{unit}" ({rung}).')
+        else:
+            print_ok(f'Will create "{unit}" ({rung}).')
 
     print_debug(data)
 
@@ -1292,7 +1298,7 @@ def update_unit(unit, data, rung: str = "runtime"):
     return True
 
 
-def remove_unit(unit, rung: str = "runtime"):
+def remove_unit(unit, rung: str = "run"):
     "Removes unit and subdir if empty"
 
     if not Val.unit_ext.search(unit):
@@ -1315,9 +1321,9 @@ def remove_unit(unit, rung: str = "runtime"):
     if os.path.isfile(unit_path):
         if not Args.parsed.dry_run:
             os.remove(unit_path)
-            print_ok(f"Removed unit {unit}.")
+            print_ok(f'Removed "{unit}" ({rung}).')
         else:
-            print_ok(f"Will remove unit {unit}.")
+            print_ok(f'Will remove "{unit}" ({rung}).')
         UnitsState.changed = True
         change = True
 
@@ -1328,18 +1334,18 @@ def remove_unit(unit, rung: str = "runtime"):
         unit_filename = os.path.basename(unit_path)
         if os.path.isdir(unit_subdir_path):
             if set(os.listdir(unit_subdir_path)) - {unit_filename}:
-                print_warning(f"Unit subdir {unit_subdir} is not empty.")
+                print_warning(f'Unit subdir "{unit_subdir}" is not empty ({rung}).')
             else:
                 if not Args.parsed.dry_run:
                     os.rmdir(unit_subdir_path)
-                    print_ok(f"Removed unit subdir {unit_subdir}.")
+                    print_ok(f'Removed unit subdir "{unit_subdir}" ({rung}).')
                 else:
-                    print_ok(f"Will remove unit subdir {unit_subdir}.")
+                    print_ok(f'Will remove unit subdir "{unit_subdir}" ({rung}).')
 
     return change
 
 
-def generate_units(rung: str = "runtime"):
+def generate_units(rung: str = "run"):
     # sourcery skip: assign-if-exp, extract-duplicate-method, remove-redundant-if, split-or-ifs
     "Generates basic unit structure"
 
@@ -1769,7 +1775,8 @@ def generate_dropins(rung: str = "runtime"):
         # remove customization tweak
         remove_unit(wm_specific_service, rung=rung)
 
-def generate_tweaks(rung: str = "runtime"):
+
+def generate_tweaks(rung: str = "run"):
     "Generates drop-ins for units"
 
     ## tweaks
@@ -1827,12 +1834,12 @@ def generate_tweaks(rung: str = "runtime"):
     )
 
 
-def remove_units(only: List[str] | None = None, rung: str = "runtime") -> None:
+def remove_units(only: List[str] | None = None, rung: str = "run") -> None:
     """
     Removes units by X-UWSMMark= attribute.
     if only list is given as argument, only remove files with matching X-UWSMMark={item}, else remove all.
     """
-    # TODO: drop deprecated X-UWSM-ID after a few releases
+    # TODO: drop deprecated X-UWSM-ID and GENERIC after a few releases
     if not only:
         only = []
         match_lines = ["X-UWSM-ID=", "X-UWSMMark="]
@@ -2066,6 +2073,48 @@ class Args:
             dest="warn_sa_deprecated",
             help=f"Option is deprecated, session.slice is always used",
         )
+        unit_rung_preset = False
+        unit_rung_default = os.getenv("UWSM_UNIT_RUNG", None)
+        if unit_rung_default in ("run", "home"):
+            unit_rung_preset = True
+        elif unit_rung_default is not None:
+            print_warning(
+                f'invalid UWSM_UNIT_RUNG value "{unit_rung_default}" ignored, set to "run".'
+            )
+            unit_rung_default = "run"
+        else:
+            unit_rung_default = "run"
+        parsers["start"].add_argument(
+            "-U",
+            dest="unit_rung",
+            type=str,
+            default=unit_rung_default,
+            required=False,
+            choices=("run", "home"),
+            help=f"Generated unit/drop-in files destination (default: %(default)s, {'was' if unit_rung_preset else 'can be'} preset by UWSM_UNIT_RUNG env var).",
+        )
+        no_tweaks_preset = False
+        no_tweaks_default = os.getenv("UWSM_NO_TWEAKS", None)
+        if no_tweaks_default is not None:
+            try:
+                nt_raw = no_tweaks_default
+                no_tweaks_default = str2bool_plus(no_tweaks_default)
+                no_tweaks_preset = True
+            except ValueError:
+                print_warning(
+                    f'Expected boolean value from UWSM_NO_TWEAKS, got "{nt_raw}" ignored, set to False'
+                )
+                no_tweaks_default = False
+            del nt_raw
+        else:
+            no_tweaks_default = False
+        parsers["start"].add_argument(
+            "-t",
+            dest="no_tweaks",
+            action="store_true",
+            default=no_tweaks_default,
+            help=f"Do not generate tweak drop-ins (default: %(default)s, {'was' if no_tweaks_preset else 'can be'} preset by UWSM_NO_TWEAKS env var).",
+        )
         parsers["start"].add_argument(
             "-F",
             action="store_true",
@@ -2117,6 +2166,15 @@ class Args:
             default=False,
             dest="remove_units",
             help='Also remove unit files, all or only with specific mark(s) (compositor ID, "tweaks", "generic" as comma-separated list).',
+        )
+        parsers["stop"].add_argument(
+            "-U",
+            dest="unit_rung",
+            default=unit_rung_default,
+            required=False,
+            type=str,
+            choices=("run", "home"),
+            help=f"Generated unit/drop-in files destination (default: %(default)s, {'was' if unit_rung_preset else 'can be'} preset by UWSM_UNIT_RUNG env var).",
         )
         parsers["stop"].add_argument(
             "-n",
@@ -4737,7 +4795,10 @@ def main():
         # TODO: drop this after a couple of releases
         if Args.parsed.warn_sa_deprecated:
             # argparse has deprecation functionality, but our warnings are fancier.
-            print_warning("Options -S|-A are deprecated, session.slice is always used", file=sys.stderr)
+            print_warning(
+                "Options -S|-A are deprecated, session.slice is always used",
+                file=sys.stderr,
+            )
 
         # silent start mode
         silent_start_raw = os.getenv("UWSM_SILENT_START", "0")
@@ -4847,18 +4908,18 @@ def main():
                 else:
                     print_ok("...but this is dry run, so the dream continues.")
 
-            # get unit rung from environment variable
-            unit_rung = os.getenv("UWSM_UNIT_RUNG", "runtime")
-            if unit_rung not in ["runtime", "home"]:
-                print_warning(
-                    f'Expected "runtime" or "home" from UWSM_UNIT_RUNG, got: {unit_rung}\nReset to "runtime"'
-                )
-                unit_rung = "runtime"
-
             if not STATIC_UNITS:
-                generate_units(rung=unit_rung)
+                generate_units(rung=Args.parsed.unit_rung)
 
-            generate_dropins(rung=unit_rung)
+            generate_dropins(rung=Args.parsed.unit_rung)
+
+            if Args.parsed.no_tweaks:
+                remove_units(["tweaks"], rung=Args.parsed.unit_rung)
+            else:
+                generate_tweaks(rung=Args.parsed.unit_rung)
+
+            # remove unit files from other rung
+            remove_units(rung="run" if Args.parsed.unit_rung == "home" else "home")
 
             if UnitsState.changed:
                 reload_systemd()
@@ -4997,20 +5058,14 @@ def main():
             print_error(caught_exception)
             stop_rc = 1
 
-        # get unit rung from environment variable
-        unit_rung = os.getenv("UWSM_UNIT_RUNG", "runtime")
-        if unit_rung not in ["runtime", "home"]:
-            print_warning(
-                f'Expected "runtime" or "home" from UWSM_UNIT_RUNG, got: {unit_rung}\nReset to "runtime"'
-            )
-            unit_rung = "runtime"
-
         # Args.parsed.remove_units is False when not given, None if given without argument
         if Args.parsed.remove_units is not False:
             if Args.parsed.remove_units is None:
-                remove_units(rung=unit_rung)
+                remove_units(rung=Args.parsed.unit_rung)
             else:
-                remove_units(Args.parsed.remove_units.split(","), rung=unit_rung)
+                remove_units(
+                    Args.parsed.remove_units.split(","), rung=Args.parsed.unit_rung
+                )
             if UnitsState.changed:
                 try:
                     reload_systemd()
