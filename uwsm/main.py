@@ -1826,7 +1826,6 @@ def generate_tweaks(rung: str = "run"):
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSMMark=tweak
-            PartOf=graphical-session.target
             After=graphical-session.target
             """
         ),
