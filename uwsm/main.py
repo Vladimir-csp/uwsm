@@ -1279,6 +1279,8 @@ def update_unit(unit, data, rung: str = "run"):
     if data == old_data:
         return False
 
+    print_debug(f"for update: {unit_path}", data)
+
     if not Args.parsed.dry_run:
         with open(unit_path, "w", encoding="UTF-8") as unit_file:
             unit_file.write(data)
@@ -1291,8 +1293,6 @@ def update_unit(unit, data, rung: str = "run"):
             print_ok(f'Will update "{unit}" ({rung}).')
         else:
             print_ok(f'Will create "{unit}" ({rung}).')
-
-    print_debug(data)
 
     UnitsState.changed = True
     return True
@@ -1319,6 +1319,7 @@ def remove_unit(unit, rung: str = "run"):
     change = False
     # remove unit file
     if os.path.isfile(unit_path):
+        print_debug(f"for removing: {unit_path}")
         if not Args.parsed.dry_run:
             os.remove(unit_path)
             print_ok(f'Removed "{unit}" ({rung}).')
@@ -1333,6 +1334,7 @@ def remove_unit(unit, rung: str = "run"):
         unit_subdir = os.path.dirname(unit)
         unit_filename = os.path.basename(unit_path)
         if os.path.isdir(unit_subdir_path):
+            print_debug(f"for removing: {unit_subdir_path}")
             if set(os.listdir(unit_subdir_path)) - {unit_filename}:
                 print_warning(f'Unit subdir "{unit_subdir}" is not empty ({rung}).')
             else:
