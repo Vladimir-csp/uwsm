@@ -1752,7 +1752,7 @@ def generate_dropins(rung: str = "runtime"):
         )
 
     if len(wm_specific_preloader_data) > 1:
-        # add preloader customization tweak
+        # add preloader customization drop-in
         update_unit(
             wm_specific_preloader,
             # those strings already have newlines
@@ -1760,11 +1760,11 @@ def generate_dropins(rung: str = "runtime"):
             rung=rung,
         )
     else:
-        # remove customization tweak
+        # remove customization drop-in
         remove_unit(wm_specific_preloader, rung=rung)
 
     if len(wm_specific_service_data) > 1:
-        # add main service customization tweak
+        # add main service customization drop-in
         update_unit(
             wm_specific_service,
             # those strings already have newlines
@@ -1772,7 +1772,7 @@ def generate_dropins(rung: str = "runtime"):
             rung=rung,
         )
     else:
-        # remove customization tweak
+        # remove customization drop-in
         remove_unit(wm_specific_service, rung=rung)
 
 
@@ -1787,7 +1787,7 @@ def generate_tweaks(rung: str = "run"):
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSMMark=tweak
+            X-UWSMMark=tweaks
             # make autostart apps stoppable/restartable by target
             PartOf=xdg-desktop-autostart.target
             After=xdg-desktop-autostart.target
@@ -1805,7 +1805,7 @@ def generate_tweaks(rung: str = "run"):
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSMMark=tweak
+            X-UWSMMark=tweaks
             # terminate with session properly
             PartOf=graphical-session.target
             After=graphical-session.target
@@ -1825,7 +1825,7 @@ def generate_tweaks(rung: str = "run"):
             f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
-            X-UWSMMark=tweak
+            X-UWSMMark=tweaks
             After=graphical-session.target
             """
         ),
@@ -2107,12 +2107,48 @@ class Args:
             del nt_raw
         else:
             no_tweaks_default = False
-        parsers["start"].add_argument(
+        parsers["start_tw"] = parsers["start"].add_mutually_exclusive_group()
+        parsers["start_tw"].add_argument(
             "-t",
             dest="no_tweaks",
             action="store_true",
             default=no_tweaks_default,
-            help=f"Do not generate tweak drop-ins (default: %(default)s, {'was' if no_tweaks_preset else 'can be'} preset by UWSM_NO_TWEAKS env var).",
+            help="".join(
+                [
+                    "Do not generate tweak drop-ins",
+                    (
+                        " (can be preset by UWSM_NO_TWEAKS=true env var)"
+                        if not no_tweaks_preset
+                        else (
+                            " (preset by UWSM_NO_TWEAKS=true env var)"
+                            if no_tweaks_default
+                            else ""
+                        )
+                    ),
+                    ".",
+                ]
+            ),
+        )
+        parsers["start_tw"].add_argument(
+            "-T",
+            dest="no_tweaks",
+            action="store_false",
+            default=no_tweaks_default,
+            help="".join(
+                [
+                    "Generate tweak drop-ins",
+                    (
+                        " (default)"
+                        if not no_tweaks_preset
+                        else (
+                            " (preset by UWSM_NO_TWEAKS=false env var)"
+                            if not no_tweaks_default
+                            else ""
+                        )
+                    ),
+                    ".",
+                ]
+            ),
         )
         parsers["start"].add_argument(
             "-F",
