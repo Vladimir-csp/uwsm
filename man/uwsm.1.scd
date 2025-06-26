@@ -57,11 +57,15 @@ be used for distro level defaults.
 
 ## Environment vars
 
-|[ *UWSM_USE_SESSION_SLICE*
-:< (boolean value)
+|[ *UWSM_UNIT_RUNG*
+:< (*run*|*home*)
 | 
-:  Whether to put compositor unit in *session.slice*.
-   (default: _True_)
+:  Which rung of systemd/user/ hierarchy to manage generated unit and drop-in
+   files in: $XDG_RUNTIME_DIR or $XDG_CONFIG_HOME.
+|  *UWSM_NO_TWEAKS*
+:  (boolean value)
+| 
+:  Remove and do not generate tweak drop-ins for other software.
 |  *UWSM_FINALIZE_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
@@ -75,17 +79,16 @@ be used for distro level defaults.
 :  (int value)
 | 
 :  Seconds to wait for variables to appear in activation environment.
-   Essentially, startup timeout.
-   (default: 10)
+   Essentially, startup timeout (default: 10).
 |  *UWSM_WAIT_VARNAMES_SETTLETIME*
 :  (float value)
 | 
-:  Seconds to pause after all expected vars found in activation environment.
-   (default: 0.2)
+:  Seconds to pause after all expected vars found in activation environment
+   (default: 0.2).
 |  *UWSM_APP_UNIT_TYPE*
-:  (*service*|*scope*)
+:  (*scope*|*service*)
 | 
-:  Default unit type for launching apps.
+:  Default unit type for launching apps (default: *scope*).
 |  *UWSM_SILENT_START*
 :  (int or boolean value)
 | 

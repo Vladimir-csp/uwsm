@@ -14,14 +14,17 @@ session/XDG autostart management in Systemd-managed environments.
 > `feat!: ...`, etc.).
 
 > [!IMPORTANT]
-> Some changes in upcoming v0.23.0:
+> Some changes in v0.23.0:
 > - Compositor slice selection options are deprecated (`-A`|`-S`,
->   `UWSM_USE_SESSION_SLICE`), `session.slice` is used.
-> - Basic unit files are now static (build option `static-units`).
+>   `UWSM_USE_SESSION_SLICE`) and will be removed in future versions,
+>   `session.slice` is always used.
+> - Basic unit files are now static by default (build option
+>   `static-units=enabled`).
 > - Generated drop-in files can be managed in `$XDG_CONFIG_HOME` systemd
 >   configuration rung (`-U home` option for `start` and `stop` subcommands,
->   `UWSM_UNIT_RUNG=home` var).
->   This will be the default behavior for static units in future versions.
+>   `UWSM_UNIT_RUNG=home` var). In future versions this will become the default
+>   behavior when built with `static-units=enabled`. It can shave off some
+>   startup time by removing the need for systemd reload.
 > - Tweak drop-ins can be disabled (`-t` option, `UWSM_NO_TWEAKS=true` var).
 
 > [!NOTE]
