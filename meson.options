@@ -18,6 +18,7 @@ option(
 option(
   'python-bin',
   type: 'string',
+  value: 'python3',
   description: 'path to the python binary',
 )
 option(
