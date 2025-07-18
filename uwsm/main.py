@@ -3038,6 +3038,13 @@ def prepare_env_gen_sh(random_mark, load_profile: bool = False):
         	load_wm_env || exit $?
         	true
         fi
+
+        #### integrate XDG User Dirs
+        # update XDG User Dirs, XDG Autostart would be too late
+        if command -v xdg-user-dirs-update >/dev/null; then
+        	echo "Updating XDG User Dirs"
+        	xdg-user-dirs-update
+        fi
         """
     )
 
