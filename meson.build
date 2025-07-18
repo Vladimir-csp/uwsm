@@ -6,11 +6,13 @@ project(
 )
 
 PYTHON = import('python')
-PYTHON_PROG = PYTHON.find_installation('python3')
+PYTHON_BIN_OPTION = get_option('python-bin')
+PYTHON_PROG = PYTHON.find_installation(PYTHON_BIN_OPTION)
 PYTHON_VERSION = PYTHON_PROG.language_version()
 if not PYTHON_VERSION.version_compare('>=3.10')
   error('python version >=3.10 required, found: @0@'.format(PYTHON_VERSION))
 endif
+PYTHON_BIN = PYTHON_PROG.full_path()
 
 
 PKG_DATA_DIR = join_paths(
@@ -44,11 +46,6 @@ SD_USER_DIR = join_paths(
 
 PROJECT_NAME = meson.project_name()
 PROJECT_VERSION = meson.project_version()
-
-PYTHON_BIN = get_option('python-bin')
-if PYTHON_BIN == ''
-  PYTHON_BIN = PYTHON_PROG.full_path()
-endif
 
 conf = configuration_data()
 conf.set('PROJECT_NAME', PROJECT_NAME)
