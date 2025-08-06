@@ -464,6 +464,7 @@ Some examples:
 
 | Launcher | Where     | What                                                                                                                                                                             |
 | -------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albert   | env var   | `ALBERT_APPLICATIONS_COMMAND_PREFIX="uwsm;app;--" albert`                                                                                                                        |
 | fuzzel   | command   | `fuzzel --launch-prefix="uwsm app -- "`                                                                                                                                          |
 | fuzzel   | config    | `launch-prefix='uwsm app -- '`                                                                                                                                                   |
 | walker   | config    | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             |
