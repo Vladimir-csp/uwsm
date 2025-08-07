@@ -460,18 +460,21 @@ uwsm app -- {executable|entry.desktop[:action]} [args ...]
 
 A one-shot app launcher can be started directly, but either configured to run
 things via `uwsm app` or wrapped in a shell expression to handle output.
+Not all launchers are able to provide Desktop Entry ID, most just provide the
+resulting command, so units will lack fancy description.
 Some examples:
 
-| Launcher | Where     | What                                                                                                                                                                             |
-| -------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| albert   | command   | `ALBERT_APPLICATIONS_COMMAND_PREFIX="uwsm;app;--" albert`                                                                                                                        |
-| fuzzel   | command   | `fuzzel --launch-prefix="uwsm app -- "`                                                                                                                                          |
-| fuzzel   | config    | `launch-prefix='uwsm app -- '`                                                                                                                                                   |
-| walker   | config    | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             |
-| wofi     | shell     | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        |
-| wofi     | shell     | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` |
-| tofi     | shell     | `uwsm app -- $(tofi-drun)`                                                                                                                                                       |
-| rofi     | command   | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               |
+| Launcher | Via     | What                                                                                                                                                                             | Entry |
+| -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| fuzzel   | command | `fuzzel "--launch-prefix=uwsm app --"`                                                                                                                                           | no    |
+| fuzzel   | config  | `launch-prefix=uwsm app --`                                                                                                                                                      | no    |
+| albert   | env var | `ALBERT_APPLICATIONS_COMMAND_PREFIX`: `uwsm;app;--`                                                                                                                              | no    |
+| albert   | shell   | `ALBERT_APPLICATIONS_COMMAND_PREFIX="uwsm;app;--" albert`                                                                                                                        | no    |
+| walker   | config  | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             | no    |
+| wofi     | shell   | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        | yes   |
+| wofi     | shell   | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` | yes   |
+| tofi     | shell   | `uwsm app -- $(tofi-drun)`                                                                                                                                                       | no    |
+| rofi     | command | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               | no    |
 
 Compositor itself runs in `session.slice` which has priority in some resource
 allocation. It would be a bad practice to accumulate all apps there, and
