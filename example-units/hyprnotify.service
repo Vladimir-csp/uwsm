@@ -1,0 +1,17 @@
+[Unit]
+Description=Hyprland notification daemon
+Documentation=https://github.com/codelif/hyprnotify
+PartOf=graphical-session.target
+After=graphical-session.target
+# ConditionEnvironment requires systemd v247 to work correctly
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.Notifications
+ExecStart=/usr/bin/hyprnotify --no-sound
+ExecReload=/usr/bin/hyprnotify --no-sound
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
