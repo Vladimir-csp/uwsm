@@ -1438,7 +1438,6 @@ def generate_units(rung: str = "run"):
     )
 
     # services
-    waitenv_timeout = get_waitenv_timeout()
     update_unit(
         "wayland-wm-env@.service",
         dedent(
@@ -1501,7 +1500,7 @@ def generate_units(rung: str = "run"):
             NotifyAccess=all
             ExecStart={BIN_PATH} aux exec -- %I
             Restart=no
-            TimeoutStartSec={waitenv_timeout}
+            TimeoutStartSec=10
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
             Slice=session.slice
@@ -1531,7 +1530,7 @@ def generate_units(rung: str = "run"):
             RemainAfterExit=no
             ExecStart={BIN_PATH} aux waitenv
             Restart=no
-            TimeoutStartSec={waitenv_timeout}
+            TimeoutStartSec=10
             SyslogIdentifier={BIN_NAME}_waitenv
             Slice=background.slice
             """
@@ -1654,6 +1653,39 @@ def generate_units(rung: str = "run"):
 
 def generate_dropins(rung: str = "runtime"):
     "Generates drop-ins for units"
+
+    # custom start timeout
+    waitenv_timeout = get_waitenv_timeout()
+    if waitenv_timeout != 10:
+        update_unit(
+            "wayland-wm@.service/timeout.conf",
+            dedent(
+                f"""
+                # injected by {BIN_NAME}, do not edit
+                [Unit]
+                X-UWSMMark=generic
+                [Service]
+                TimeoutStartSec={waitenv_timeout}
+                """
+            ),
+            rung=rung
+        )
+        update_unit(
+            "wayland-session-waitenv.service/timeout.conf",
+            dedent(
+                f"""
+                # injected by {BIN_NAME}, do not edit
+                [Unit]
+                X-UWSMMark=generic
+                [Service]
+                TimeoutStartSec={waitenv_timeout}
+                """
+            ),
+            rung=rung
+        )
+    else:
+        remove_unit("wayland-wm@.service/timeout.conf", rung=rung)
+        remove_unit("wayland-session-waitenv.service/timeout.conf", rung=rung)
 
     # compositor-specific additions from cli or desktop entry via drop-ins
     # paths
