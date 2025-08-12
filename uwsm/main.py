@@ -1658,7 +1658,7 @@ def generate_dropins(rung: str = "runtime"):
     waitenv_timeout = get_waitenv_timeout()
     if waitenv_timeout != 10:
         update_unit(
-            "wayland-wm@.service/timeout.conf",
+            "wayland-wm@.service.d/timeout.conf",
             dedent(
                 f"""
                 # injected by {BIN_NAME}, do not edit
@@ -1671,7 +1671,7 @@ def generate_dropins(rung: str = "runtime"):
             rung=rung
         )
         update_unit(
-            "wayland-session-waitenv.service/timeout.conf",
+            "wayland-session-waitenv.service.d/timeout.conf",
             dedent(
                 f"""
                 # injected by {BIN_NAME}, do not edit
@@ -1684,8 +1684,8 @@ def generate_dropins(rung: str = "runtime"):
             rung=rung
         )
     else:
-        remove_unit("wayland-wm@.service/timeout.conf", rung=rung)
-        remove_unit("wayland-session-waitenv.service/timeout.conf", rung=rung)
+        remove_unit("wayland-wm@.service.d/timeout.conf", rung=rung)
+        remove_unit("wayland-session-waitenv.service.d/timeout.conf", rung=rung)
 
     # compositor-specific additions from cli or desktop entry via drop-ins
     # paths
