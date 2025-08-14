@@ -762,7 +762,7 @@ user's login session.
 #### From a display manager
 
 To launch uwsm from a display/login manager, `uwsm` can be used inside desktop
-entries. Example `/usr/local/share/wayland-sessions/my-compositor-uwsm.desktop`:
+entries. Example `/usr/share/wayland-sessions/my-compositor-uwsm.desktop`:
 
 ```
 [Desktop Entry]
