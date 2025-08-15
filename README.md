@@ -775,8 +775,7 @@ Exec=uwsm start -- my-compositor.desktop
 # or a full command line with metadata and executable
 #Exec=uwsm start -N "My compositor" -D mycompositor:mylib -C "My cool compositor" -- mywm
 
-# don't autostart (e.g. autologin) if uwsm is not installed
-# in a case of a removal or copying the entry to a new machine
+# invalidates entry if uwsm is missing
 TryExec=uwsm
 
 DesktopNames=mycompositor;mylib
