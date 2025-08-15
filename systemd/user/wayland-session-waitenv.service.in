@@ -14,6 +14,6 @@ Type=oneshot
 RemainAfterExit=no
 ExecStart=@BIN_PATH@ aux waitenv
 Restart=no
-TimeoutStartSec=10
+TimeoutStartSec=30
 SyslogIdentifier=uwsm_waitenv
 Slice=background.slice

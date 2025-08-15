@@ -1500,7 +1500,7 @@ def generate_units(rung: str = "run"):
             NotifyAccess=all
             ExecStart={BIN_PATH} aux exec -- %I
             Restart=no
-            TimeoutStartSec=10
+            TimeoutStartSec=30
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
             Slice=session.slice
@@ -1530,7 +1530,7 @@ def generate_units(rung: str = "run"):
             RemainAfterExit=no
             ExecStart={BIN_PATH} aux waitenv
             Restart=no
-            TimeoutStartSec=10
+            TimeoutStartSec=30
             SyslogIdentifier={BIN_NAME}_waitenv
             Slice=background.slice
             """
@@ -1656,7 +1656,7 @@ def generate_dropins(rung: str = "runtime"):
 
     # custom start timeout
     waitenv_timeout = get_waitenv_timeout()
-    if waitenv_timeout != 10:
+    if waitenv_timeout != 30:
         update_unit(
             "wayland-wm@.service.d/50_timeout.conf",
             dedent(
@@ -1668,7 +1668,7 @@ def generate_dropins(rung: str = "runtime"):
                 TimeoutStartSec={waitenv_timeout}
                 """
             ),
-            rung=rung
+            rung=rung,
         )
         update_unit(
             "wayland-session-waitenv.service.d/50_timeout.conf",
@@ -1681,7 +1681,7 @@ def generate_dropins(rung: str = "runtime"):
                 TimeoutStartSec={waitenv_timeout}
                 """
             ),
-            rung=rung
+            rung=rung,
         )
     else:
         remove_unit("wayland-wm@.service.d/50_timeout.conf", rung=rung)
@@ -2727,7 +2727,7 @@ def finalize(additional_vars=None):
 
     if not isinstance(wm_id, str) or not wm_id:
         print_error(
-            "Finalization: Could not get ID of active or activating Wayland session. If it is in activating state, it will timeout in 10 seconds."
+            "Finalization: Could not get ID of active or activating Wayland session. If it is in activating state, it will time out in 30 seconds (by default)."
         )
         sys.exit(1)
     if activating_wm_id and wm_id != activating_wm_id:
@@ -4741,7 +4741,7 @@ def waitpid(pid: int):
     return
 
 
-def get_waitenv_timeout(default=10):
+def get_waitenv_timeout(default=30):
     "Gets waitenv timeout from UWSM_WAIT_VARNAMES_TIMEOUT env var or use default"
     timeout = os.getenv("UWSM_WAIT_VARNAMES_TIMEOUT", str(default))
     if timeout.isnumeric():
@@ -4824,7 +4824,7 @@ def waitenv(
             break
         time.sleep(step)
 
-    # let systemd time out units in 10 seconds.
+    # let systemd start timeout happen.
     time.sleep(end_buffer)
     raise TimeoutError(
         f"Timed out waiting for variables in activation environment:\n  {', '.join(varnames_set.difference(varnames_exist_set))}"
@@ -5038,13 +5038,13 @@ def main():
                 signal.signal(signal.SIGHUP, signal.SIG_IGN)
                 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
-                # 15 seconds should be more than enough to wait for compositor activation
-                # 10 seconds unit timeout plus 5 on possible overhead
+                # 30 seconds should be more than enough to wait for compositor unit to
+                # become activating and having MainPID (hopefully)
                 # Premature exit is covered explicitly
-                # 0.5s between 30 attempts
+                # 0.5s between 60 attempts
                 bus_session = DbusInteractions("session")
                 print_debug("bus_session holder fork", bus_session)
-                for attempt in range(30, -1, -1):
+                for attempt in range(60, -1, -1):
                     # if parent process exits at this stage, silently exit
                     try:
                         os.kill(mainpid, 0)
@@ -5337,9 +5337,26 @@ def main():
                         sys.exit(0)
                     # we are the leaf fork
                     try:
+                        # try getting start timeout from the unit property
+                        try:
+                            start_timeout = bus_session.get_unit_property(
+                                f"wayland-wm@{CompGlobals.id_unit_string}.service",
+                                "TimeoutStartUSec",
+                                skip_generic=True,
+                            )
+                            print_debug(
+                                f"wayland-wm@{CompGlobals.id_unit_string}.service TimeoutStartUSec",
+                                start_timeout,
+                            )
+                            start_timeout = int(start_timeout) // 1000000
+                        except Exception as caught_exception:
+                            print_debug(caught_exception)
+                            start_timeout = None
+                        # wait for variables
                         waitenv(
                             varnames=["WAYLAND_DISPLAY"]
-                            + os.getenv("UWSM_WAIT_VARNAMES", "").split()
+                            + os.getenv("UWSM_WAIT_VARNAMES", "").split(),
+                            timeout=start_timeout,
                         )
                         # just to be on the safe side if things are settling down
                         settle_time = os.getenv("UWSM_WAIT_VARNAMES_SETTLETIME", "0.2")
@@ -5431,10 +5448,27 @@ def main():
 
         elif Args.parsed.aux_action == "waitenv":
             try:
+                # try getting start timeout from the unit property
+                try:
+                    start_timeout = bus_session.get_unit_property(
+                        "wayland-session-waitenv.service",
+                        "TimeoutStartUSec",
+                        skip_generic=True,
+                    )
+                    print_debug(
+                        "wayland-session-waitenv.service TimeoutStartUSec",
+                        start_timeout,
+                    )
+                    start_timeout = int(start_timeout) // 1000000
+                except Exception as caught_exception:
+                    print_debug(caught_exception)
+                    start_timeout = None
+                # wait for vars
                 waitenv(
                     varnames=["WAYLAND_DISPLAY"]
                     + Args.parsed.env_names
-                    + os.getenv("UWSM_WAIT_VARNAMES", "").split()
+                    + os.getenv("UWSM_WAIT_VARNAMES", "").split(),
+                    timeout=start_timeout,
                 )
                 # just to be on the safe side if things are settling down
                 settle_time = os.getenv("UWSM_WAIT_VARNAMES_SETTLETIME", "0.2")
