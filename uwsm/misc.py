@@ -154,6 +154,8 @@ def print_fancy(*what, **how):
     color = how.pop("color", Styles.green)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 0)
+    notify_summary = how.pop("notify_summary", "Message")
+    notify_icon = how.pop("notify_icon", "applications-system")
     log = how.pop("log", LogFlag.log)
     loglevel = how.pop("loglevel", 5)
     logprefix = how.pop("logprefix", LogFlag.prefix)
@@ -201,7 +203,7 @@ def print_fancy(*what, **how):
 
             bus_session = DbusInteractions("session")
             msg = str(*what)
-            bus_session.notify(summary="Message", body=msg, urgency=notify_urgency)
+            bus_session.notify(summary=notify_summary, app_icon=notify_icon, body=msg, urgency=notify_urgency)
         except Exception as caught_exception:
             print_warning(caught_exception, notify=0)
 
@@ -220,6 +222,8 @@ def print_ok(*what, **how):
     color = how.pop("color", Styles.green)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 0)
+    notify_summary = how.pop("notify_summary", "Message")
+    notify_icon = how.pop("notify_icon", "applications-system")
     log = how.pop("log", LogFlag.log)
     loglevel = how.pop("loglevel", 5)
     logprefix = how.pop("logprefix", LogFlag.prefix)
@@ -230,7 +234,9 @@ def print_ok(*what, **how):
         file=file,
         color=color,
         notify=notify,
+        notify_summary=notify_summary,
         notify_urgency=notify_urgency,
+        notify_icon=notify_icon,
         log=log,
         loglevel=loglevel,
         logprefix=logprefix,
@@ -251,6 +257,8 @@ def print_warning(*what, **how):
     color = how.pop("color", Styles.yellow)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 1)
+    notify_summary = how.pop("notify_summary", "Warning")
+    notify_icon = how.pop("notify_icon", "dialog-warning")
     log = how.pop("log", LogFlag.log)
     loglevel = how.pop("loglevel", 4)
     logprefix = how.pop("logprefix", LogFlag.prefix)
@@ -263,7 +271,9 @@ def print_warning(*what, **how):
         file=file,
         color=color,
         notify=notify,
+        notify_summary=notify_summary,
         notify_urgency=notify_urgency,
+        notify_icon=notify_icon,
         log=log,
         loglevel=loglevel,
         logprefix=logprefix,
@@ -285,6 +295,8 @@ def print_error(*what, **how):
     color = how.pop("color", Styles.red)
     notify = how.pop("notify", 0)
     notify_urgency = how.pop("notify_urgency", 2)
+    notify_summary = how.pop("notify_summary", "Error")
+    notify_icon = how.pop("notify_icon", "dialog-error")
     log = how.pop("log", LogFlag.log)
     loglevel = how.pop("loglevel", 3)
     logprefix = how.pop("logprefix", LogFlag.prefix)
@@ -295,7 +307,9 @@ def print_error(*what, **how):
         file=file,
         color=color,
         notify=notify,
+        notify_summary=notify_summary,
         notify_urgency=notify_urgency,
+        notify_icon=notify_icon,
         log=log,
         loglevel=loglevel,
         logprefix=logprefix,
@@ -325,7 +339,9 @@ if DebugFlag.debug:
             file=file,
             color=color,
             notify=notify,
+            notify_summary=notify_summary,
             notify_urgency=notify_urgency,
+            notify_icon=notify_icon,
             log=log,
             loglevel=loglevel,
             logprefix=logprefix,

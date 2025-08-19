@@ -185,7 +185,7 @@ class DbusInteractions:
         body: str,
         app_name: str = "UWSM",
         replaces_id: int = 0,
-        app_icon: str = "desktop",
+        app_icon: str = "applications-system",
         actions: list | None = None,
         hints: dict | None = None,
         expire_timeout: int = -1,
