@@ -205,9 +205,12 @@ class MainArg:
                         self.entry_id = relpath.replace("/", "-")
                         break
 
-            # validate id
+            # validate id if not given as path
             if not Val.entry_id.search(self.entry_id):
-                raise ValueError(f'Invalid Desktop Entry ID "{self.entry_id}"')
+                if self.path is None:
+                    raise ValueError(f'Invalid Desktop Entry ID "{self.entry_id}"')
+                else:
+                    print_warning(f'Invalid Desktop Entry ID "{self.entry_id}"', notify=1)
 
         # Executable
         else:
