@@ -138,7 +138,7 @@ if [ "$#" -le "1" ]; then
 
 	case "$dmenu_candidate" in
 	walker)
-		set -- walker -d -p
+		set -- walker -d
 		;;
 	fuzzel)
 		set -- fuzzel --dmenu -R --log-no-syslog --log-level=warning -p
@@ -275,9 +275,15 @@ yes)
 esac
 
 # select unit
-UNIT=$(
-	echo "${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${INACTIVE_UNITS}" | "$@" "Select Service: "
-) || cancel_exit
+if [ "$1" = "walker" ]; then
+	UNIT=$(
+		echo "${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${INACTIVE_UNITS}" | walker -d -k -p "Select Service: "
+	) || cancel_exit
+else
+	UNIT=$(
+		echo "${ACTIVE_UNITS}${ACTIVE_UNITS:+$N}${INACTIVE_UNITS}" | "$@" "Select Service: "
+	) || cancel_exit
+fi
 STATE=${UNIT##* (}
 STATE=${STATE%%) *}
 UNIT=${UNIT##* }
@@ -411,11 +417,19 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 done
 
 # select action
-ACTION=$(
-	"$@" "${DESCRIPTION#*=} (${STATE}): " <<- EOF
-		$ACTIONS
-	EOF
-) || cancel_exit
+if [ "$1" = "walker" ]; then
+	ACTION=$(
+		"$@" -k -p "${DESCRIPTION#*=} (${STATE}): " <<- EOF
+			$ACTIONS
+		EOF
+	) || cancel_exit
+else
+	ACTION=$(
+		"$@" "${DESCRIPTION#*=} (${STATE}): " <<- EOF
+			$ACTIONS
+		EOF
+	) || cancel_exit
+fi
 
 report "$ACTION"
 
@@ -423,61 +437,125 @@ report "$ACTION"
 case "$ACTION" in
 enable)
 	if [ -n "$ENABLE_ACTIONS" ]; then
-		ACTION=$(
-			"$@" "Select enable action for ${DESCRIPTION#*=}: " <<- EOF
-				$ENABLE_ACTIONS
-			EOF
-		) || cancel_exit
+		# For walker, use -k flag for enable action selection
+		if [ "$1" = "walker" ]; then
+			ACTION=$(
+				"$@" -k -p "Select enable action for ${DESCRIPTION#*=}: " <<- EOF
+					$ENABLE_ACTIONS
+				EOF
+			) || cancel_exit
+		else
+			ACTION=$(
+				"$@" "Select enable action for ${DESCRIPTION#*=}: " <<- EOF
+					$ENABLE_ACTIONS
+				EOF
+			) || cancel_exit
+		fi
 	fi
 	;;
 disable)
 	if [ -n "$DISABLE_ACTIONS" ]; then
-		ACTION=$(
-			"$@" "Select disable action for ${DESCRIPTION#*=}: " <<- EOF
-				$DISABLE_ACTIONS
-			EOF
-		) || cancel_exit
+		# For walker, use -k flag for disable action selection
+		if [ "$1" = "walker" ]; then
+			ACTION=$(
+				"$@" -k -p "Select disable action for ${DESCRIPTION#*=}: " <<- EOF
+					$DISABLE_ACTIONS
+				EOF
+			) || cancel_exit
+		else
+			ACTION=$(
+				"$@" "Select disable action for ${DESCRIPTION#*=}: " <<- EOF
+					$DISABLE_ACTIONS
+				EOF
+			) || cancel_exit
+		fi
 	fi
 	;;
 kill)
-	SIGNAL=$(
-		"$@" "Select signal for ${DESCRIPTION#*=}: " <<- EOF
-			SIGTERM
-			SIGHUP
-			SIGINT
-			SIGUSR1
-			SIGUSR2
-			SIGABRT
-			SIGKILL
-		EOF
-	) || cancel_exit
+	# For walker, use -e flag for signal selection (last time)
+	if [ "$1" = "walker" ]; then
+		SIGNAL=$(
+			"$@" -e -p "Select signal for ${DESCRIPTION#*=}: " <<- EOF
+				SIGTERM
+				SIGHUP
+				SIGINT
+				SIGUSR1
+				SIGUSR2
+				SIGABRT
+				SIGKILL
+			EOF
+		) || cancel_exit
+	else
+		SIGNAL=$(
+			"$@" "Select signal for ${DESCRIPTION#*=}: " <<- EOF
+				SIGTERM
+				SIGHUP
+				SIGINT
+				SIGUSR1
+				SIGUSR2
+				SIGABRT
+				SIGKILL
+			EOF
+		) || cancel_exit
+	fi
 	report "$SIGNAL"
 	ACTION="kill --signal=$SIGNAL"
 	;;
 silence)
-	SILENCE_ACTION=$(
-		"$@" "Silence for ${DESCRIPTION#*=}: " <<- EOF
-			stdout
-			stderr
-			both
-		EOF
-	) || cancel_exit
+	# For walker, use -e flag for silence action selection (last time)
+	if [ "$1" = "walker" ]; then
+		SILENCE_ACTION=$(
+			"$@" -e -p "Silence for ${DESCRIPTION#*=}: " <<- EOF
+				stdout
+				stderr
+				both
+			EOF
+		) || cancel_exit
+	else
+		SILENCE_ACTION=$(
+			"$@" "Silence for ${DESCRIPTION#*=}: " <<- EOF
+				stdout
+				stderr
+				both
+			EOF
+		) || cancel_exit
+	fi
 	report "$SILENCE_ACTION"
-	RESTART=$(
-		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
-			no
-			yes
-		EOF
-	) || cancel_exit
+	# For walker, use -e flag for restart selection (last time)
+	if [ "$1" = "walker" ]; then
+		RESTART=$(
+			"$@" -e -p "Restart ${DESCRIPTION#*=}?: " <<- EOF
+				no
+				yes
+			EOF
+		) || cancel_exit
+	else
+		RESTART=$(
+			"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
+				no
+				yes
+			EOF
+		) || cancel_exit
+	fi
 	report "$RESTART"
 	;;
 unsilence)
-	RESTART=$(
-		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
-			no
-			yes
-		EOF
-	) || cancel_exit
+	# For walker, use -e flag for restart selection (last time)
+	if [ "$1" = "walker" ]; then
+		RESTART=$(
+			"$@" -e -p "Restart ${DESCRIPTION#*=}?: " <<- EOF
+				no
+				yes
+			EOF
+		) || cancel_exit
+	else
+		RESTART=$(
+			"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
+				no
+				yes
+			EOF
+		) || cancel_exit
+	fi
 	report "$RESTART"
 	;;
 esac
