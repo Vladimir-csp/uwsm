@@ -326,6 +326,8 @@ if DebugFlag.debug:
         color = how.pop("color", Styles.grey)
         notify = 0
         notify_urgency = 0
+        notify_summary = None,
+        notify_icon = None,
         log = how.pop("log", LogFlag.log)
         loglevel = 7
         logprefix = how.pop("logprefix", LogFlag.prefix)
@@ -339,8 +341,8 @@ if DebugFlag.debug:
             file=file,
             color=color,
             notify=notify,
-            notify_summary=notify_summary,
             notify_urgency=notify_urgency,
+            notify_summary=notify_summary,
             notify_icon=notify_icon,
             log=log,
             loglevel=loglevel,
