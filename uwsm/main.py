@@ -2413,6 +2413,14 @@ class Args:
             default="",
         )
         parsers["app"].add_argument(
+            "-p",
+            type=str,
+            action="append",
+            dest="unit_properties",
+            metavar="Property=value",
+            help="Pass Unit property assignment.",
+        )
+        parsers["app"].add_argument(
             "-S",
             dest="silent",
             choices=["out", "err", "both"],
@@ -3735,6 +3743,7 @@ def app(
     app_name,
     unit_name,
     unit_description,
+    unit_properties=None,
     fork=False,
     return_cmdline=False,
     silent=None,
@@ -3745,6 +3754,14 @@ def app(
     If return_cmdline: return cmdline as list
     If fork: return subprocess object.
     """
+
+    if unit_properties is None:
+        unit_properties = []
+    for prop in unit_properties:
+        if "=" not in prop:
+            raise ValueError(
+                f'Expected systemd unit property assignment, got: "{prop}"'
+            )
 
     # detect desktop entry, update cmdline, app_name
     # cmdline can be empty if terminal is requested with -T
@@ -3843,6 +3860,7 @@ def app(
                         app_name,
                         unit_name,
                         unit_description,
+                        unit_properties=unit_properties,
                         fork=True,
                         return_cmdline=return_cmdline,
                         silent=silent,
@@ -4104,6 +4122,8 @@ def app(
                 final_args.extend(
                     ["--property=StandardOutput=null", "--property=StandardError=null"]
                 )
+    for prop in unit_properties:
+        final_args.append(f"--property={prop}")
     final_args.extend(
         [
             f"--slice={slice_name}",
@@ -4253,6 +4273,7 @@ def app_daemon():
                 app_name=args.parsed.app_name,
                 unit_name=args.parsed.unit_name,
                 unit_description=args.parsed.unit_description,
+                unit_properties=args.parsed.unit_properties,
                 return_cmdline=True,
             )
             if isinstance(app_args[0], str):
@@ -4973,6 +4994,7 @@ def main():
             print_normal(
                 dedent(
                     f"""
+                    UWSM {PROJECT_VERSION}
                     Selected compositor ID: {CompGlobals.id}
                               Command Line: {shlex.join(CompGlobals.cmdline)}
                           Plugin/binary ID: {CompGlobals.bin_id}
@@ -5188,6 +5210,7 @@ def main():
                 app_name=Args.parsed.app_name,
                 unit_name=Args.parsed.unit_name,
                 unit_description=Args.parsed.unit_description,
+                unit_properties=Args.parsed.unit_properties,
                 silent=Args.parsed.silent,
             )
         except Exception as caught_exception:
