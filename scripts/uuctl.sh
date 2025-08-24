@@ -100,82 +100,9 @@ unsilence() {
 	esac
 }
 
-ALL=''
-for arg in "$@"; do
-	case "$arg" in
-	-a | --all)
-		ALL=1
-		shift
-		;;
-	-h | --help)
-		showhelp
-		exit 0
-		;;
-	*) break ;;
-	esac
-done
-
-if [ "$#" -le "1" ]; then
-	dmenu_candidates="walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
-
-	if [ "$#" = "1" ]; then
-		case " $dmenu_candidates " in
-		*" $1 "*) true ;;
-		*)
-			{
-				echo "Supported menu tools: $dmenu_candidates"
-				echo "'$1' is not among them. Provide its full command line ending with prompt argument"
-				echo "(-p or analogous)"
-			} >&2
-			exit 1
-			;;
-		esac
-	fi
-
-	for dmenu_candidate in $1 $dmenu_candidates; do
-		! command -v "$dmenu_candidate" > /dev/null || break
-	done
-
-	case "$dmenu_candidate" in
-	walker)
-		set -- walker -d -p
-		;;
-	fuzzel)
-		set -- fuzzel --dmenu -R --log-no-syslog --log-level=warning -p
-		;;
-	wofi)
-		set -- wofi --dmenu -p
-		;;
-	rofi)
-		set -- rofi -dmenu -p
-		;;
-	tofi)
-		set -- tofi --prompt-text
-		;;
-	bemenu)
-		set -- bemenu -p
-		;;
-	wmenu)
-		set -- wmenu -p
-		;;
-	dmenu)
-		set -- dmenu -p
-		;;
-	'' | *)
-		# shellcheck disable=SC2086
-		echo "Could not find a menu tool among:" $dmenu_candidates
-		exit 1
-		;;
-	esac
-else
-	if ! command -v "$1" > /dev/null; then
-		echo "Menu tool '$1' not found" >&2
-		exit 1
-	fi
-fi
-
 cancel_exit() {
 	echo Cancelled
+	"$DMENU_CLEANUP"
 	exit 0
 }
 
@@ -258,13 +185,122 @@ get_units() {
 	EOF
 }
 
+# pre-configured menu commands
+df_walker() {
+	case "${MENU_STAGE:-}" in
+	# keeps walker process open after choice is made
+	start | continue) walker -d -k -p "$@" ;;
+	# ends walker process after choice is made
+	end) walker -d -e -p "$@" ;;
+	*) walker -d -p "$@" ;;
+	esac
+}
+
+df_walker_cleanup() {
+	# ends background walker process
+	walker -q
+}
+
+df_fuzzel() {
+	fuzzel --dmenu -R --log-no-syslog --log-level=warning -p "$@"
+}
+
+df_wofi() {
+	wofi --dmenu -p "$@"
+}
+
+df_rofi() {
+	rofi -dmenu -p "$@"
+}
+
+df_tofi() {
+	tofi --prompt-text "$@"
+}
+
+df_bemenu() {
+	bemenu -p "$@"
+}
+
+df_wmenu() {
+	wmenu -p "$@"
+}
+
+df_dmenu() {
+	dmenu -p "$@"
+}
+
+ALL=''
+for arg in "$@"; do
+	case "$arg" in
+	-a | --all)
+		ALL=1
+		shift
+		;;
+	-h | --help)
+		showhelp
+		exit 0
+		;;
+	*) break ;;
+	esac
+done
+
+DMENU_CLEANUP=
+if [ "$#" -le "1" ]; then
+	dmenu_candidates="walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
+
+	if [ "$#" = "1" ]; then
+		case " $dmenu_candidates " in
+		*" $1 "*) true ;;
+		*)
+			{
+				echo "Supported menu tools: $dmenu_candidates"
+				echo "'$1' is not among them. Provide its full command line ending with prompt argument"
+				echo "(-p or analogous)"
+			} >&2
+			exit 1
+			;;
+		esac
+	fi
+
+	for dmenu_candidate in $1 $dmenu_candidates; do
+		! command -v "$dmenu_candidate" > /dev/null || break
+	done
+
+	case "$(command -v "df_${dmenu_candidate}")" in
+	"df_${dmenu_candidate}")
+		# use pre-defined function as menu
+		set -- "df_${dmenu_candidate}"
+		# rig cleanup command if defined as function
+		case "$(command -v "df_${dmenu_candidate}_cleanup")" in
+		"df_${dmenu_candidate}_cleanup") DMENU_CLEANUP=df_${dmenu_candidate}_cleanup ;;
+		*) DMENU_CLEANUP=true ;;
+		esac
+		;;
+	'' | *)
+		# shellcheck disable=SC2086
+		echo "Could not find a menu tool among:" $dmenu_candidates
+		exit 1
+		;;
+	esac
+else
+	if ! command -v "$1" > /dev/null; then
+		echo "Menu tool '$1' not found" >&2
+		exit 1
+	fi
+fi
+
 get_units
+
+# next menu invocation will be the first
+MENU_STAGE='start'
 
 case "$NEED_DAEMON_RELOAD" in
 yes)
 	DO_DAEMON_RELOAD=$(
 		printf '%s\n' yes no | "$@" "Daemon reload is needed, perform it?"
 	) || cancel_exit
+	# next menu invocation will not be first
+	MENU_STAGE='continue'
 	case "$DO_DAEMON_RELOAD" in
 	yes)
 		systemctl --user daemon-reload
@@ -283,6 +319,9 @@ STATE=${STATE%%) *}
 UNIT=${UNIT##* }
 
 report "$UNIT"
+
+# next menu invocation will not be first
+MENU_STAGE='continue'
 
 # pre-reset vars
 DESCRIPTION=
@@ -440,6 +479,8 @@ disable)
 	fi
 	;;
 kill)
+	# this is definitely the last menu invocation
+	MENU_STAGE='end'
 	SIGNAL=$(
 		"$@" "Select signal for ${DESCRIPTION#*=}: " <<- EOF
 			SIGTERM
@@ -463,6 +504,9 @@ silence)
 		EOF
 	) || cancel_exit
 	report "$SILENCE_ACTION"
+
+	# this is definitely the last menu invocation
+	MENU_STAGE='end'
 	RESTART=$(
 		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
 			no
@@ -472,6 +516,8 @@ silence)
 	report "$RESTART"
 	;;
 unsilence)
+	# this is definitely the last menu invocation
+	MENU_STAGE='end'
 	RESTART=$(
 		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
 			no
@@ -480,6 +526,14 @@ unsilence)
 	) || cancel_exit
 	report "$RESTART"
 	;;
+esac
+
+# no more menus at this point
+case "$MENU_STAGE" in
+# menu with closing command was already executed
+end) true ;;
+# run command to close background menu
+*) "$DMENU_CLEANUP" ;;
 esac
 
 # set final command
@@ -493,6 +547,8 @@ unsilence)
 	set -- unsilence
 	;;
 *)
+	# $ACTION can contain multiple systemctl arguments,
+	# they are pre-determined above and whitespace-safe
 	# shellcheck disable=SC2086
 	set -- systemctl --user $ACTION "$UNIT"
 	;;
