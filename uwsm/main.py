@@ -4994,7 +4994,6 @@ def main():
             print_normal(
                 dedent(
                     f"""
-                    UWSM {PROJECT_VERSION}
                     Selected compositor ID: {CompGlobals.id}
                               Command Line: {shlex.join(CompGlobals.cmdline)}
                           Plugin/binary ID: {CompGlobals.bin_id}
@@ -5068,13 +5067,14 @@ def main():
                 signal.signal(signal.SIGHUP, signal.SIG_IGN)
                 signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
-                # 30 seconds should be more than enough to wait for compositor unit to
-                # become activating and having MainPID (hopefully)
-                # Premature exit is covered explicitly
-                # 0.5s between 60 attempts
+                # Premature exit is covered explicitly as we die with the main process before
+                # getting compositor's MainPID, so there is no harm in waiting for default
+                # startup timeout (which wayland-wm-env uses) and then a bit more (wayland-wm just
+                # needs to begin startup), so 1.5 minutes plus 5 seconds.
+                # 0.5s between 190 attempts
                 bus_session = DbusInteractions("session")
                 print_debug("bus_session holder fork", bus_session)
-                for attempt in range(60, -1, -1):
+                for attempt in range(190, -1, -1):
                     # if parent process exits at this stage, silently exit
                     try:
                         os.kill(mainpid, 0)
