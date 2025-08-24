@@ -210,7 +210,9 @@ class MainArg:
                 if self.path is None:
                     raise ValueError(f'Invalid Desktop Entry ID "{self.entry_id}"')
                 else:
-                    print_warning(f'Invalid Desktop Entry ID "{self.entry_id}"', notify=1)
+                    print_warning(
+                        f'Invalid Desktop Entry ID "{self.entry_id}"', notify=1
+                    )
 
         # Executable
         else:
@@ -1043,22 +1045,25 @@ def wait_for_unit(
     spacer = ""
     for attempt in range(timeout, -1, -1):
         jobs = (
-            (str(unit), str(state))
-            for _, unit, state, _, _, _ in bus.list_systemd_jobs()
+            (str(check_unit), str(check_state))
+            for _, check_unit, check_state, _, _, _ in bus.list_systemd_jobs()
         )
         print_debug("queried jobs", jobs)
         if (unit, job_state) in jobs:
             unit_seen_in_queue = True
+            # report at first check
             if not quiet and attempt == timeout:
                 print_normal(
                     f"{unit} is queued for start, waiting for {timeout}s...",
                 )
+            # report at each 10th attempt or -15 or every of last 10
             elif not quiet and (attempt % 10 == 0 or attempt == 15 or attempt < 10):
                 print_normal(f"{spacer}{attempt}", end="")
                 spacer = " "
             if attempt != 0:
                 time.sleep(1)
         else:
+            # unit not in queue, no use waiting
             break
 
     if not quiet and unit_seen_in_queue:
@@ -4968,12 +4973,12 @@ def main():
             print_normal(
                 dedent(
                     f"""
-                     Selected compositor ID: {CompGlobals.id}
-                               Command Line: {shlex.join(CompGlobals.cmdline)}
-                           Plugin/binary ID: {CompGlobals.bin_id}
-                      Initial Desktop Names: {':'.join(CompGlobals.desktop_names)}
-                                       Name: {CompGlobals.name}
-                                Description: {CompGlobals.description}
+                    Selected compositor ID: {CompGlobals.id}
+                              Command Line: {shlex.join(CompGlobals.cmdline)}
+                          Plugin/binary ID: {CompGlobals.bin_id}
+                     Initial Desktop Names: {':'.join(CompGlobals.desktop_names)}
+                                      Name: {CompGlobals.name}
+                               Description: {CompGlobals.description}
                     """
                 )
             )
