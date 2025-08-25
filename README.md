@@ -762,7 +762,13 @@ user's login session.
 #### From a display manager
 
 To launch uwsm from a display/login manager, `uwsm` can be used inside desktop
-entries. Example `/usr/local/share/wayland-sessions/my-compositor-uwsm.desktop`:
+entries.
+
+These entries are placed in `wayland-sessions` subdirectory of `XDG_DATA_DIRS`.
+Usually, if `XDG_DATA_DIRS` contains `/usr/local/share` and `/usr/share`, user
+defined entries are placed in `/usr/local/share/wayland-sessions`.
+
+Example `/usr/local/share/wayland-sessions/my-compositor-uwsm.desktop`:
 
 ```
 [Desktop Entry]
@@ -774,6 +780,9 @@ Exec=uwsm start -- my-compositor.desktop
 
 # or a full command line with metadata and executable
 #Exec=uwsm start -N "My compositor" -D mycompositor:mylib -C "My cool compositor" -- mywm
+
+# invalidates entry if uwsm is missing
+TryExec=uwsm
 
 DesktopNames=mycompositor;mylib
 Type=Application
