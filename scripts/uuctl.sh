@@ -297,7 +297,7 @@ MENU_STAGE='start'
 case "$NEED_DAEMON_RELOAD" in
 yes)
 	DO_DAEMON_RELOAD=$(
-		printf '%s\n' yes no | "$@" "Daemon reload is needed, perform it?"
+		printf '%s\n' yes no | "$@" "Daemon reload is needed, perform it? "
 	) || cancel_exit
 	# next menu invocation will not be first
 	MENU_STAGE='continue'
