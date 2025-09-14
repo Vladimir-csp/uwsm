@@ -44,6 +44,10 @@ SD_USER_DIR = join_paths(
   'lib/systemd/user'
 )
 
+sh = find_program('sh', required: false)
+waitpid = find_program('waitpid', required: false)
+whiptail = find_program('whiptail', required: false)
+
 PROJECT_NAME = meson.project_name()
 PROJECT_VERSION = meson.project_version()
 
@@ -53,6 +57,9 @@ conf.set('PROJECT_VERSION', PROJECT_VERSION)
 conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
 conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
 conf.set('PYTHON_BIN', PYTHON_BIN)
+conf.set('SH_PATH', sh.found() ? sh.full_path() : '')
+conf.set('WAITPID_PATH', waitpid.found() ? waitpid.full_path() : '')
+conf.set('WHIPTAIL_PATH', whiptail.found() ? whiptail.full_path() : '')
 if get_option('static-units').allowed()
   conf.set('STATIC_UNITS', true)
 else
