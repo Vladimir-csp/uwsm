@@ -26,7 +26,7 @@ if git rev-parse --is-inside-work-tree > /dev/null 2> /dev/null; then
 	BUILD_DIR=/tmp/uwsm-build/uwsm-${VERSION}
 	echo "Exporting HEAD to '$BUILD_DIR' and building there..."
 	rm -fr "$BUILD_DIR"
-	mkdir "$BUILD_DIR"
+	mkdir -p "$BUILD_DIR"
 	git archive --format=tar HEAD | tar -xf - -C "$BUILD_DIR"
 	cd "$BUILD_DIR"
 else
