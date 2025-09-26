@@ -3088,8 +3088,9 @@ def prepare_env_gen_sh(random_mark, load_profile: bool = False):
         fi
 
         #### integrate XDG User Dirs
+        # TODO: remove this in a couple of years of xdg-user-dirs 0.19 spread
         # update XDG User Dirs, XDG Autostart would be too late
-        if command -v xdg-user-dirs-update >/dev/null; then
+        if command -v xdg-user-dirs-update >/dev/null && ! systemctl --user is-enabled -q xdg-user-dirs.service; then
         	echo "Updating XDG User Dirs"
         	xdg-user-dirs-update
         fi
