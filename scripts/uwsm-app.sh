@@ -14,6 +14,8 @@ set -e
 
 # timeout for all pipe operations
 TIMEOUT=10
+# lock timeout (works only if flock is available)
+LOCK_TIMEOUT=5
 
 # assume uwsm is under the same name as us, without "-app"
 SELF_NAME=${0##*/}
@@ -21,6 +23,7 @@ UWSM_NAME=${SELF_NAME%-app}
 
 PIPE_IN="${XDG_RUNTIME_DIR}/uwsm-app-daemon-in"
 PIPE_OUT="${XDG_RUNTIME_DIR}/uwsm-app-daemon-out"
+LOCKFILE="${XDG_RUNTIME_DIR}/uwsm-app.lock"
 
 DAEMON_UNIT=wayland-wm-app-daemon.service
 
@@ -48,7 +51,26 @@ error() {
 		systemctl --user restart "$DAEMON_UNIT" || true
 	fi
 	# exit with code $2
-	exit ${2:-1}
+	exit "${2:-1}"
+}
+
+get_lock() {
+	# get a lock if flock is accessible
+	if command -v flock > /dev/null; then
+		exec 3> "$LOCKFILE"
+		if ! flock -w "$LOCK_TIMEOUT" -x 3; then
+			error "Could not acquire lock on '$LOCKFILE'"
+		fi
+		LOCKED=true
+	else
+		LOCKED=false
+	fi
+}
+
+release_lock() {
+	case "$LOCKED" in
+	true) exec 3>&- ;;
+	esac
 }
 
 # fork timeout killer
@@ -107,8 +129,10 @@ if [ "$#" = "0" ]; then
 	echo "No args given!" >&2
 	exit 1
 elif [ "$#" = "1" ] && [ "$1" = "ping" ]; then
+	get_lock
 	printf '%s' 'ping' > "$PIPE_IN"
 elif [ "$#" = "1" ] && [ "$1" = "stop" ]; then
+	get_lock
 	printf '%s' 'stop' > "$PIPE_IN"
 elif [ "$#" -ge "1" ] && {
 	# intercept -h|--help arg
@@ -130,6 +154,7 @@ elif [ "$#" -ge "1" ] && {
 	printf '%s\n' "Running 'uwsm app --help':" ""
 	exec uwsm app -h
 else
+	get_lock
 	printf '\0%s' app "$@" > "$PIPE_IN"
 fi
 
@@ -138,11 +163,14 @@ trap 'error "Timed out trying to read from ${PIPE_OUT}!" 141' PIPE
 
 # read from output pipe
 CMDLINE=
-while IFS='' read line; do
+while IFS='' read -r line; do
 	CMDLINE="${CMDLINE}${CMDLINE:+$N}${line}"
 done < "$PIPE_OUT"
 
+release_lock
+
 # kill timeout killer process and its sleep process
+# shellcheck disable=SC2046
 kill $KILLER_PID $(ps --ppid $KILLER_PID -o pid= || true) &
 
 case "$CMDLINE" in
