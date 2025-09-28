@@ -35,7 +35,15 @@ from xdg.util import which
 from xdg.DesktopEntry import DesktopEntry
 from xdg.Exceptions import ValidationError
 
-from uwsm.params import BIN_NAME, BIN_PATH, PROJECT_VERSION, STATIC_UNITS
+from uwsm.params import (
+    BIN_NAME,
+    BIN_PATH,
+    PROJECT_VERSION,
+    STATIC_UNITS,
+    SH_BIN,
+    WAITPID_BIN,
+    WHIPTAIL_BIN,
+)
 from uwsm.misc import *
 from uwsm.dbus import DbusInteractions
 
@@ -811,9 +819,10 @@ def select_comp_entry(default="", just_confirm=False):
     # no default default here
 
     # fail on missing whiptail
-    if not which("whiptail"):
+    whiptail_path = which(WHIPTAIL_BIN)
+    if not whiptail_path:
         raise FileNotFoundError(
-            '"whiptail" is not in PATH, "select" feature is not supported!'
+            f'"{WHIPTAIL_BIN}" is not {"found" if "/" in WHIPTAIL_BIN else "in PATH"}, "select" feature is not supported!'
         )
 
     # fail on noninteractive terminal
@@ -829,7 +838,7 @@ def select_comp_entry(default="", just_confirm=False):
 
     # generate arguments for whiptail exec
     argv = [
-        "whiptail",
+        whiptail_path,
         "--clear",
         "--backtitle",
         "Universal Wayland Session Manager",
@@ -1573,7 +1582,7 @@ def generate_units(rung: str = "run"):
     # for bindpid use lightweight waitpid binary if available,
     # otherwise use aux waitpid shim
     # Ensure that the binary can be found in the service file
-    waitpid_path = which("waitpid")
+    waitpid_path = which(WAITPID_BIN)
     if waitpid_path:
         bindpid_cmd = f"{waitpid_path} -e"
     else:
@@ -3233,9 +3242,9 @@ def prepare_env():
     random_mark = f"MARK_{random_hex(16)}_MARK"
     shell_code = prepare_env_gen_sh(random_mark, load_profile=(env_login == {}))
 
-    sh_path = which("sh")
+    sh_path = which(SH_BIN)
     if not sh_path:
-        print_error('"sh" is not in PATH!')
+        raise OSError(f'"{SH_BIN}" is not {"found" if "/" in SH_BIN else "in PATH"}!')
         sys.exit(1)
 
     sprc = subprocess.run(
@@ -5129,8 +5138,9 @@ def main():
                 else:
                     print_normal(f"waitpid: Holding until PID {cpid} exits")
                 # use lightweight waitpid if available
-                if which("waitpid"):
-                    os.execlp("waitpid", "waitpid", "-e", str(int(cpid)))
+                waitpid_path = which(WAITPID_BIN)
+                if waitpid_path:
+                    os.execlp(waitpid_path, "waitpid", "-e", str(int(cpid)))
                 else:
                     waitpid(int(cpid))
                     sys.exit(0)

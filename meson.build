@@ -14,7 +14,6 @@ if not PYTHON_VERSION.version_compare('>=3.10')
 endif
 PYTHON_BIN = PYTHON_PROG.full_path()
 
-
 PKG_DATA_DIR = join_paths(
   get_option('prefix'),
   get_option('datadir'),
@@ -44,6 +43,11 @@ SD_USER_DIR = join_paths(
   'lib/systemd/user'
 )
 
+SH_BIN = get_option('sh-bin')
+WAITPID_BIN = get_option('waitpid-bin')
+WHIPTAIL_BIN = get_option('whiptail-bin')
+CBS = get_option('canonicalize-bins').allowed()
+
 PROJECT_NAME = meson.project_name()
 PROJECT_VERSION = meson.project_version()
 
@@ -53,6 +57,19 @@ conf.set('PROJECT_VERSION', PROJECT_VERSION)
 conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
 conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
 conf.set('PYTHON_BIN', PYTHON_BIN)
+conf.set(
+  'SH_BIN',
+  (CBS and not SH_BIN.startswith('/')) ? find_program(SH_BIN, required: true).full_path() : SH_BIN,
+)
+conf.set(
+  'WAITPID_BIN',
+  (CBS and not WAITPID_BIN.startswith('/') and find_program(WAITPID_BIN, required: false).found()) ? find_program(WAITPID_BIN, required: false).full_path() : WAITPID_BIN,
+)
+conf.set(
+  'WHIPTAIL_BIN',
+  (CBS and not WHIPTAIL_BIN.startswith('/') and find_program(WHIPTAIL_BIN, required: false).found()) ? find_program(WHIPTAIL_BIN, required: false).full_path() : WHIPTAIL_BIN,
+)
+
 if get_option('static-units').allowed()
   conf.set('STATIC_UNITS', true)
 else
@@ -67,7 +84,6 @@ conf.set(
     'uwsm',
   ),
 )
-
 
 COPY_TO_SUBDIR_SCRIPT = '''
 import os

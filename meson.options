@@ -19,7 +19,31 @@ option(
   'python-bin',
   type: 'string',
   value: 'python3',
-  description: 'path to the python binary',
+  description: 'name or path of the python binary (always canonicalized to path during build)',
+)
+option(
+  'sh-bin',
+  type: 'string',
+  value: 'sh',
+  description: 'name or path of the sh binary',
+)
+option(
+  'whiptail-bin',
+  type: 'string',
+  value: 'whiptail',
+  description: 'name or path of the whiptail binary',
+)
+option(
+  'waitpid-bin',
+  type: 'string',
+  value: 'waitpid',
+  description: 'name or path of the waitpid binary',
+)
+option(
+  'canonicalize-bins',
+  type: 'feature',
+  value: 'disabled',
+  description: 'canonicalize *-bin options with non-path values into paths during build',
 )
 option(
   'uuctl',
