@@ -223,8 +223,7 @@ Provides helpers and tools for various operations.
   drop-in replacement of `uwsm app`. The daemon (started on-demand) handles
   finding requested desktop entries, parsing and generation of commands for
   client to execute. This avoids the overhead of repeated python startup and
-  increases app launch speed. Intended for interactive launching, as it can fail
-  on simultaneous requests.
+  increases app launch speed.
 - `uuctl`: graphical (via dmenu-like menus) tool for managing user units.
 - `fumon`: background service for notifying about failed units.
 
@@ -488,8 +487,7 @@ Faster alternatives
 overhead.
 
 Included optional `uwsm-app` script uitilizes uwsm's on-demand app daemon for
-more responsiveness in interactive launching, but can fail on simultaneous
-requests.
+more responsiveness in repeated interactive launching.
 
 [app2unit](https://github.com/Vladimir-csp/app2unit) is a faster shell
 alternative, with feature parity. It can also be used outside uwsm environment
