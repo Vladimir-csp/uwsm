@@ -10,7 +10,7 @@ Before=wayland-session-shutdown.target
 CollectMode=inactive-or-failed
 [Service]
 Type=exec
-ExecStart=/bin/sh -c "if command -v waitpid >/dev/null; then exec waitpid -e %i; else exec @BIN_PATH@ aux waitpid %i; fi" waitpid
+ExecStart=/bin/sh -c "if command -v @WAITPID_BIN@ >/dev/null; then exec waitpid -e %i; else exec @BIN_PATH@ aux waitpid %i; fi" waitpid
 Restart=no
 SyslogIdentifier=uwsm_bindpid
 Slice=background.slice
