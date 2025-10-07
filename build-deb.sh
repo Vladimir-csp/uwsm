@@ -12,6 +12,7 @@ cd "$(dirname "$0")"
 
 . ./version.sh
 
+export UWSM_VERSION=$VERSION
 DEBVERSION=${VERSION}-1~local0
 
 case "$(dpkg-query -Wf '${db:Status-Abbrev}' devscripts)" in
