@@ -1,31 +1,25 @@
 # Universal Wayland Session Manager
 
-Wraps standalone Wayland compositors into a set of Systemd units on the fly.
-This provides robust session management including environment, XDG autostart
-support, bi-directional binding with login session, and clean shutdown.
+Provides a set of Systemd units and helpers to set up the environment and manage
+standalone Wayland compositor sessions.
 
-For compositors this is an opportunity to offload Systemd integration and
-session/XDG autostart management in Systemd-managed environments.
+Aside from environment setup/cleanup, it makes Systemd do most of the work and
+does not require any extra daemons running in background (except for two tiny
+`waitpid` processes in the lightest case).
+
+This setup provides robust session management, overridable compositor- and
+session-aware environment management, XDG autostart, bi-directional binding with
+login session, clean shutdown.
+
+For compositors this is an opportunity to offload: Systemd integration,
+session/XDG autostart management, Systemd/DBus activation environment
+interaction with its caveats.
 
 > [!IMPORTANT]
 > This project is currently in a stable phase with a slow-burning refactoring.
 > Although no drastic changes are planned, keep an eye for commits with breaking
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
-
-> [!IMPORTANT]
-> Some changes in v0.23.0:
-> - Compositor slice selection options are deprecated (`-A`|`-S`,
->   `UWSM_USE_SESSION_SLICE`) and will be removed in future versions,
->   `session.slice` is always used.
-> - Basic unit files are now static by default (build option
->   `static-units=enabled`).
-> - Generated drop-in files can be managed in `$XDG_CONFIG_HOME` systemd
->   configuration rung (`-U home` option for `start` and `stop` subcommands,
->   `UWSM_UNIT_RUNG=home` var). In future versions this will become the default
->   behavior when built with `static-units=enabled`. It can shave off some
->   startup time by removing the need for systemd reload.
-> - Tweak drop-ins can be disabled (`-t` option, `UWSM_NO_TWEAKS=true` var).
 
 > [!NOTE]
 > It is highly recommended to use
