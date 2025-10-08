@@ -135,8 +135,15 @@ check_failed_units() {
 		HEADER="Failed unit detected"
 	fi
 
-	notify-send -a FUMonitor -u critical -i dialog-warning -- "${HEADER}" "${FAILED_UNITS}"
+	# preserve backslash
+	# shellcheck disable=SC1003
+	case "$FAILED_UNITS" in
+	*'\'*) msg_body=$(simple_sub "$FAILED_UNITS" '\' '\\') ;;
+	*) msg_body=$FAILED_UNITS ;;
+	esac
+	notify-send -a FUMonitor -u critical -i dialog-warning -- "${HEADER}" "${msg_body}"
 }
+
 busctl_trigger() {
 	# outputs json oneliners on properties changes
 	busctl --user monitor \
@@ -168,8 +175,12 @@ busctl_trigger | while read -r line; do
 	# extract and unescape unit ID from path property
 	UNIT=${line##*'"path":"/org/freedesktop/systemd1/unit/'}
 	UNIT=${UNIT%%'"'*}
-	# shellcheck disable=SC1003
-	UNIT=$(simple_sub "$UNIT" '_40' '@' '_2e' '.' '_5f' '_' '_2d' '-' '_5c' '\')
+	case "$UNIT" in
+	*_40* | *_2e* | *_5f* | *_2d* | *_5c*)
+		# shellcheck disable=SC1003
+		UNIT=$(simple_sub "$UNIT" '_40' '@' '_2e' '.' '_5f' '_' '_2d' '-' '_5c' '\')
+		;;
+	esac
 
 	if list_contains "${FAILED_UNITS}" "$UNIT"; then
 		case "$line" in
@@ -189,9 +200,14 @@ busctl_trigger | while read -r line; do
 			else
 				ID_ARG=''
 			fi
-			# notify
-			# shellcheck disable=SC2086,SC1003
-			notify-send -a FUMonitor $ID_ARG -u normal -i dialog-info -- "Unit recovered" "$(simple_sub "$UNIT" '\' '\\')"
+			# preserve backslash and notify
+			# shellcheck disable=SC1003
+			case "$UNIT" in
+			*'\'*) msg_body=$(simple_sub "$UNIT" '\' '\\') ;;
+			*) msg_body=$UNIT ;;
+			esac
+			# shellcheck disable=SC2086
+			notify-send -a FUMonitor $ID_ARG -u normal -i dialog-info -- "Unit recovered" "$msg_body"
 			;;
 		esac
 	else
@@ -202,7 +218,13 @@ busctl_trigger | while read -r line; do
 			FAILED_UNITS=$(list_add "$FAILED_UNITS" "$UNIT")
 			# notify
 			NID=$(
-				notify-send -a FUMonitor -p -u critical -i dialog-warning -- "Failed unit detected" "$(simple_sub "$UNIT" '\' '\\')"
+				# preserve backslash
+				# shellcheck disable=SC1003,SC2030
+				case "$UNIT" in
+				*'\'*) msg_body=$(simple_sub "$UNIT" '\' '\\') ;;
+				*) msg_body=$UNIT ;;
+				esac
+				notify-send -a FUMonitor -p -u critical -i dialog-warning -- "Failed unit detected" "$msg_body"
 			)
 			# save notification ID in newline-separated list
 			NOTIFICATION_IDS=$(list_add "$NOTIFICATION_IDS" "${UNIT};${NID}" "$N")
