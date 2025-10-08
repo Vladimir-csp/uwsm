@@ -74,27 +74,40 @@ get_id() {
 }
 
 simple_sub() {
-	# substitutes: $1 in $2 what $3 for
-	# adopted from https://stackoverflow.com/a/75037170
-	RIGHT=$1
-	SEARCH=$2
-	SUB=$3
-	OUT=''
+	# substitutes in $1: $2 with $3 and so on in pairs
+	# adopted initial version from https://stackoverflow.com/a/75037170
+	ss_str=$1
+	shift
 
-	while [ -n "$RIGHT" ]; do
-		# get LEFT from first $SEARCH occurrence
-		LEFT="${RIGHT%%"${SEARCH}"*}"
-		# return if nothing else to replace
-		if [ "$LEFT" = "$RIGHT" ]; then
-			printf "%s" "${OUT}${RIGHT}"
-			return
-		fi
-		# APPEND substituted LEFT to OUT
-		OUT="${OUT}${LEFT}${SUB}"
-		# get RIGHT from first $SEARCH occurrence
-		RIGHT=${RIGHT#*"${SEARCH}"}
+	ss_out=
+	while [ "$#" -ge "1" ]; do
+		ss_right=$ss_str
+		ss_search=$1
+		ss_sub=${2-}
+		ss_out=
+		case "$#" in
+		1) shift ;;
+		*) shift 2 ;;
+		esac
+
+		while [ -n "$ss_right" ]; do
+			# get ss_left from first $ss_search occurrence
+			ss_left="${ss_right%%"${ss_search}"*}"
+			# return if nothing else to replace
+			if [ "$ss_left" = "$ss_right" ]; then
+				ss_out=${ss_out}${ss_right}
+				ss_right=
+				continue
+			fi
+			# APPEND substituted ss_left to ss_out
+			ss_out="${ss_out}${ss_left}${ss_sub}"
+			# get ss_right from first $ss_search occurrence
+			ss_right=${ss_right#*"${ss_search}"}
+		done
+		ss_str=$ss_out
 	done
-	printf "%s" "$OUT"
+
+	printf "%s" "$ss_str"
 }
 
 check_failed_units() {
@@ -152,15 +165,11 @@ busctl_trigger | while read -r line; do
 	*) continue ;;
 	esac
 
-	# extract and unescape unit name from path property
+	# extract and unescape unit ID from path property
 	UNIT=${line##*'"path":"/org/freedesktop/systemd1/unit/'}
 	UNIT=${UNIT%%'"'*}
-	UNIT=$(simple_sub "$UNIT" '_40' '@')
-	UNIT=$(simple_sub "$UNIT" '_2e' '.')
-	UNIT=$(simple_sub "$UNIT" '_5f' '_')
-	UNIT=$(simple_sub "$UNIT" '_2d' '-')
 	# shellcheck disable=SC1003
-	UNIT=$(simple_sub "$UNIT" '_5c' '\')
+	UNIT=$(simple_sub "$UNIT" '_40' '@' '_2e' '.' '_5f' '_' '_2d' '-' '_5c' '\')
 
 	if list_contains "${FAILED_UNITS}" "$UNIT"; then
 		case "$line" in
@@ -181,8 +190,8 @@ busctl_trigger | while read -r line; do
 				ID_ARG=''
 			fi
 			# notify
-			# shellcheck disable=SC2086
-			notify-send -a FUMonitor $ID_ARG -u normal -i dialog-info -- "Unit recovered" "$UNIT"
+			# shellcheck disable=SC2086,SC1003
+			notify-send -a FUMonitor $ID_ARG -u normal -i dialog-info -- "Unit recovered" "$(simple_sub "$UNIT" '\' '\\')"
 			;;
 		esac
 	else
@@ -193,7 +202,7 @@ busctl_trigger | while read -r line; do
 			FAILED_UNITS=$(list_add "$FAILED_UNITS" "$UNIT")
 			# notify
 			NID=$(
-				notify-send -a FUMonitor -p -u critical -i dialog-warning -- "Failed unit detected" "$UNIT"
+				notify-send -a FUMonitor -p -u critical -i dialog-warning -- "Failed unit detected" "$(simple_sub "$UNIT" '\' '\\')"
 			)
 			# save notification ID in newline-separated list
 			NOTIFICATION_IDS=$(list_add "$NOTIFICATION_IDS" "${UNIT};${NID}" "$N")

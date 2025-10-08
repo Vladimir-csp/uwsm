@@ -1,5 +1,5 @@
 [Unit]
-Description=Failed unit monitor
+Description=User unit failure monitor
 Documentation=man:fumon(1) man:busctl(1)
 Requisite=graphical-session.target
 After=graphical-session.target
