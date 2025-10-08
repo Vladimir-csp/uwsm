@@ -1889,14 +1889,11 @@ def remove_units(only: List[str] | None = None, rung: str = "run") -> None:
     Removes units by X-UWSMMark= attribute.
     if only list is given as argument, only remove files with matching X-UWSMMark={item}, else remove all.
     """
-    # TODO: drop deprecated X-UWSM-ID and GENERIC after a few releases
     if not only:
         only = []
-        match_lines = ["X-UWSM-ID=", "X-UWSMMark="]
+        match_lines = ["X-UWSMMark="]
     else:
-        match_lines = [
-            f"X-UWSMMark={mark.strip()}" for mark in only if mark.strip()
-        ] + [f"X-UWSM-ID={mark.strip()}" for mark in only if mark.strip()]
+        match_lines = [f"X-UWSMMark={mark.strip()}" for mark in only if mark.strip()]
     check_dir, _ = get_unit_path("", rung=rung)
     unit_files = []
     print_debug(
@@ -2103,26 +2100,7 @@ class Args:
                 """
             ),
         )
-        # TODO: drop this after a couple of releases
-        use_session_slice_raw = os.getenv("UWSM_USE_SESSION_SLICE", None)
-        if use_session_slice_raw is not None:
-            print_warning(
-                f"UWSM_USE_SESSION_SLICE is deprecated and ignored", file=sys.stderr
-            )
-        del use_session_slice_raw
         parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
-        parsers["start_slice"].add_argument(
-            "-S",
-            action="store_true",
-            dest="warn_sa_deprecated",
-            help=f"Option is deprecated, session.slice is always used",
-        )
-        parsers["start_slice"].add_argument(
-            "-A",
-            action="store_true",
-            dest="warn_sa_deprecated",
-            help=f"Option is deprecated, session.slice is always used",
-        )
         unit_rung_preset = False
         unit_rung_default = os.getenv("UWSM_UNIT_RUNG", None)
         if unit_rung_default in ("run", "home"):
@@ -4906,14 +4884,6 @@ def main():
 
         # also send output to log if starting for real
         LogFlag.log = not Args.parsed.dry_run and not Args.parsed.only_generate
-
-        # TODO: drop this after a couple of releases
-        if Args.parsed.warn_sa_deprecated:
-            # argparse has deprecation functionality, but our warnings are fancier.
-            print_warning(
-                "Options -S|-A are deprecated, session.slice is always used",
-                file=sys.stderr,
-            )
 
         # silent start mode
         silent_start_raw = os.getenv("UWSM_SILENT_START", "0")
