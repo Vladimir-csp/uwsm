@@ -2100,7 +2100,6 @@ class Args:
                 """
             ),
         )
-        parsers["start_slice"] = parsers["start"].add_mutually_exclusive_group()
         unit_rung_preset = False
         unit_rung_default = os.getenv("UWSM_UNIT_RUNG", None)
         if unit_rung_default in ("run", "home"):
