@@ -21,6 +21,15 @@ if get_option('fumon').allowed()
   )
 endif
 
+if get_option('wait-tray').allowed()
+  install_data(
+    'wait-tray.sh',
+    rename: 'wait-tray',
+    install_dir: get_option('bindir'),
+    install_mode: 'rwxr-xr-x',
+  )
+endif
+
 if get_option('uwsm-app').allowed()
   install_data(
     'uwsm-app.sh',

@@ -58,6 +58,12 @@ option(
   description: 'install fumon',
 )
 option(
+  'wait-tray',
+  type: 'feature',
+  value: 'disabled',
+  description: 'install wait-tray',
+)
+option(
   'uwsm-app',
   type: 'feature',
   value: 'disabled',
