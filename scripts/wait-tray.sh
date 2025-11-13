@@ -9,7 +9,7 @@
 #
 # Put it into `ExecStartPre=-` of the autostart unit or make it a part of a
 # wrapper to delay application startup until tray is available or timeout is
-# reached (default: 30 seconds, optional argument).
+# reached. Positional arguments: [TIMEOUT_SECONDS [DELAY_SECONDS]]
 #
 # This is not a part of any standard mechanism nor it should be, because there
 # is no standard. Other custom mechanisms exist, i.e NixOS's `tray.target`, but
@@ -66,15 +66,45 @@ trapterm() {
 	wait "$MON_PID" || true
 }
 
+delay() {
+	if [ "$DELAY" -gt "0" ]; then
+		printf '%s\n' "Delaying for $DELAY seconds"
+		sleep "$DELAY"
+	fi
+}
+
+usage() {
+	printf '%s\n' "Usage: ${0##*/} [TIMEOUT_SECONDS [DELAY_SECONDS]]"
+}
+
 ########
 
 TRAY_NAMES="org.kde.StatusNotifierWatcher org.freedesktop.StatusNotifierWatcher"
 
 TIMEOUT=${1:-30}
+DELAY=${2:-0}
 
+case " $* " in
+*' -h '* | *' --help '*)
+	usage
+	exit 0
+	;;
+esac
 case "$TIMEOUT" in
 *[!0-9]*)
-	printf '%s\n' "Expected number of seconds as timeout, got: $TIMEOUT" >&2
+	{
+		printf '%s\n' "Expected number of seconds as timeout, got: $TIMEOUT"
+		usage
+	} >&2
+	exit 1
+	;;
+esac
+case "$DELAY" in
+*[!0-9]*)
+	{
+		printf '%s\n' "Expected number of seconds as delay, got: $DELAY"
+		usage
+	} >&2
 	exit 1
 	;;
 esac
@@ -88,6 +118,7 @@ trap trapterm INT TERM HUP EXIT
 ## check current state and exit on success
 if check_tray; then
 	printf '%s\n' "Tray is active"
+	delay
 	exit 0
 fi
 
@@ -97,6 +128,7 @@ wait "$MON_PID" || true
 # recheck current status
 if check_tray; then
 	printf '%s\n' "Tray is active"
+	delay
 	exit 0
 else
 	RC=$?
