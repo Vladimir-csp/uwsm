@@ -19,7 +19,6 @@ LOCK_TIMEOUT=5
 
 # assume uwsm is under the same name as us, without "-app"
 SELF_NAME=${0##*/}
-UWSM_NAME=${SELF_NAME%-app}
 
 PIPE_IN="${XDG_RUNTIME_DIR}/uwsm-app-daemon-in"
 PIPE_OUT="${XDG_RUNTIME_DIR}/uwsm-app-daemon-out"
@@ -73,18 +72,33 @@ release_lock() {
 	esac
 }
 
-# fork timeout killer
-MAINPID=$$
-{
-	# send SIGPIPE to main process after timeout
-	sleep $TIMEOUT
+sleepkiller() {
+	# kill sleep ($1) from pipekiller
+	# cancel trap to make it single-use
+	trap - INT TERM HUP
+	if kill -0 "$1" 2> /dev/null; then
+		kill "$1"
+	fi
+}
+
+pipekiller() {
+	# sends SIGPIPE to main process after timeout
+	sleep $TIMEOUT &
+	SLEEP_PID=$!
+	# trap to also kill sleep
+	trap 'sleepkiller "$SLEEP_PID"' INT TERM HUP
+	wait
 	if kill -0 $MAINPID 2> /dev/null; then
 		kill -13 $MAINPID
 	fi
-} &
+}
+
+# fork timeout killer
+MAINPID=$$
+pipekiller &
 KILLER_PID=$!
 
-# trap SIGPIPE
+# trap to errexit on SIGPIPE
 trap 'error "Timed out waiting for pipes!" 141' PIPE
 
 # restart server if pipes are missing or not pipes
@@ -100,7 +114,7 @@ else
 	systemctl --user start "$DAEMON_UNIT" &
 fi
 
-# update message
+# update message for errexit on SIGPIPE
 trap 'error "Timed out trying to write to ${PIPE_IN}!" 141' PIPE
 
 # prepend arguments if launched as a terminal
@@ -170,8 +184,7 @@ done < "$PIPE_OUT"
 release_lock
 
 # kill timeout killer process and its sleep process
-# shellcheck disable=SC2046
-kill $KILLER_PID $(ps --ppid $KILLER_PID -o pid= || true) &
+kill "$KILLER_PID"
 
 case "$CMDLINE" in
 pong)
