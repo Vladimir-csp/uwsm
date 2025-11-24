@@ -292,6 +292,7 @@ Runtime dependencies:
 - `whiptail` (optional, for `select` feature; from `whiptail` or `libnewt`
   package)
 - a dmenu-like menu (optional; for `uuctl` script), supported:
+  - `vicinae`
   - `fuzzel`
   - `walker`
   - `wofi`
@@ -413,9 +414,9 @@ session) are shipped with their own units. Check and enable them with:
 More info
 </summary>
 
-* `systemctl --user enable this-app.service` (if it provides
+- `systemctl --user enable this-app.service` (if it provides
   `WantedBy=graphical-session.target`)
-* `systemctl --user add-wants graphical-session.target that-app.service` (if it
+- `systemctl --user add-wants graphical-session.target that-app.service` (if it
   does not)
 
 In the end autostarted unit should have both dependency and ordering (be wanted
@@ -459,6 +460,7 @@ Some examples:
 
 | Launcher | Via     | What                                                                                                                                                                             | Entry |
 | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| vicinae  | gui     | `vicinae settings > extentions > Applications > Launch Prefix=uwsm app --`                                                                                                       | no    |
 | fuzzel   | command | `fuzzel "--launch-prefix=uwsm app --"`                                                                                                                                           | no    |
 | fuzzel   | config  | `launch-prefix=uwsm app --`                                                                                                                                                      | no    |
 | albert   | env var | `ALBERT_APPLICATIONS_COMMAND_PREFIX`: `uwsm;app;--`                                                                                                                              | no    |
