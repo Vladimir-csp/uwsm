@@ -414,9 +414,9 @@ session) are shipped with their own units. Check and enable them with:
 More info
 </summary>
 
-- `systemctl --user enable this-app.service` (if it provides
+* `systemctl --user enable this-app.service` (if it provides
   `WantedBy=graphical-session.target`)
-- `systemctl --user add-wants graphical-session.target that-app.service` (if it
+* `systemctl --user add-wants graphical-session.target that-app.service` (if it
   does not)
 
 In the end autostarted unit should have both dependency and ordering (be wanted
