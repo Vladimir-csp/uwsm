@@ -29,7 +29,8 @@ showhelp() {
 		Control user services and scopes with dmenu-like menu.
 		Menu tool and options are selected from predefined profiles for:
 
-		  walker
+		  vicinae
+      walker
 		  fuzzel
 		  wofi
 		  rofi
@@ -201,6 +202,11 @@ df_walker_cleanup() {
 	walker -q
 }
 
+
+df_vicinae() {
+	vicinae dmenu
+}
+
 df_fuzzel() {
 	fuzzel --dmenu -R --log-no-syslog --log-level=warning -p "$@"
 }
@@ -246,7 +252,7 @@ done
 
 DMENU_CLEANUP=
 if [ "$#" -le "1" ]; then
-	dmenu_candidates="walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
+	dmenu_candidates="vicinae walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
 
 	if [ "$#" = "1" ]; then
 		case " $dmenu_candidates " in

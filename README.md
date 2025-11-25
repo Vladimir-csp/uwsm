@@ -292,6 +292,7 @@ Runtime dependencies:
 - `whiptail` (optional, for `select` feature; from `whiptail` or `libnewt`
   package)
 - a dmenu-like menu (optional; for `uuctl` script), supported:
+  - `vicinae`
   - `fuzzel`
   - `walker`
   - `wofi`
@@ -459,6 +460,7 @@ Some examples:
 
 | Launcher | Via     | What                                                                                                                                                                             | Entry |
 | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| vicinae  | gui     | `vicinae settings > extentions > Applications > Launch Prefix=uwsm app --`                                                                                                       | no    |
 | fuzzel   | command | `fuzzel "--launch-prefix=uwsm app --"`                                                                                                                                           | no    |
 | fuzzel   | config  | `launch-prefix=uwsm app --`                                                                                                                                                      | no    |
 | albert   | env var | `ALBERT_APPLICATIONS_COMMAND_PREFIX`: `uwsm;app;--`                                                                                                                              | no    |
