@@ -14,13 +14,13 @@ Conflicts=wayland-session-shutdown.target
 Before=wayland-session-shutdown.target
 CollectMode=inactive-or-failed
 [Service]
-# awaits for ready state notification from compositor's child
-# should be issued by 'uwsm finalize'
+# awaits for ready state notification from compositor or child
+# should be issued by '@BIN_NAME@ finalize' for example
 Type=notify
 NotifyAccess=all
 ExecStart=@BIN_PATH@ aux exec -- %I
 Restart=no
 TimeoutStartSec=30
 TimeoutStopSec=10
-SyslogIdentifier=uwsm_%I
+SyslogIdentifier=@BIN_NAME@_%I
 Slice=session.slice

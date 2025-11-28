@@ -1511,8 +1511,8 @@ def generate_units(rung: str = "run"):
             Before=wayland-session-shutdown.target
             CollectMode=inactive-or-failed
             [Service]
-            # awaits for ready state notification from compositor's child
-            # should be issued by '{BIN_NAME} finalize'
+            # awaits for ready state notification from compositor or child
+            # should be issued by '{BIN_NAME} finalize' for example
             Type=notify
             NotifyAccess=all
             ExecStart={BIN_PATH} aux exec -- %I

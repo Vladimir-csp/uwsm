@@ -20,5 +20,5 @@ RemainAfterExit=yes
 ExecStart=@BIN_PATH@ aux prepare-env -- "%I"
 ExecStopPost=@BIN_PATH@ aux cleanup-env
 Restart=no
-SyslogIdentifier=uwsm_env-preloader
+SyslogIdentifier=@BIN_NAME@_env-preloader
 Slice=session.slice

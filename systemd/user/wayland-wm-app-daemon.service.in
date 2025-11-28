@@ -11,5 +11,5 @@ Type=exec
 ExecStart=@BIN_PATH@ aux app-daemon
 Restart=on-failure
 RestartMode=direct
-SyslogIdentifier=uwsm_app-daemon
+SyslogIdentifier=@BIN_NAME@_app-daemon
 Slice=session.slice

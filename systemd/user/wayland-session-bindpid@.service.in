@@ -12,5 +12,5 @@ CollectMode=inactive-or-failed
 Type=exec
 ExecStart=/bin/sh -c "if command -v @WAITPID_BIN@ >/dev/null; then exec @WAITPID_BIN@ -e %i; else exec @BIN_PATH@ aux waitpid %i; fi" waitpid
 Restart=no
-SyslogIdentifier=uwsm_bindpid
+SyslogIdentifier=@BIN_NAME@_bindpid
 Slice=background.slice
