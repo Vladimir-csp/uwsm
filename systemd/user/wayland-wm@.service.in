@@ -20,6 +20,7 @@ Type=notify
 NotifyAccess=all
 ExecStart=@BIN_PATH@ aux exec -- %I
 Restart=no
+EnvironmentFile=-%t/@BIN_NAME@/session_vars.env
 TimeoutStartSec=30
 TimeoutStopSec=10
 SyslogIdentifier=@BIN_NAME@_%I

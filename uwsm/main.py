@@ -127,20 +127,38 @@ class HelpFormatterNewlines(argparse.HelpFormatter):
 class Varnames:
     "Sets of varnames"
 
+    # TODO: remove this in future release
+    session_separate = str2bool_plus(
+        os.environ.get("UWSM_NO_SESSION_SPECIFIC_VARS", "0")
+    )
+
+    session_specific = {
+        "XDG_SEAT",
+        "XDG_SEAT_PATH",
+        "XDG_SESSION_ID",
+        "XDG_SESSION_PATH",
+        "XDG_VTNR",
+    }
     always_export = {
         "PATH",
         "XDG_CURRENT_DESKTOP",
         "XDG_MENU_PREFIX",
-        "XDG_SEAT",
-        "XDG_SEAT_PATH",
         "XDG_SESSION_DESKTOP",
-        "XDG_SESSION_ID",
-        "XDG_SESSION_PATH",
+        "XDG_SESSION_CLASS",
         "XDG_SESSION_TYPE",
-        "XDG_VTNR",
-    }
-    never_export = {"PWD", "LS_COLORS", "INVOCATION_ID", "SHLVL", "SHELL", "TERM"}
-    always_unset = {"DISPLAY", "WAYLAND_DISPLAY"}
+    } | (set() if session_separate else session_specific)
+    never_export = {
+        "PWD",
+        "LS_COLORS",
+        "INVOCATION_ID",
+        "SHLVL",
+        "SHELL",
+        "TERM",
+        "NOTIFY_SOCKET",
+    } | (set() if not session_separate else session_specific)
+    always_unset = {"DISPLAY", "WAYLAND_DISPLAY"} | (
+        set() if not session_separate else session_specific
+    )
     always_cleanup = {
         "DISPLAY",
         "LANG",
@@ -150,14 +168,11 @@ class Varnames:
         "XCURSOR_THEME",
         "XDG_CURRENT_DESKTOP",
         "XDG_MENU_PREFIX",
-        "XDG_SEAT",
-        "XDG_SEAT_PATH",
         "XDG_SESSION_DESKTOP",
-        "XDG_SESSION_ID",
-        "XDG_SESSION_PATH",
+        "XDG_SESSION_CLASS",
         "XDG_SESSION_TYPE",
-        "XDG_VTNR",
-    }
+        "NOTIFY_SOCKET",
+    } | session_specific
     never_cleanup = {"SSH_AGENT_LAUNCHER", "SSH_AUTH_SOCK", "SSH_AGENT_PID"}
 
 
@@ -1483,6 +1498,7 @@ def generate_units(rung: str = "run"):
             ExecStart={BIN_PATH} aux prepare-env -- "%I"
             ExecStopPost={BIN_PATH} aux cleanup-env
             Restart=no
+            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
             SyslogIdentifier={BIN_NAME}_env-preloader
             Slice=session.slice
             """
@@ -1517,6 +1533,7 @@ def generate_units(rung: str = "run"):
             NotifyAccess=all
             ExecStart={BIN_PATH} aux exec -- %I
             Restart=no
+            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
             TimeoutStartSec=30
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
@@ -1573,6 +1590,7 @@ def generate_units(rung: str = "run"):
             ExecStart={BIN_PATH} aux app-daemon
             Restart=on-failure
             RestartMode=direct
+            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
             SyslogIdentifier={BIN_NAME}_app-daemon
             Slice=session.slice
             """
@@ -1845,6 +1863,7 @@ def generate_tweaks(rung: str = "run"):
             [Service]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
+            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
             """
         ),
         rung=rung,
@@ -2775,8 +2794,8 @@ def finalize(additional_vars=None):
     sys.exit(1)
 
 
-def save_env(filename: str, env: dict = None):
-    "Saves environment to a null-separated runtime file"
+def save_env(filename: str, env: dict = None, separator: str = "\0"):
+    "Saves environment to a null-separated (or value of 'separator') runtime file"
     if env is None:
         env = dict(os.environ)
     env = filter_varnames(env)
@@ -2786,7 +2805,14 @@ def save_env(filename: str, env: dict = None):
     env_file = os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, filename)
     os.makedirs(os.path.dirname(env_file), exist_ok=True)
     with open(env_file, "w") as env_file_data:
-        env_file_data.write("\0".join((f"{key}={value}" for key, value in env.items())))
+        # No processing or escaping is done here.
+        # The intended use of alternative separator is for writing systemd
+        # EnvironmentFile= with session XDG_ vars which should not
+        # contain anything requiring escaping
+        env_file_data.write(
+            separator.join((f"{key}={value}" for key, value in env.items()))
+            + ("\n" if separator == "\n" else "")
+        )
     print_debug(f"written {env_file}", env)
 
 
@@ -3372,7 +3398,12 @@ def cleanup_env():
         print_normal("Restoring initial systemd vars.")
         set_systemd_vars(env_pre, verbose=False, bus_session=bus_session)
 
-    for drop_file in [cleanup_file, env_pre_file]:
+    # also remove session-specific env file
+    session_env_file = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "session_vars.env"
+    )
+
+    for drop_file in [cleanup_file, env_pre_file, session_env_file]:
         if not os.path.exists(drop_file):
             continue
         os.remove(drop_file)
@@ -4086,7 +4117,14 @@ def app(
     if app_unit_type == "scope":
         final_args.append("--scope")
     else:
-        final_args.extend(["--property=Type=exec", "--property=ExitType=cgroup"])
+        final_args.extend(
+            ["--property=Type=exec", "--property=ExitType=cgroup"]
+            + [
+                f"--setenv={var}={os.environ.get(var, "")}"
+                for var in sorted(Varnames.session_specific)
+                if os.environ.get(var, "")
+            ]
+        )
         # silence service via unit properties
         if silent:
             if silent == "out":
@@ -5035,7 +5073,19 @@ def main():
             )
             print_debug(sprc)
 
+            # save login environment
             save_env("env_login")
+
+            # save session vars for unit EnvironmentFile=
+            save_env(
+                "session_vars.env",
+                env={
+                    var: os.environ.get(var, "")
+                    for var in sorted(Varnames.session_specific)
+                    if os.environ.get(var, "")
+                },
+                separator="\n",
+            )
 
             # fork out a process that will hold session scope open
             # until compositor unit is stopped

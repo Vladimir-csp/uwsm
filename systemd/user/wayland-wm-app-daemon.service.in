@@ -11,5 +11,6 @@ Type=exec
 ExecStart=@BIN_PATH@ aux app-daemon
 Restart=on-failure
 RestartMode=direct
+EnvironmentFile=-%t/@BIN_NAME@/session_vars.env
 SyslogIdentifier=@BIN_NAME@_app-daemon
 Slice=session.slice

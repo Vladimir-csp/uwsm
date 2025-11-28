@@ -92,8 +92,18 @@ be used for distro level defaults.
 |  *UWSM_SILENT_START*
 :  (int or boolean value)
 | 
-:  _True_ or *1* to inhibit stdout messages from *uwsm start*. *2* to also
+:  _True_ or *1* to inhibit stdout messages from "*uwsm start*". *2* to also
    inhibit warnings.
+|  *UWSM_NO_SESSION_SPECIFIC_VARS*
+:  (boolean value)
+| 
+:  Set _True_ to test future behavior: omit transient session vars:
+   *XDG_SEAT*, *XDG_SEAT_PATH*, *XDG_SESSION_ID*, *XDG_SESSION_PATH*, *XDG_VTNR*
+   from activation environment and load them via env file.
+   (!) Should be set in systemd activation environment before starting uwsm
+   to be seen by environment preloader
+   ("*systemctl --user set-environment UWSM_NO_SESSION_SPECIFIC_VARS=true*"
+   or add to user's *environment.d*).
 |  *DEBUG*
 :  (int or boolean value)
 | 
