@@ -20,6 +20,6 @@ RemainAfterExit=yes
 ExecStart=@BIN_PATH@ aux prepare-env -- "%I"
 ExecStopPost=@BIN_PATH@ aux cleanup-env
 Restart=no
-EnvironmentFile=-%t/@BIN_NAME@/session_vars.env
+EnvironmentFile=-%t/@BIN_NAME@/env_session.conf
 SyslogIdentifier=@BIN_NAME@_env-preloader
 Slice=session.slice

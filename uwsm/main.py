@@ -1498,7 +1498,7 @@ def generate_units(rung: str = "run"):
             ExecStart={BIN_PATH} aux prepare-env -- "%I"
             ExecStopPost={BIN_PATH} aux cleanup-env
             Restart=no
-            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
+            EnvironmentFile=-%t/{BIN_NAME}/env_session.conf
             SyslogIdentifier={BIN_NAME}_env-preloader
             Slice=session.slice
             """
@@ -1533,7 +1533,7 @@ def generate_units(rung: str = "run"):
             NotifyAccess=all
             ExecStart={BIN_PATH} aux exec -- %I
             Restart=no
-            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
+            EnvironmentFile=-%t/{BIN_NAME}/env_session.conf
             TimeoutStartSec=30
             TimeoutStopSec=10
             SyslogIdentifier={BIN_NAME}_%I
@@ -1590,7 +1590,7 @@ def generate_units(rung: str = "run"):
             ExecStart={BIN_PATH} aux app-daemon
             Restart=on-failure
             RestartMode=direct
-            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
+            EnvironmentFile=-%t/{BIN_NAME}/env_session.conf
             SyslogIdentifier={BIN_NAME}_app-daemon
             Slice=session.slice
             """
@@ -1863,7 +1863,7 @@ def generate_tweaks(rung: str = "run"):
             [Service]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
-            EnvironmentFile=-%t/{BIN_NAME}/session_vars.env
+            EnvironmentFile=-%t/{BIN_NAME}/env_session.conf
             """
         ),
         rung=rung,
@@ -3400,7 +3400,7 @@ def cleanup_env():
 
     # also remove session-specific env file
     session_env_file = os.path.join(
-        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "session_vars.env"
+        BaseDirectory.get_runtime_dir(strict=True), BIN_NAME, "env_session.conf"
     )
 
     for drop_file in [cleanup_file, env_pre_file, session_env_file]:
@@ -5078,7 +5078,7 @@ def main():
 
             # save session vars for unit EnvironmentFile=
             save_env(
-                "session_vars.env",
+                "env_session.conf",
                 env={
                     var: os.environ.get(var, "")
                     for var in sorted(Varnames.session_specific)
