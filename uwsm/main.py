@@ -127,11 +127,6 @@ class HelpFormatterNewlines(argparse.HelpFormatter):
 class Varnames:
     "Sets of varnames"
 
-    # TODO: remove this in future release
-    session_separate = str2bool_plus(
-        os.environ.get("UWSM_NO_SESSION_SPECIFIC_VARS", "0")
-    )
-
     session_specific = {
         "XDG_SEAT",
         "XDG_SEAT_PATH",
@@ -146,7 +141,7 @@ class Varnames:
         "XDG_SESSION_DESKTOP",
         "XDG_SESSION_CLASS",
         "XDG_SESSION_TYPE",
-    } | (set() if session_separate else session_specific)
+    }
     never_export = {
         "PWD",
         "LS_COLORS",
@@ -155,10 +150,8 @@ class Varnames:
         "SHELL",
         "TERM",
         "NOTIFY_SOCKET",
-    } | (set() if not session_separate else session_specific)
-    always_unset = {"DISPLAY", "WAYLAND_DISPLAY"} | (
-        set() if not session_separate else session_specific
-    )
+    }
+    always_unset = {"DISPLAY", "WAYLAND_DISPLAY"}
     always_cleanup = {
         "DISPLAY",
         "LANG",
@@ -2139,36 +2132,50 @@ class Args:
             choices=("run", "home"),
             help=f"Generated unit/drop-in files destination (default: %(default)s, {'was' if unit_rung_preset else 'can be'} preset by UWSM_UNIT_RUNG env var).",
         )
-        no_tweaks_preset = False
-        no_tweaks_default = os.getenv("UWSM_NO_TWEAKS", None)
-        if no_tweaks_default is not None:
+        # TODO: remove _NO_ in future release
+        tweaks_preset = False
+        t_raw = os.getenv("UWSM_TWEAKS", None)
+        nt_raw = os.getenv("UWSM_NO_TWEAKS", None)
+        if t_raw is not None:
             try:
-                nt_raw = no_tweaks_default
-                no_tweaks_default = str2bool_plus(no_tweaks_default)
-                no_tweaks_preset = True
+                tweaks_default = str2bool_plus(t_raw)
+                tweaks_preset = True
             except ValueError:
                 print_warning(
-                    f'Expected boolean value from UWSM_NO_TWEAKS, got "{nt_raw}" ignored, set to False'
+                    f'Expected boolean value from UWSM_TWEAKS, got "{t_raw}" ignored, set to True.'
                 )
-                no_tweaks_default = False
-            del nt_raw
+                tweaks_default = True
+        elif nt_raw is not None:
+            try:
+                tweaks_default = not (str2bool_plus(nt_raw))
+                tweaks_preset = True
+            except ValueError:
+                print_warning(
+                    f'Expected boolean value from UWSM_NO_TWEAKS, got "{nt_raw}" ignored, set to False.'
+                )
+                tweaks_default = True
         else:
-            no_tweaks_default = False
+            tweaks_default = True
+        if nt_raw is not None:
+            print_warning(
+                f"UWSM_NO_TWEAKS is deprecated and being replaced by UWSM_TWEAKS."
+            )
+        del t_raw, nt_raw
         parsers["start_tw"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_tw"].add_argument(
             "-t",
-            dest="no_tweaks",
-            action="store_true",
-            default=no_tweaks_default,
+            dest="tweaks",
+            action="store_false",
+            default=tweaks_default,
             help="".join(
                 [
                     "Do not generate tweak drop-ins",
                     (
-                        " (can be preset by UWSM_NO_TWEAKS=true env var)"
-                        if not no_tweaks_preset
+                        " (can be preset by UWSM_TWEAKS=false env var)"
+                        if not tweaks_preset
                         else (
-                            " (preset by UWSM_NO_TWEAKS=true env var)"
-                            if no_tweaks_default
+                            " (preset by UWSM_TWEAKS=false env var)"
+                            if not tweaks_default
                             else ""
                         )
                     ),
@@ -2178,18 +2185,18 @@ class Args:
         )
         parsers["start_tw"].add_argument(
             "-T",
-            dest="no_tweaks",
-            action="store_false",
-            default=no_tweaks_default,
+            dest="tweaks",
+            action="store_true",
+            default=tweaks_default,
             help="".join(
                 [
                     "Generate tweak drop-ins",
                     (
                         " (default)"
-                        if not no_tweaks_preset
+                        if not tweaks_preset
                         else (
-                            " (preset by UWSM_NO_TWEAKS=false env var)"
-                            if not no_tweaks_default
+                            " (preset by UWSM_TWEAKS=true env var)"
+                            if tweaks_default
                             else ""
                         )
                     ),
@@ -4895,8 +4902,26 @@ def main():
 
     # parse args globally
     Args(store_parsers=True)
-
     print_debug("Args.parsed", Args.parsed)
+
+    # decide on var sets
+    # TODO: make this static in Varnames in future release
+    try:
+        s_raw = os.environ.get("UWSM_SEPARATE_SESSION_VARS", "false")
+        session_separate = str2bool_plus(s_raw)
+    except ValueError:
+        print_warning(
+            f'Expected boolean value from UWSM_SEPARATE_SESSION_VARS, got "{s_raw}" ignored, set to False.'
+        )
+        session_separate = False
+    del s_raw
+    if session_separate:
+        Varnames.never_export.update(Varnames.session_specific)
+        Varnames.always_unset.update(Varnames.session_specific)
+    else:
+        Varnames.always_export.update(Varnames.session_specific)
+
+    print_debug("session_separate", session_separate)
 
     #### SELECT
     if Args.parsed.mode == "select":
@@ -5035,10 +5060,10 @@ def main():
 
             generate_dropins(rung=Args.parsed.unit_rung)
 
-            if Args.parsed.no_tweaks:
-                remove_units(["tweaks"], rung=Args.parsed.unit_rung)
-            else:
+            if Args.parsed.tweaks:
                 generate_tweaks(rung=Args.parsed.unit_rung)
+            else:
+                remove_units(["tweaks"], rung=Args.parsed.unit_rung)
 
             # remove unit files from other rung
             remove_units(rung="run" if Args.parsed.unit_rung == "home" else "home")

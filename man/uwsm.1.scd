@@ -62,10 +62,10 @@ be used for distro level defaults.
 | 
 :  Which rung of systemd/user/ hierarchy to manage generated unit and drop-in
    files in: $XDG_RUNTIME_DIR or $XDG_CONFIG_HOME.
-|  *UWSM_NO_TWEAKS*
+|  *UWSM_TWEAKS*
 :  (boolean value)
 | 
-:  Remove and do not generate tweak drop-ins for other software.
+:  Set to _False_ to remove and not generate tweak drop-ins for other software.
 |  *UWSM_FINALIZE_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
@@ -94,7 +94,7 @@ be used for distro level defaults.
 | 
 :  _True_ or *1* to inhibit stdout messages from "*uwsm start*". *2* to also
    inhibit warnings.
-|  *UWSM_NO_SESSION_SPECIFIC_VARS*
+|  *UWSM_SEPARATE_SESSION_VARS*
 :  (boolean value)
 | 
 :  Set _True_ to test future behavior: omit transient session vars:
@@ -102,7 +102,7 @@ be used for distro level defaults.
    from activation environment and load them via env file.
    (!) Should be set in systemd activation environment before starting uwsm
    to be seen by environment preloader
-   ("*systemctl --user set-environment UWSM_NO_SESSION_SPECIFIC_VARS=true*"
+   ("*systemctl --user set-environment UWSM_SEPARATE_SESSION_VARS=true*"
    or add to user's *environment.d*).
 |  *DEBUG*
 :  (int or boolean value)
@@ -286,7 +286,9 @@ them.
    environment var.
 |      *-t*
 :  Do not generate (and remove) tweak unit files. Can be preset with
-   *UWSM_NO_TWEAKS* environment var.
+   *UWSM_TWEAKS=false* environment var.
+|      *-T*
+:  Generate tweak unit files for other software. This is default behavior.
 |      *-g* _S_
 :  Wait for S seconds for system graphical.target in queue and warn if timed out
    or not in queue (default: 60, negative to disable).
