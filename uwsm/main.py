@@ -3400,7 +3400,7 @@ def cleanup_env():
     if os.path.isfile(cleanup_file):
         print_normal('Found environment cleanup file "env_cleanup.list".')
     else:
-        print_warning(f'Environment leanup file "{cleanup_file}" not found.')
+        print_warning(f'Environment cleanup file "{cleanup_file}" not found.')
 
     current_cleanup_varnames = set()
     if os.path.isfile(cleanup_file):
@@ -3419,6 +3419,8 @@ def cleanup_env():
     if os.path.isfile(env_pre_file):
         print_normal('Found initial systemd state file "env_pre".')
         env_pre = load_env("env_pre", delete=False)
+    else:
+        env_pre = {}
 
     cleanup_varnames = (
         ((current_cleanup_varnames | Varnames.always_cleanup) - Varnames.never_cleanup)
