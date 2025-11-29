@@ -1,0 +1,3 @@
+# ttyautolock@.service, part of @BIN_NAME@ package
+
+@TTYAUTOLOCK_PRESET@ ttyautolock@.service

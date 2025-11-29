@@ -1,0 +1,3 @@
+# fumon.service, part of @BIN_NAME@ package
+
+@FUMON_PRESET@ fumon.service

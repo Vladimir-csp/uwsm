@@ -21,6 +21,15 @@ if get_option('fumon').allowed()
   )
 endif
 
+if get_option('ttyautolock').allowed()
+  install_data(
+    'ttyautolock.sh',
+    rename: 'ttyautolock',
+    install_dir: get_option('bindir'),
+    install_mode: 'rwxr-xr-x',
+  )
+endif
+
 if get_option('wait-tray').allowed()
   install_data(
     'wait-tray.sh',

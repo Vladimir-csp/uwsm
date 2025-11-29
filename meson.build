@@ -42,6 +42,10 @@ SD_USER_DIR = join_paths(
   get_option('prefix'),
   'lib/systemd/user'
 )
+SD_USER_PRESET_DIR = join_paths(
+  get_option('prefix'),
+  'lib/systemd/user-preset'
+)
 
 SH_BIN = get_option('sh-bin')
 WAITPID_BIN = get_option('waitpid-bin')
@@ -84,6 +88,16 @@ conf.set(
     'uwsm',
   ),
 )
+if get_option('fumon-preset').allowed()
+  conf.set('FUMON_PRESET', 'enable')
+else
+  conf.set('FUMON_PRESET', 'disable')
+endif
+if get_option('ttyautolock-preset').allowed()
+  conf.set('TTYAUTOLOCK_PRESET', 'enable')
+else
+  conf.set('TTYAUTOLOCK_PRESET', 'disable')
+endif
 
 COPY_TO_SUBDIR_SCRIPT = '''
 import os
@@ -110,6 +124,7 @@ subdir('example-units')
 subdir('scripts')
 subdir('man')
 subdir('systemd/user')
+subdir('systemd/user-preset')
 
 uwsm_doc_files = [
   'README.md',

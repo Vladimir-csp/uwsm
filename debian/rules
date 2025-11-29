@@ -11,6 +11,9 @@ override_dh_auto_configure:
 		-Dlicensedir=$(PREFIX)/share/doc/uwsm \
 		-Duuctl=enabled \
 		-Dfumon=enabled \
+		-Dfumon-preset=enabled \
+		-Dttyautolock=enabled \
+		-Dttyautolock-preset=disabled \
 		-Dwait-tray=enabled \
 		-Duwsm-app=enabled
 

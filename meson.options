@@ -58,6 +58,24 @@ option(
   description: 'install fumon',
 )
 option(
+  'fumon-preset',
+  type: 'feature',
+  value: 'enabled',
+  description: 'enable fumon.service in systemd preset',
+)
+option(
+  'ttyautolock',
+  type: 'feature',
+  value: 'disabled',
+  description: 'install ttyautolock',
+)
+option(
+  'ttyautolock-preset',
+  type: 'feature',
+  value: 'disabled',
+  description: 'enable ttyautolock@.service in systemd preset',
+)
+option(
   'wait-tray',
   type: 'feature',
   value: 'disabled',

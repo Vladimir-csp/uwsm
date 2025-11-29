@@ -1,0 +1,17 @@
+[Unit]
+Description=Lock session "%I" on VT switch
+Documentation=man:ttyautolock(1) man:loginctl(1)
+Requisite=graphical-session.target
+After=graphical-session.target
+ConditionPathExists=/sys/class/tty/tty0/active
+
+[Service]
+Type=exec
+ExecCondition=/bin/sh -c "command -v inotifywait > /dev/null"
+ExecStart=ttyautolock %i
+Restart=on-failure
+Slice=background-graphical.slice
+
+[Install]
+WantedBy=graphical-session.target
+DefaultInstance=auto

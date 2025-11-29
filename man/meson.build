@@ -14,6 +14,9 @@ if scdoc.found()
   if get_option('uuctl').allowed()
     man_files = man_files + ['uuctl.1.scd']
   endif
+  if get_option('ttyautolock').allowed()
+    man_files = man_files + ['ttyautolock.1.scd']
+  endif
 
   foreach filename : man_files
     topic = filename.split('.')[-3].split('/')[-1]

@@ -23,7 +23,8 @@ Depends:
 Recommends:
  whiptail,
  walker | fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu,
- libnotify-bin
+ libnotify-bin,
+ inotify-tools
 Suggests:
  dbus-broker
 Description: Universal Wayland Session Manager
