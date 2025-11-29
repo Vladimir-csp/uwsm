@@ -169,6 +169,26 @@ class Varnames:
     never_cleanup = {"SSH_AGENT_LAUNCHER", "SSH_AUTH_SOCK", "SSH_AGENT_PID"}
 
 
+def decide_on_varnames(s_raw):
+    "Modifies sets in Varnames according to provided UWSM_SEPARATE_SESSION_VARS value"
+    # TODO: make this static in Varnames in future release
+
+    try:
+        session_separate = str2bool_plus(s_raw)
+    except ValueError:
+        print_warning(
+            f'Expected boolean value from UWSM_SEPARATE_SESSION_VARS, got "{s_raw}" ignored, set to False.'
+        )
+        session_separate = False
+    if session_separate:
+        Varnames.never_export.update(Varnames.session_specific)
+        Varnames.always_unset.update(Varnames.session_specific)
+    else:
+        Varnames.always_export.update(Varnames.session_specific)
+
+    print_debug("session_separate", session_separate)
+
+
 class MainArg:
     """
     Evaluates main argument string.
@@ -3207,6 +3227,15 @@ def prepare_env():
     if env_login:
         print_normal("Got saved login session variables.")
 
+    # get UWSM_SEPARATE_SESSION_VARS, from login_env first, then from environment.
+    # TODO: remove this in future release
+    decide_on_varnames(
+        env_login.get(
+            "UWSM_SEPARATE_SESSION_VARS",
+            os.getenv("UWSM_SEPARATE_SESSION_VARS", "false"),
+        )
+    )
+
     # if XDG_SEAT or XDG_SESSION_ID from login context are not known, deduce them.
     if (
         "XDG_SEAT" not in env_login
@@ -4903,25 +4932,6 @@ def main():
     # parse args globally
     Args(store_parsers=True)
     print_debug("Args.parsed", Args.parsed)
-
-    # decide on var sets
-    # TODO: make this static in Varnames in future release
-    try:
-        s_raw = os.environ.get("UWSM_SEPARATE_SESSION_VARS", "false")
-        session_separate = str2bool_plus(s_raw)
-    except ValueError:
-        print_warning(
-            f'Expected boolean value from UWSM_SEPARATE_SESSION_VARS, got "{s_raw}" ignored, set to False.'
-        )
-        session_separate = False
-    del s_raw
-    if session_separate:
-        Varnames.never_export.update(Varnames.session_specific)
-        Varnames.always_unset.update(Varnames.session_specific)
-    else:
-        Varnames.always_export.update(Varnames.session_specific)
-
-    print_debug("session_separate", session_separate)
 
     #### SELECT
     if Args.parsed.mode == "select":

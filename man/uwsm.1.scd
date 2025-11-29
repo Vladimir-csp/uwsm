@@ -100,10 +100,6 @@ be used for distro level defaults.
 :  Set _True_ to test future behavior: omit transient session vars:
    *XDG_SEAT*, *XDG_SEAT_PATH*, *XDG_SESSION_ID*, *XDG_SESSION_PATH*, *XDG_VTNR*
    from activation environment and load them via env file.
-   (!) Should be set in systemd activation environment before starting uwsm
-   to be seen by environment preloader
-   ("*systemctl --user set-environment UWSM_SEPARATE_SESSION_VARS=true*"
-   or add to user's *environment.d*).
 |  *DEBUG*
 :  (int or boolean value)
 | 
