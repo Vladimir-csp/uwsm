@@ -12,7 +12,7 @@ cd "$(dirname "$0")"
 
 . ./version.sh
 
-export UWSM_VERSION=$VERSION
+export "UWSM_VERSION=$VERSION"
 DEBVERSION=${VERSION}-1~local0
 
 case "$(dpkg-query -Wf '${db:Status-Abbrev}' devscripts)" in
@@ -49,17 +49,53 @@ else
 	echo "debian/changelog already has correct version"
 fi
 
+bd_build=
+bd_ideps=
+bd_cdeps=
+bd_install=
 case "$(dpkg-query -Wf '${db:Status-Abbrev};${source:Version}' uwsm-build-deps)" in
-"ii"*";$DEBVERSION") echo "uwsm-build-deps metapackage already installed" ;;
+"ii"*";$DEBVERSION") echo "uwsm-build-deps metapackage is already installed" ;;
+"ii"*)
+	echo "Different version of uwsm-build-deps metapackage is installed"
+	[ -f "uwsm-build-deps_${DEBVERSION}_all.deb" ] || bd_build=true
+	bd_cdeps=true
+	while read -r line; do
+		case "$line" in
+		'Depends:'*) bd_ideps=$line ;;
+		esac
+	done <<- EOF
+		$(apt-cache show uwsm-build-deps)
+	EOF
+	;;
 *)
-	if [ ! -f "uwsm-build-deps_${DEBVERSION}_all.deb" ]; then
-		echo "Creating uwsm-build-deps metapackage"
-		mk-build-deps
-	fi
-	echo "Installing uwsm-build-deps_${DEBVERSION}_all.deb"
-	sudo apt-get install "./uwsm-build-deps_${DEBVERSION}_all.deb"
+	[ -f "uwsm-build-deps_${DEBVERSION}_all.deb" ] || bd_build=true
+	bd_install=true
 	;;
 esac
+if [ -n "$bd_build" ]; then
+	echo "Creating uwsm-build-deps metapackage"
+	mk-build-deps
+fi
+
+if [ -n "$bd_cdeps" ]; then
+	while read -r line; do
+		case "$line" in
+		'Depends:'*) bd_cdeps=$line ;;
+		esac
+	done <<- EOF
+		$(apt-cache show "./uwsm-build-deps_${DEBVERSION}_all.deb")
+	EOF
+	if [ "$bd_ideps" = "$bd_cdeps" ]; then
+		echo "Dependencies of installed uwsm-build-deps match, skipping install"
+	else
+		bd_install=true
+	fi
+fi
+
+if [ -n "$bd_install" ]; then
+	echo "Installing uwsm-build-deps_${DEBVERSION}_all.deb"
+	sudo apt-get install "./uwsm-build-deps_${DEBVERSION}_all.deb"
+fi
 
 echo "Building"
 
