@@ -388,6 +388,7 @@ esac
 # compose actions
 ACTIONS=''
 DISABLE_ACTIONS=''
+DISABLE_ACTIONS_SHOW=''
 ENABLE_ACTIONS=''
 for ACTION in start reload restart stop kill reset-failed enable disable freeze thaw silence unsilence mask unmask; do
 	: "${ACTION}+++type:${UNIT_TYPE:-unknown}+as:${ACTIVE_STATE:-unknown}+fs:${FREEZER_STATE:-unknown}+cstart:${CAN_START:-unknown}+creload:${CAN_RELOAD:-unknown}+cstop:${CAN_STOP:-unknown}+cfreeze:${CAN_FREEZE:-unknown}+rmstart:${RM_START:-unknown}+rmstop:${RM_STOP:-unknown}+ufs:${UNIT_FILE_STATE}+silent:${SILENT_STATE}+install:${WANTED_BY}${REQUIRED_BY}${UPHELD_BY}+++"
@@ -429,23 +430,34 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 	silence+*+silent:true+* | unsilence+*+silent:false+*) continue ;;
 	## special handling of some surviving actions
 	disable+*+ufs:runtime-enabled+*+as:activ* | disable+*+ufs:runtime-enabled+*+as:reloading*)
-		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime${N}disable --runtime --now"
+		case "${UNIT}" in
+		*@*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime"; DISABLE_ACTIONS_SHOW=true ;;
+		*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime${N}disable --runtime --now"; DISABLE_ACTIONS_SHOW=true ;;
+		esac
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
 	disable+*+ufs:runtime-enabled+*)
 		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime"
+		DISABLE_ACTIONS_SHOW=true
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
 	disable+*+as:activ* | disable+*+as:reloading*)
-		DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable${N}disable --now"
+		case "${UNIT}" in
+		*@*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable" ;;
+		*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable${N}disable --now"; DISABLE_ACTIONS_SHOW=true ;;
+		esac
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
 	enable+*+as:activ* | enable+*+as:reloading*)
 		ENABLE_ACTIONS="${ENABLE_ACTIONS}${ENABLE_ACTIONS:+$N}enable${N}enable --runtime"
+		DISABLE_ACTIONS_SHOW=true
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
 	enable+*)
-		ENABLE_ACTIONS="${ENABLE_ACTIONS}${ENABLE_ACTIONS:+$N}enable${N}enable --now${N}enable --runtime${N}enable --runtime --now"
+		case "${UNIT}" in
+		*@*) ENABLE_ACTIONS="${ENABLE_ACTIONS}${ENABLE_ACTIONS:+$N}enable${N}enable --runtime" ;;
+		*) ENABLE_ACTIONS="${ENABLE_ACTIONS}${ENABLE_ACTIONS:+$N}enable${N}enable --now${N}enable --runtime${N}enable --runtime --now" ;;
+		esac
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
 	## another skip, has to be down here, disable for not enabled
