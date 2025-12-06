@@ -5124,93 +5124,68 @@ def main():
                 separator="\n",
             )
 
-            # fork out a process that will hold session scope open
-            # until compositor unit is stopped
-            mainpid = os.getpid()
-            childpid = os.fork()
-            if childpid == 0:
-                # ignore HUP and TERM
-                signal.signal(signal.SIGHUP, signal.SIG_IGN)
-                signal.signal(signal.SIGTERM, signal.SIG_IGN)
-
-                # Premature exit is covered explicitly as we die with the main process before
-                # getting compositor's MainPID, so there is no harm in waiting for default
-                # startup timeout (which wayland-wm-env uses) and then a bit more (wayland-wm just
-                # needs to begin startup), so 1.5 minutes plus 5 seconds.
-                # 0.5s between 190 attempts
-                bus_session = DbusInteractions("session")
-                print_debug("bus_session holder fork", bus_session)
-                for attempt in range(190, -1, -1):
-                    # if parent process exits at this stage, silently exit
-                    try:
-                        os.kill(mainpid, 0)
-                    except ProcessLookupError:
-                        print_debug(
-                            "holder exiting due to premature parent process end"
-                        )
-                        sys.exit(0)
-
-                    # timed out
-                    if attempt == 0:
-                        print_warning(
-                            f"Timed out waiting for activation of wayland-wm@{CompGlobals.id_unit_string}.service"
-                        )
-                        try:
-                            print_debug("killing main process from holder")
-                            os.kill(mainpid, signal.SIGTERM)
-                        except ProcessLookupError:
-                            print_debug("main process already absent")
-                            pass
-                        sys.exit(1)
-
-                    time.sleep(0.5)
-                    print_debug(f"holder attempt {attempt}")
-
-                    # query systemd dbus for active matching units
-                    units = bus_session.list_units_by_patterns(
-                        ["active", "activating"],
-                        [f"wayland-wm@{CompGlobals.id_unit_string}.service"],
-                    )
-                    print_debug("holder units", units)
-                    if len(units) > 0:
-                        break
-
-                cpid = bus_session.get_unit_property(
-                    f"wayland-wm@{CompGlobals.id_unit_string}.service",
-                    "MainPID",
-                    skip_generic=True,
+            # Replace ourselves with a simple shell starter/signal handler.
+            # This will fork a waiting systemctl to start the main compositor
+            # unit and wait until it deactivates.
+            # Upon receiving SIGTERM, SIGHUP, SIGINT a stopping systemctl will be
+            # forked to stop compositor will be cleanly.
+            # Both systemctl invocations are started with protection from
+            # SIGTERM/SIGHUP barrage occuring on login session termination.
+            sh_path = which(SH_BIN)
+            if not sh_path:
+                raise OSError(
+                    f'"{SH_BIN}" is not {"found" if "/" in SH_BIN else "in PATH"}!'
                 )
-                if not cpid or not isinstance(cpid, int):
-                    print_warning(
-                        f"Could not get MainPID of wayland-wm@{CompGlobals.id_unit_string}.service"
+            session_script = os.path.join(
+                BaseDirectory.get_runtime_dir(), BIN_NAME, "signal-handler"
+            )
+            with open(session_script, "w") as ssf:
+                ssf.write(
+                    dedent(
+                        r"""
+                            #!/bin/sh
+                            rm -f "$0"
+                            start() {
+                            	printf '%s\n' "Starting ${COMPOSITOR}..."
+                            	{
+                            		trap '' TERM HUP INT
+                            		exec systemctl --user start --wait "${COMPOSITOR}"
+                            	} &
+                            	STARTPID=$!
+                            	printf '%s\n' "Forked systemctl, PID ${STARTPID}."
+                            }
+                            stop() {
+                            	trap '' TERM HUP INT
+                            	printf '%s\n' "Received SIG${1}, stopping ${COMPOSITOR}..."
+                            	systemctl --user stop "${COMPOSITOR}" &
+                            	finish
+                            }
+                            finish() {
+                            	wait "${STARTPID}"
+                            	RC=$?
+                            	case "$RC" in
+                            	0) printf '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
+                            	*) printf '%s\n' "PID ${STARTPID} exited with RC ${RC}" >&2 ;;
+                            	esac
+                            	exit "$RC"
+                            }
+                            COMPOSITOR=$1
+                            trap "stop TERM" TERM
+                            trap "stop HUP" HUP
+                            trap "stop INT" INT
+                            start
+                            finish
+                        """
                     )
-                    sys.exit(1)
-
-                session_id = os.environ.get("XDG_SESSION_ID", "")
-                if session_id:
-                    print_normal(
-                        f"waitpid: Holding login session {session_id} open until PID {cpid} exits"
-                    )
-                else:
-                    print_normal(f"waitpid: Holding until PID {cpid} exits")
-                # use lightweight waitpid if available
-                waitpid_path = which(WAITPID_BIN)
-                if waitpid_path:
-                    os.execlp(waitpid_path, "waitpid", "-e", str(int(cpid)))
-                else:
-                    waitpid(int(cpid))
-                    sys.exit(0)
-            # end of fork
-
-            # replace ourselves with systemctl
-            # this will start the main compositor unit
-            # and wait until compositor is stopped
+                )
             os.execlp(
-                "systemctl",
-                "systemctl",
-                "--user",
-                "start",
-                "--wait",
+                "systemd-cat",
+                "sh",
+                "--identifier=uwsm",
+                "--stderr-priority=warning",
+                "--",
+                sh_path,
+                session_script,
                 f"wayland-wm@{CompGlobals.id_unit_string}.service",
             )
 
