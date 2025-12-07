@@ -1178,16 +1178,13 @@ def get_active_wm_unit(active=True, activating=True, bus_session=None):
         return str(units[0][0])
 
 
-def get_active_wm_id(active=True, activating=True, bus_session=None):
-    "Finds running wayland-wm@*.service, returns specifier"
+def extract_wm_id(unit_id: str):
+    "Extracts and unescapes specifier from unit name"
 
-    active_id = get_active_wm_unit(active, activating, bus_session)
-
-    if active_id:
-        # extract and unescape specifier
-        active_id = active_id.split("@")[1].removesuffix(".service")
-        active_id = bytes(active_id, "UTF-8").decode("unicode_escape")
-        return active_id
+    if unit_id:
+        wm_id = unit_id.split("@")[1].removesuffix(".service")
+        wm_id = bytes(unit_id, "UTF-8").decode("unicode_escape")
+        return wm_id
 
     return ""
 
@@ -2767,11 +2764,13 @@ def finalize(additional_vars=None):
     print_debug("bus_session initial", bus_session)
 
     # get id of active or activating compositor
-    wm_id = get_active_wm_id(bus_session=bus_session)
+    wm_unit = get_active_wm_unit(bus_session=bus_session)
+    wm_id = extract_wm_id(wm_unit)
     # get id of activating compositor for later decisions
-    activating_wm_id = get_active_wm_id(
+    activating_wm_unit = get_active_wm_unit(
         active=False, activating=True, bus_session=bus_session
     )
+    activating_wm_id = extract_wm_id(activating_wm_unit)
 
     if not isinstance(wm_id, str) or not wm_id:
         print_error(
@@ -2802,7 +2801,7 @@ def finalize(additional_vars=None):
     else:
         if (
             bus_session.get_unit_property(
-                f"wayland-wm@{wm_id}.service", "NotifyAccess", skip_generic=True
+                wm_unit, "NotifyAccess", skip_generic=True
             )
             == "all"
         ):
@@ -5480,7 +5479,7 @@ def main():
                         else:
                             if (
                                 bus_session.get_unit_property(
-                                    f"wayland-wm@{CompGlobals.id}.service",
+                                    f"wayland-wm@{CompGlobals.id_unit_string}.service",
                                     "NotifyAccess",
                                     skip_generic=True,
                                 )
