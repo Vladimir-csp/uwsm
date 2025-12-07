@@ -5144,27 +5144,53 @@ def main():
                         r"""
                             #!/bin/sh
                             rm -f "$0"
+                            printf_out() {
+                            	printf "$@"
+                            	printf "$@" >&3
+                            }
+                            printf_err() {
+                            	printf "$@" >&2
+                            	printf "$@" >&4
+                            }
                             start() {
-                            	printf '%s\n' "Starting ${COMPOSITOR}..."
+                            	printf_out '%s\n' "Starting ${COMPOSITOR}..."
+                            	case "${TERM_SESSION_TYPE:-}" in
+                            	kms|fb)
+                            		printf_out '%s\n' "Requesting kmscon background."
+                            		case "${TERM_PROGRAM:-}" in
+                            		tmux) printf '%b' '\033Ptmux;\033\033]setBackground\a\033\\' >&3 ;;
+                            		*) printf '\033]setBackground\a' >&3 ;;
+                            		esac
+                            		;;
+                            	esac
                             	{
                             		trap '' TERM HUP INT
                             		exec systemctl --user start --wait "${COMPOSITOR}"
                             	} &
                             	STARTPID=$!
-                            	printf '%s\n' "Forked systemctl, PID ${STARTPID}."
+                            	printf_out '%s\n' "Forked systemctl, PID ${STARTPID}."
                             }
                             stop() {
                             	trap '' TERM HUP INT
-                            	printf '%s\n' "Received SIG${1}, stopping ${COMPOSITOR}..."
+                            	printf_out '%s\n' "Received SIG${1}, stopping ${COMPOSITOR}..."
                             	systemctl --user stop "${COMPOSITOR}" &
                             	finish
                             }
                             finish() {
                             	wait "${STARTPID}"
                             	RC=$?
+                            	case "${TERM_SESSION_TYPE:-}" in
+                            	kms)
+                            		printf_out '%s\n' "Requesting kmscon foreground."
+                            		case "${TERM_PROGRAM:-}" in
+                            		tmux) printf '%b' '\033Ptmux;\033\033]setForeground\a\033\\' >&3 ;;
+                            		*) printf '\033]setForeground\a' >&3 ;;
+                            		esac
+                            		;;
+                            	esac
                             	case "$RC" in
-                            	0) printf '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
-                            	*) printf '%s\n' "PID ${STARTPID} exited with RC ${RC}" >&2 ;;
+                            	0) printf_out '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
+                            	*) printf_err '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
                             	esac
                             	exit "$RC"
                             }
@@ -5177,6 +5203,9 @@ def main():
                         """
                     )
                 )
+            # duplicate stdout and stderr to retain ability to print past systemd-cat
+            os.dup2(1, 3)
+            os.dup2(2, 4)
             os.execlp(
                 "systemd-cat",
                 "sh",
