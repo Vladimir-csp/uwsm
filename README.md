@@ -9,7 +9,8 @@ does not require any extra daemons running in background (except for two tiny
 
 This setup provides robust session management, overridable compositor- and
 session-aware environment management, XDG autostart, bi-directional binding with
-login session, clean shutdown.
+login session, clean shutdown, solutions for a set of small but annoying gotchas
+of systemd session management.
 
 For compositors this is an opportunity to offload: Systemd integration,
 session/XDG autostart management, Systemd/DBus activation environment
@@ -20,6 +21,27 @@ interaction with its caveats.
 > Although no drastic changes are planned, keep an eye for commits with breaking
 > changes, indicated by an exclamation point (e.g. `fix!: ...`, `chore!: ...`,
 > `feat!: ...`, etc.).
+
+> [!IMPORTANT]
+> v0.25.0 introduces a mechainsm for special treatment of transient session
+> vars: `XDG_SEAT`, `XDG_SEAT_PATH`, `XDG_SESSION_ID`, `XDG_SESSION_PATH`,
+> `XDG_VTNR`.
+> Those vars will be fed to compositor unit via `EnvironmentFile=` directive,
+> `uwsm app` will pass them to launched services automatically. The point is to
+> stop exporting them to activation environment(s) since they are highly
+> session-specific. v0.25.0 does not change exporting behavior yet, but provides
+> a way to test it by setting env variable: `UWSM_SEPARATE_SESSION_VARS=true`.
+> The plan is for v0.26.0 to transition to the new behavior permanently.
+> In other v0.25.0 news:
+> - (!) `UWSM_NO_TWEAKS` var is deprecated in favour of `UWSM_TWEAKS`, no
+>   inverted booleans from now on.
+> - Support for launching from kmscon (>=9.2.0 required).
+> - Better login session handling with a signal handling process. This allows
+>   graceful synchronized termination of/by parent login process, not just
+>   keeping session unit open purely via systemd logic.
+> - `ttyautock` script and service (optional dependency: `inotify-tools`)
+> - Systemd service state presets for `fumon` and `ttyautolock`,
+>   new build options.
 
 > [!NOTE]
 > It is highly recommended to use
@@ -218,8 +240,12 @@ Provides helpers and tools for various operations.
   finding requested desktop entries, parsing and generation of commands for
   client to execute. This avoids the overhead of repeated python startup and
   increases app launch speed.
-- `uuctl`: graphical (via dmenu-like menus) tool for managing user units.
-- `fumon`: background service for notifying about failed units.
+- `uuctl`: optional graphical (requires a dmenu-like menu) tool for managing
+  user units.
+- `fumon`: optional background service for notifying about failed units
+  (requires `notify-send` from `libnotify` or `libnotify-bin` package).
+- `ttyautolock`: optional background service for locking session when its TTY
+  loses focus (requires `inotifywait` from `inotify-tools` package).
 
 </details>
 
@@ -234,12 +260,12 @@ Building and installing the python project directly.
 </summary>
 
 ```
-meson setup --prefix=/usr/local -Duuctl=enabled -Dfumon=enabled -Duwsm-app=enabled build
+meson setup --prefix=/usr/local -Duuctl=enabled -Dfumon=enabled -Duwsm-app=enabled -Dttyautolock=enabled build
 meson install -C build
 ```
 
-The example enables optional tools `uuctl`, `fumon`, and `uwsm-app` available in
-this project (see _helpers and tools_ spoiler in
+The example enables optional tools `uuctl`, `fumon`, `ttyautolock`, and
+`uwsm-app` available in this project (see _helpers and tools_ spoiler in
 [concepts section](#concepts-and-features) above).
 
 </details>
@@ -304,6 +330,8 @@ Runtime dependencies:
 - `notify-send` (optional, for feedback from `uwsm app` commands and
   optional failed unit monitor `fumon` service; from `libnotify-bin` or
   `libnotify` package)
+- `inotifywait` (optional, for `ttyautolock` script and service; from
+  `inotify-tools` package)
 
 ### 2. Service startup notification and vars set by compositor
 
@@ -884,7 +912,7 @@ Basic set of unit files:
   - `wayland-session-bindpid@.service` - starts `waitpid` utility for a given
     PID. Invokes `wayland-session-shutdown.target` when deactivated.
     `uwsm start` starts this unit pointing to itself just before replacing
-    itself with `systemctl` unit startup command.
+    itself with a shell signal handler and `systemctl` unit startup command.
   - `wayland-session-shutdown.target` - conflicts with operational units.
     Triggered by deactivation of `wayland-wm*@*.service` and
     `wayland-session-bindpid@*.service` units, both successful or failed. But
@@ -906,6 +934,12 @@ shell with `systemctl` invocation reusing its PID:
 
 This makes the end of login shell also be the end of wayland session and vice
 versa.
+
+Alternatively, for graceful handling of the parent `login` process one can use
+`trap` for `TERM` and `HUP` signals in the shell for forking `systemctl` process
+protected from direct termination and run
+`systemctl --user stop wayland-wm@${compositor}.service` (also protected from
+signals) upon receiving `SIGTERM`.
 
 When `wayland-wm-env@.service` is started during `graphical-session-pre.target`
 startup, `uwsm aux prepare-env ${compositor}` is launched (with shared set of
@@ -1026,16 +1060,23 @@ then
 
     # bind wayland session to login shell PID $$ and start compositor
     echo Starting ${MY_COMPOSITOR} compositor
-    systemctl --user start wayland-session-bindpid@$$.service &&
-    exec systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service
+    systemctl --user start wayland-session-bindpid@$$.service
+
+    # do not die right away on signals, stop gracefully
+    trap "trap '' TERM HUP INT; systemctl --user stop --wait wayland-wm@${MY_COMPOSITOR}.service; wait \$SCPID; exit" TERM HUP INT
+    {
+    	trap '' TERM HUP INT
+    	exec systemctl --user start --wait wayland-wm@${MY_COMPOSITOR}.service
+    } &
+    SCPID=$!
+    # hold session open
+    wait $SCPID
 fi
 ```
 
-`uwsm start` also has a mechanism that holds the login session open until the
-compositor unit is deactivated. It works by forking a process immune to `TERM`
-and `HUP` signals inside login session. This process finds compositor unit's
-`MainPID` and waits until it ends. This mechanism would be too complicated to
-replicate in shell for purposes of this demonstration.
+`uwsm start` also replaces itself with lightweight shell signal handler with
+similar algorithm that holds the login session open until the compositor unit is
+deactivated and prevents premature end of login session and `login` process.
 
 </details>
 
