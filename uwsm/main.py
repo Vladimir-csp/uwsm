@@ -149,6 +149,8 @@ class Varnames:
         "SHLVL",
         "SHELL",
         "TERM",
+        "COLORTERM",
+        "TERM_SESSION_TYPE",
         "NOTIFY_SOCKET",
     }
     always_unset = {"DISPLAY", "WAYLAND_DISPLAY"}
