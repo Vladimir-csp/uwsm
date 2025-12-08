@@ -35,7 +35,8 @@ interaction with its caveats.
 > In other v0.25.0 news:
 > - (!) `UWSM_NO_TWEAKS` var is deprecated in favour of `UWSM_TWEAKS`, no
 >   inverted booleans from now on.
-> - Support for launching from kmscon (>=9.2.0 required).
+> - Support for launching from [kmscon](https://github.com/kmscon/kmscon)
+>   (>=9.2.0 required).
 > - Better login session handling with a signal handling process. This allows
 >   graceful synchronized termination of/by parent login process, not just
 >   keeping session unit open purely via systemd logic.
