@@ -2802,9 +2802,7 @@ def finalize(additional_vars=None):
         os.execlp("systemd-notify", "systemd-notify", "READY=1", "NOTIFYACCESS=exec")
     else:
         if (
-            bus_session.get_unit_property(
-                wm_unit, "NotifyAccess", skip_generic=True
-            )
+            bus_session.get_unit_property(wm_unit, "NotifyAccess", skip_generic=True)
             == "all"
         ):
             print_normal(
@@ -5147,6 +5145,7 @@ def main():
                             #!/bin/sh
                             rm -f "$0"
                             printf_out() {
+                            	[ -z "$UWSM_SH_NO_STDOUT" ] || return
                             	printf "$@"
                             	printf "$@" >&3
                             }
@@ -5157,7 +5156,7 @@ def main():
                             start() {
                             	printf_out '%s\n' "Starting ${COMPOSITOR}..."
                             	case "${TERM_SESSION_TYPE:-}" in
-                            	kms|fb)
+                            	kms)
                             		printf_out '%s\n' "Requesting kmscon background."
                             		case "${TERM_PROGRAM:-}" in
                             		tmux) printf '%b' '\033Ptmux;\033\033]setBackground\a\033\\' >&3 ;;
@@ -5208,11 +5207,18 @@ def main():
             # duplicate stdout and stderr to retain ability to print past systemd-cat
             os.dup2(1, 3)
             os.dup2(2, 4)
+            # add silence indicators
+            os.environ.update(
+                {
+                    "UWSM_SH_NO_STDOUT": "1" if NoStdOutFlag.nostdout else "",
+                    "UWSM_SH_NO_WARN": "1" if NoStdOutFlag.nowarn else "",
+                }
+            )
             os.execlp(
                 "systemd-cat",
                 "sh",
                 "--identifier=uwsm",
-                "--stderr-priority=warning",
+                "--stderr-priority=err",
                 "--",
                 sh_path,
                 session_script,
