@@ -43,6 +43,7 @@ from uwsm.params import (
     SH_BIN,
     WAITPID_BIN,
     WHIPTAIL_BIN,
+    PKG_LIBEXEC_DIR,
 )
 from uwsm.misc import *
 from uwsm.dbus import DbusInteractions
@@ -2935,229 +2936,6 @@ def get_session_by_vt(vtnr: int, verbose: bool = False):
     return None
 
 
-def prepare_env_gen_sh(random_mark, load_profile: bool = False):
-    """
-    Takes a known random string, returns string with shell code for sourcing env.
-    Code echoes given string to mark the beginning of "env -0" output
-    """
-
-    # vars for use in plugins
-    shell_definitions = dedent(
-        f"""
-        # vars for plugins
-        __SELF_NAME__={shlex.quote(BIN_NAME)}
-        __WM_ID__={shlex.quote(CompGlobals.id)}
-        __WM_ID_UNIT_STRING__={shlex.quote(CompGlobals.id_unit_string)}
-        __WM_BIN_ID__={shlex.quote(CompGlobals.bin_id)}
-        __WM_DESKTOP_NAMES__={shlex.quote(':'.join(CompGlobals.desktop_names))}
-        __WM_FIRST_DESKTOP_NAME__={shlex.quote(CompGlobals.desktop_names[0])}
-        __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if CompGlobals.cli_desktop_names_exclusive else 'false'}
-        __LOAD_PROFILE__={'true' if load_profile else 'false'}
-        __OIFS__=" \t\n"
-        # context marker for profile scripting
-        IN_UWSM_ENV_PRELOADER=true
-        """
-    )
-
-    # bake plugin loading into shell code
-    shell_plugins = BaseDirectory.load_data_paths(
-        f"uwsm/plugins/{CompGlobals.bin_id}.sh"
-    )
-    shell_plugins_load = []
-    for plugin in shell_plugins:
-        shell_plugins_load.append(
-            dedent(
-                f"""
-                echo "Loading plugin \\"{plugin}\\"."
-                . "{plugin}"
-                """
-            )
-        )
-    shell_plugins_load = "".join(shell_plugins_load)
-
-    # static part
-    shell_main_body = dedent(
-        r"""
-        reverse() {
-        	# returns list $1 delimited by ${2:-:} in reverse
-        	__REVERSE_OUT__=''
-        	IFS="${2:-:}"
-        	for __ITEM__ in $1; do
-        		if [ -n "${__ITEM__}" ]; then
-        			__REVERSE_OUT__="${__ITEM__}${__REVERSE_OUT__:+$IFS}${__REVERSE_OUT__}"
-        		fi
-        	done
-        	printf '%s' "${__REVERSE_OUT__}"
-        	unset __REVERSE_OUT__
-        	IFS="${__OIFS__}"
-        }
-
-        lowercase() {
-        	# returns lowercase string
-        	echo "$1" | tr '[:upper:]' '[:lower:]'
-        }
-
-        source_file() {
-        	# sources file if exists, with messaging
-        	if [ -f "${1}" ]; then
-        		if [ -r "${1}" ]; then
-        			echo "Loading environment from \"${1}\"."
-        			. "${1}"
-        		else
-        			"Environment file ${1} is not readable" >&2
-        		fi
-        	fi
-        }
-
-        get_all_config_dirs() {
-        	# returns whole XDG_CONFIG hierarchy, :-delimited
-        	printf '%s' "${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}"
-        }
-
-        get_all_config_dirs_extended() {
-        	# returns whole XDG_CONFIG and system XDG_DATA hierarchies, :-delimited
-        	printf '%s' "${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}"
-        }
-
-        in_each_config_dir() {
-        	# called for each config dir (decreasing priority)
-        	true
-        }
-
-        in_each_config_dir_reversed() {
-        	# called for each config dir in reverse (increasing priority)
-
-        	# compose sequence of env files from lowercase desktop names in reverse
-        	IFS=':'
-        	__ENV_FILES__=''
-        	for __DNLC__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
-        		IFS="${__OIFS__}"
-        		__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
-        	done
-        	# add common env file at the beginning
-        	__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
-        	unset __DNLC__
-
-        	# load env file sequence from this config dir rung
-        	IFS=':'
-        	for __ENV_FILE__ in ${__ENV_FILES__}; do
-        		source_file "${1}/${__ENV_FILE__}"
-        	done
-        	unset __ENV_FILE__
-        	unset __ENV_FILES__
-        	IFS="${__OIFS__}"
-        }
-
-        process_config_dirs() {
-        	# iterate over config dirs (decreasing importance) and call in_each_config_dir* functions
-        	IFS=":"
-        	for __CONFIG_DIR__ in $(get_all_config_dirs_extended); do
-        		IFS="${__OIFS__}"
-        		if type "in_each_config_dir_${__WM_BIN_ID__}" >/dev/null 2>&1; then
-        			"in_each_config_dir_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
-        		else
-        			in_each_config_dir "${__CONFIG_DIR__}" || return $?
-        		fi
-        	done
-        	unset __CONFIG_DIR__
-        	IFS="${__OIFS__}"
-        	return 0
-        }
-
-        process_config_dirs_reversed() {
-        	# iterate over reverse config dirs (increasing importance) and call in_each_config_dir_reversed* functions
-        	IFS=":"
-        	for __CONFIG_DIR__ in $(reverse "$(get_all_config_dirs_extended)"); do
-        		IFS="${__OIFS__}"
-        		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
-        			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
-        		else
-        			in_each_config_dir_reversed "${__CONFIG_DIR__}" || return $?
-        		fi
-        	done
-        	unset __CONFIG_DIR__
-        	IFS="${__OIFS__}"
-        	return 0
-        }
-
-        load_wm_env() {
-        	# calls reverse config dir processing
-        	if type "process_config_dirs_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
-        		"process_config_dirs_reversed_${__WM_BIN_ID__}" || return $?
-        	else
-        		process_config_dirs_reversed
-        	fi
-        }
-
-        #### Basic environment
-        if [ "${__LOAD_PROFILE__}" = "true" ]; then
-        	echo "Loading shell profile."
-        	[ -f /etc/profile ] && . /etc/profile
-        	[ -f "${HOME}/.profile" ] && . "${HOME}/.profile"
-        	export PATH
-        fi
-
-        export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
-        export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
-        export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-        export XDG_DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
-        export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${HOME}/.cache}"
-        export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-        export XDG_STATE_HOME="${XDG_STATE_HOME:-${HOME}/.local/state}"
-
-        export XDG_CURRENT_DESKTOP="${__WM_DESKTOP_NAMES__}"
-        export XDG_SESSION_DESKTOP="${__WM_FIRST_DESKTOP_NAME__}"
-        export XDG_MENU_PREFIX="$(lowercase "${__WM_FIRST_DESKTOP_NAME__}")-"
-
-        export XDG_SESSION_TYPE="wayland"
-        export XDG_BACKEND="wayland"
-
-        #### apply quirks
-        if type "quirks_${__WM_BIN_ID__}" >/dev/null 2>&1; then
-        	echo "Applying quirks for \"${__WM_BIN_ID__}\"."
-        	"quirks_${__WM_BIN_ID__}" || exit $?
-        fi
-
-        #### load env files
-        if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null 2>&1; then
-        	"load_wm_env_${__WM_BIN_ID__}" || exit $?
-        else
-        	load_wm_env || exit $?
-        	true
-        fi
-
-        #### integrate XDG User Dirs
-        # TODO: remove this in a couple of years of xdg-user-dirs 0.19 spread
-        # update XDG User Dirs, XDG Autostart would be too late
-        if command -v xdg-user-dirs-update >/dev/null && ! systemctl --user is-enabled -q xdg-user-dirs.service; then
-        	echo "Updating XDG User Dirs"
-        	xdg-user-dirs-update
-        fi
-        """
-    )
-
-    # pass env after the mark
-    shell_print_env = dedent(
-        f"""
-        printf "%s" "{random_mark}"
-        exec env -0
-        """
-    )
-
-    shell_full = "\n".join(
-        [
-            *(["set -x\n"] if DebugFlag.debug else []),
-            shell_definitions,
-            shell_plugins_load,
-            shell_main_body,
-            *(["set +x\n"] if DebugFlag.debug else []),
-            shell_print_env,
-        ]
-    )
-
-    return shell_full
-
-
 def filter_varnames(data):
     """
     Filters variable names (some environments can introduce garbage).
@@ -3277,9 +3055,42 @@ def prepare_env():
     # with login environment overriding systemd
     env_merged = env_pre | env_login
 
-    # Run shell code with env_pre environment to prepare env and print results
-    random_mark = f"MARK_{random_hex(16)}_MARK"
-    shell_code = prepare_env_gen_sh(random_mark, load_profile=(env_login == {}))
+    # string to mark environment dump from shell env loader
+    random_mark = random_hex(16)
+
+    # aux vars for env loader
+    aux_vars = dedent(
+        f"""
+        # vars for plugins
+        __SELF_NAME__={shlex.quote(BIN_NAME)}
+        __WM_ID__={shlex.quote(CompGlobals.id)}
+        __WM_ID_UNIT_STRING__={shlex.quote(CompGlobals.id_unit_string)}
+        __WM_BIN_ID__={shlex.quote(CompGlobals.bin_id)}
+        __WM_DESKTOP_NAMES__={shlex.quote(':'.join(CompGlobals.desktop_names))}
+        __WM_FIRST_DESKTOP_NAME__={shlex.quote(CompGlobals.desktop_names[0])}
+        __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if CompGlobals.cli_desktop_names_exclusive else 'false'}
+        __LOAD_PROFILE__={'true' if env_login == {} else 'false'}
+        __OIFS__=" \t\n"
+        # random mark for environment dump at the end
+        __RANDOM_MARK__={random_mark}
+        # context marker for profile scripting
+        IN_UWSM_ENV_PRELOADER=true
+        """
+    )
+    aux_vars_file = os.path.join(
+        BaseDirectory.get_runtime_dir(strict=True),
+        BIN_NAME,
+        f"vars_{random_mark}",
+    )
+    print_debug("aux_vars_file", aux_vars_file, aux_vars)
+
+    with open(aux_vars_file, "w") as avf:
+        avf.write(aux_vars)
+
+    # find plugins for shell env loader beforehand
+    shell_plugins = BaseDirectory.load_data_paths(
+        f"uwsm/plugins/{CompGlobals.bin_id}.sh"
+    )
 
     sh_path = which(SH_BIN)
     if not sh_path:
@@ -3287,9 +3098,14 @@ def prepare_env():
         sys.exit(1)
 
     sprc = subprocess.run(
-        [sh_path, "-"],
+        [
+            sh_path,
+            *(["-x"] if DebugFlag.debug else []),
+            os.path.join(PKG_LIBEXEC_DIR, "prepare-env.sh"),
+            aux_vars_file,
+            *shell_plugins,
+        ],
         text=True,
-        input=shell_code,
         capture_output=True,
         env=env_merged,
         check=False,
@@ -5131,83 +4947,17 @@ def main():
             # forked to stop compositor will be cleanly.
             # Both systemctl invocations are started with protection from
             # SIGTERM/SIGHUP barrage occuring on login session termination.
+
             sh_path = which(SH_BIN)
             if not sh_path:
                 raise OSError(
                     f'"{SH_BIN}" is not {"found" if "/" in SH_BIN else "in PATH"}!'
                 )
-            session_script = os.path.join(
-                BaseDirectory.get_runtime_dir(), BIN_NAME, "signal-handler"
-            )
-            with open(session_script, "w") as ssf:
-                ssf.write(
-                    dedent(
-                        r"""
-                            #!/bin/sh
-                            rm -f "$0"
-                            printf_out() {
-                            	[ -z "$UWSM_SH_NO_STDOUT" ] || return
-                            	printf "$@"
-                            	printf "$@" >&3
-                            }
-                            printf_err() {
-                            	printf "$@" >&2
-                            	printf "$@" >&4
-                            }
-                            start() {
-                            	printf_out '%s\n' "Starting ${COMPOSITOR}..."
-                            	case "${TERM_SESSION_TYPE:-}" in
-                            	kms)
-                            		printf_out '%s\n' "Requesting kmscon background."
-                            		case "${TERM_PROGRAM:-}" in
-                            		tmux) printf '%b' '\033Ptmux;\033\033]setBackground\a\033\\' >&3 ;;
-                            		*) printf '\033]setBackground\a' >&3 ;;
-                            		esac
-                            		;;
-                            	esac
-                            	{
-                            		trap '' TERM HUP INT
-                            		exec systemctl --user start --wait "${COMPOSITOR}"
-                            	} &
-                            	STARTPID=$!
-                            	printf_out '%s\n' "Forked systemctl, PID ${STARTPID}."
-                            }
-                            stop() {
-                            	trap '' TERM HUP INT
-                            	printf_out '%s\n' "Received SIG${1}, stopping ${COMPOSITOR}..."
-                            	systemctl --user stop "${COMPOSITOR}" &
-                            	finish
-                            }
-                            finish() {
-                            	wait "${STARTPID}"
-                            	RC=$?
-                            	case "${TERM_SESSION_TYPE:-}" in
-                            	kms)
-                            		printf_out '%s\n' "Requesting kmscon foreground."
-                            		case "${TERM_PROGRAM:-}" in
-                            		tmux) printf '%b' '\033Ptmux;\033\033]setForeground\a\033\\' >&3 ;;
-                            		*) printf '\033]setForeground\a' >&3 ;;
-                            		esac
-                            		;;
-                            	esac
-                            	case "$RC" in
-                            	0) printf_out '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
-                            	*) printf_err '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
-                            	esac
-                            	exit "$RC"
-                            }
-                            COMPOSITOR=$1
-                            trap "stop TERM" TERM
-                            trap "stop HUP" HUP
-                            trap "stop INT" INT
-                            start
-                            finish
-                        """
-                    )
-                )
+
             # duplicate stdout and stderr to retain ability to print past systemd-cat
             os.dup2(1, 3)
             os.dup2(2, 4)
+
             # add silence indicators
             os.environ.update(
                 {
@@ -5215,14 +4965,15 @@ def main():
                     "UWSM_SH_NO_WARN": "1" if NoStdOutFlag.nowarn else "",
                 }
             )
+
             os.execlp(
                 "systemd-cat",
-                "sh",
+                "systemd-cat",
                 "--identifier=uwsm",
                 "--stderr-priority=err",
                 "--",
                 sh_path,
-                session_script,
+                os.path.join(PKG_LIBEXEC_DIR, "signal-handler.sh"),
                 f"wayland-wm@{CompGlobals.id_unit_string}.service",
             )
 

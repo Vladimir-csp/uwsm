@@ -19,6 +19,11 @@ PKG_DATA_DIR = join_paths(
   get_option('datadir'),
   meson.project_name(),
 )
+PKG_LIBEXEC_DIR = join_paths(
+  get_option('prefix'),
+  get_option('libexecdir'),
+  meson.project_name(),
+)
 if get_option('public-modules').allowed()
   PKG_PYTHON_MODULES_DIR = PYTHON_PROG.get_install_dir()
   WRAPPER_INSERT_LINE = ''
@@ -65,6 +70,7 @@ conf = configuration_data()
 conf.set('PROJECT_NAME', PROJECT_NAME)
 conf.set('PROJECT_VERSION', PROJECT_VERSION)
 conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
+conf.set('PKG_LIBEXEC_DIR', PKG_LIBEXEC_DIR)
 conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
 conf.set('WRAPPER_INSERT_LINE', WRAPPER_INSERT_LINE)
 conf.set('PYTHON_BIN', PYTHON_BIN)
@@ -127,6 +133,7 @@ GENERATED_DIR = meson.project_build_root() / 'uwsm-generated'
 
 subdir('uwsm')
 subdir('uwsm-plugins')
+subdir('uwsm-libexec')
 subdir('example-units')
 subdir('scripts')
 subdir('man')
