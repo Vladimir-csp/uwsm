@@ -7,7 +7,7 @@ project(
 
 PYTHON = import('python')
 PYTHON_BIN_OPTION = get_option('python-bin')
-PYTHON_PROG = PYTHON.find_installation(PYTHON_BIN_OPTION)
+PYTHON_PROG = PYTHON.find_installation(PYTHON_BIN_OPTION, required: true)
 PYTHON_VERSION = PYTHON_PROG.language_version()
 if not PYTHON_VERSION.version_compare('>=3.10')
   error('python version >=3.10 required, found: @0@'.format(PYTHON_VERSION))
@@ -19,7 +19,13 @@ PKG_DATA_DIR = join_paths(
   get_option('datadir'),
   meson.project_name(),
 )
-PKG_PYTHON_MODULES_DIR = join_paths(PKG_DATA_DIR, 'modules')
+if get_option('public-modules').allowed()
+  PKG_PYTHON_MODULES_DIR = PYTHON_PROG.get_install_dir()
+  WRAPPER_INSERT_LINE = ''
+else
+  PKG_PYTHON_MODULES_DIR = join_paths(PKG_DATA_DIR, 'modules')
+  WRAPPER_INSERT_LINE = '\n    sys.path.insert(1, "@0@")'.format(PKG_PYTHON_MODULES_DIR)
+endif
 PKG_DOC_DIR = get_option('docdir')
 if PKG_DOC_DIR == ''
   PKG_DOC_DIR = join_paths(
@@ -60,6 +66,7 @@ conf.set('PROJECT_NAME', PROJECT_NAME)
 conf.set('PROJECT_VERSION', PROJECT_VERSION)
 conf.set('PKG_DATA_DIR', PKG_DATA_DIR)
 conf.set('PKG_PYTHON_MODULES_DIR', PKG_PYTHON_MODULES_DIR)
+conf.set('WRAPPER_INSERT_LINE', WRAPPER_INSERT_LINE)
 conf.set('PYTHON_BIN', PYTHON_BIN)
 conf.set(
   'SH_BIN',

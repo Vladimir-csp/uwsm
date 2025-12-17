@@ -18,4 +18,4 @@ override_dh_auto_configure:
 		-Duwsm-app=enabled
 
 override_dh_python3:
-	dh_python3 --depends=pyxdg --depends=dbus-python $(PREFIX)/share/uwsm/modules
+	dh_python3 --depends=pyxdg --depends=dbus-python

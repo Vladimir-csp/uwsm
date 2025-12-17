@@ -7,13 +7,19 @@ option(
   'doc_examples_subdir',
   type: 'string',
   value: 'example-units',
-  description: 'Directory name under doc/uwsm/ for example files'
+  description: 'directory name under doc/uwsm/ for example files'
 )
 option(
   'man-pages',
   type: 'feature',
   value: 'enabled',
   description: 'install manpages',
+)
+option(
+  'public-modules',
+  type: 'feature',
+  value: 'disabled',
+  description: 'install uwsm python modules to stock python module path',
 )
 option(
   'python-bin',

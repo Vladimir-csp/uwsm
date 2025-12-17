@@ -2,7 +2,6 @@
 
 import sys
 
-if __name__ == '__main__':
-    sys.path.insert(1, "@PKG_PYTHON_MODULES_DIR@")
+if __name__ == '__main__':@WRAPPER_INSERT_LINE@
     from uwsm.main import main
     main()
