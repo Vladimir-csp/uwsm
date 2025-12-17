@@ -88,9 +88,9 @@ conf.set(
 )
 
 if get_option('static-units').allowed()
-  conf.set('STATIC_UNITS', true)
+  conf.set('STATIC_UNITS', 'True')
 else
-  conf.set('STATIC_UNITS', false)
+  conf.set('STATIC_UNITS', 'False')
 endif
 conf.set('BIN_NAME', 'uwsm')
 conf.set(
