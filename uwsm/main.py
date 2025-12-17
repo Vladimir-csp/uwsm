@@ -2326,11 +2326,12 @@ class Args:
             arg for arg in precheck_args[1:] if arg in ("-T", "--")
         ][0:1] == ["-T"]
 
+        # reset terminal opts
+        Terminal.opts = []
+        Terminal.print_opts = []
         # pre-filter and collect unknown options as terminal options between "-T" and "--"
         # fill Terminal.opts
         if terminal_requested:
-            Terminal.opts = []
-            Terminal.print_opts = []
             pop_idx = []
             capture = False
             for idx, arg in enumerate(sys.argv if custom_args is None else custom_args):
