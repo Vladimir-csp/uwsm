@@ -4459,7 +4459,7 @@ def fill_comp_globals():
                         else []
                     )
                     + entry.get("DesktopNames", list=True)
-                    + [CompGlobals.bin_name]
+                    + ([CompGlobals.bin_name] if not entry.get("DesktopNames", list=True) else [])
                     + (
                         sane_split(entry_uwsm_args.parsed.desktop_names, ":")
                         if entry_uwsm_args is not None
