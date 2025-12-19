@@ -87,11 +87,6 @@ conf.set(
   (CBS and not WHIPTAIL_BIN.startswith('/') and find_program(WHIPTAIL_BIN, required: false).found()) ? find_program(WHIPTAIL_BIN, required: false).full_path() : WHIPTAIL_BIN,
 )
 
-if get_option('static-units').allowed()
-  conf.set('STATIC_UNITS', 'True')
-else
-  conf.set('STATIC_UNITS', 'False')
-endif
 conf.set('BIN_NAME', 'uwsm')
 conf.set(
   'BIN_PATH',
