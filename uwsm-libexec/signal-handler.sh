@@ -2,8 +2,8 @@
 
 # shellcheck disable=SC2059
 printf_out() {
-	[ -z "$UWSM_SH_NO_STDOUT" ] || return
 	printf "$@"
+	[ -z "$UWSM_SH_NO_STDOUT" ] || return
 	printf "$@" >&3
 }
 
