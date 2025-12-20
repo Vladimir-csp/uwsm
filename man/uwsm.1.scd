@@ -94,12 +94,6 @@ be used for distro level defaults.
 | 
 :  _True_ or *1* to inhibit stdout messages from "*uwsm start*". *2* to also
    inhibit warnings.
-|  *UWSM_SEPARATE_SESSION_VARS*
-:  (boolean value)
-| 
-:  Set _True_ to test future behavior: omit transient session vars:
-   *XDG_SEAT*, *XDG_SEAT_PATH*, *XDG_SESSION_ID*, *XDG_SESSION_PATH*, *XDG_VTNR*
-   from activation environment and load them via env file.
 |  *DEBUG*
 :  (int or boolean value)
 | 
