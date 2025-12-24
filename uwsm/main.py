@@ -2676,6 +2676,9 @@ def prepare_env():
     env_login = load_env("env_login", delete=True)
     if env_login:
         print_normal("Got saved login session variables.")
+        have_env_login = True
+    else:
+        have_env_login = False
 
     # if XDG_SEAT or XDG_SESSION_ID from login context are not known, deduce them.
     if (
@@ -2707,6 +2710,17 @@ def prepare_env():
             {"XDG_SESSION_ID": session_vars[0], "XDG_SEAT": session_vars[1]}
         )
 
+        # (re-)save session vars for unit EnvironmentFile= from amended env_login
+        save_env(
+            "env_session.conf",
+            env={
+                var: env_login.get(var, "")
+                for var in sorted(Varnames.session_specific)
+                if env_login.get(var, "")
+            },
+            separator="\n",
+        )
+
     # get current ENV from systemd user manager
     env_pre = filter_varnames(bus_session.get_systemd_vars())
     systemd_varnames = set(env_pre.keys())
@@ -2732,7 +2746,7 @@ def prepare_env():
         __WM_DESKTOP_NAMES__={shlex.quote(':'.join(CompGlobals.desktop_names))}
         __WM_FIRST_DESKTOP_NAME__={shlex.quote(CompGlobals.desktop_names[0])}
         __WM_DESKTOP_NAMES_EXCLUSIVE__={'true' if CompGlobals.cli_desktop_names_exclusive else 'false'}
-        __LOAD_PROFILE__={'true' if env_login == {} else 'false'}
+        __LOAD_PROFILE__={'true' if have_env_login else 'false'}
         __OIFS__=" \t\n"
         # random mark for environment dump at the end
         __RANDOM_MARK__={random_mark}
@@ -4110,30 +4124,35 @@ def fill_comp_globals():
                     CompGlobals.desktop_names = sane_split(
                         entry_uwsm_args.parsed.desktop_names, ":"
                     )
-            # prepend desktop names from entry (and existing environment if there is no active session)
+            # prepend desktop names from entry (and existing or login environment)
             # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP
             # set by it from DesktopNames
             # basically just throw stuff into CompGlobals.desktop_names, deduplication comes later
             else:
-                CompGlobals.desktop_names = (
-                    (
+                if Args.parsed.mode == "start":
+                    CompGlobals.desktop_names.extend(
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
-                        if not is_active(bus_session=bus_session)
-                        else []
                     )
-                    + entry.get("DesktopNames", list=True)
-                    + (
-                        [CompGlobals.bin_name]
-                        if not entry.get("DesktopNames", list=True)
-                        else []
+                elif Args.parsed.mode == "aux":
+                    CompGlobals.desktop_names.extend(
+                        sane_split(
+                            load_env("env_login").get("XDG_CURRENT_DESKTOP", ""),
+                            ":",
+                        )
                     )
-                    + (
+                CompGlobals.desktop_names.extend(entry.get("DesktopNames", list=True))
+                # Fallback to basename of the binary if nothing came up so far
+                if not CompGlobals.desktop_names:
+                    CompGlobals.desktop_names.append(CompGlobals.bin_name)
+                if entry_uwsm_args is not None:
+                    CompGlobals.desktop_names.extend(
                         sane_split(entry_uwsm_args.parsed.desktop_names, ":")
-                        if entry_uwsm_args is not None
-                        else []
                     )
-                    + sane_split(Args.parsed.desktop_names, ":")
+                # append from args
+                CompGlobals.desktop_names.extend(
+                    sane_split(Args.parsed.desktop_names, ":")
                 )
+
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
             # fill name and description with fallbacks from: CLI, nested CLI, Entry (without action)
@@ -4196,19 +4215,30 @@ def fill_comp_globals():
         if Args.parsed.mode == "start" or (
             Args.parsed.mode == "aux" and Args.parsed.aux_action == "prepare-env"
         ):
-            # fill other data
             if Args.parsed.desktop_names_exclusive:
+                # fill exclusive desktop names
                 CompGlobals.desktop_names = sane_split(Args.parsed.desktop_names, ":")
             else:
-                CompGlobals.desktop_names = (
-                    (
+                # fill names from environment (most likely DM)
+                if Args.parsed.mode == "start":
+                    CompGlobals.desktop_names.extend(
                         sane_split(os.environ.get("XDG_CURRENT_DESKTOP", ""), ":")
-                        if not is_active(bus_session=bus_session)
-                        else []
                     )
-                    + [CompGlobals.bin_name]
-                    + sane_split(Args.parsed.desktop_names, ":")
+                elif Args.parsed.mode == "aux":
+                    CompGlobals.desktop_names.extend(
+                        sane_split(
+                            load_env("env_login").get("XDG_CURRENT_DESKTOP", ""),
+                            ":",
+                        )
+                    )
+                # Fallback to basename of the binary if nothing came up so far
+                if not CompGlobals.desktop_names:
+                    CompGlobals.desktop_names.append(CompGlobals.bin_name)
+                # append from args
+                CompGlobals.desktop_names.extend(
+                    sane_split(Args.parsed.desktop_names, ":")
                 )
+
             CompGlobals.name = Args.parsed.wm_name
             CompGlobals.description = Args.parsed.wm_comment
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
