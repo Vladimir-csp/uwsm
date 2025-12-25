@@ -203,7 +203,12 @@ def print_fancy(*what, **how):
 
             bus_session = DbusInteractions("session")
             msg = str(*what)
-            bus_session.notify(summary=notify_summary, app_icon=notify_icon, body=msg, urgency=notify_urgency)
+            bus_session.notify(
+                summary=notify_summary,
+                app_icon=notify_icon,
+                body=msg,
+                urgency=notify_urgency,
+            )
         except Exception as caught_exception:
             print_warning(caught_exception, notify=0)
 
@@ -326,8 +331,8 @@ if DebugFlag.debug:
         color = how.pop("color", Styles.grey)
         notify = 0
         notify_urgency = 0
-        notify_summary = None,
-        notify_icon = None,
+        notify_summary = None
+        notify_icon = None
         log = how.pop("log", LogFlag.log)
         loglevel = 7
         logprefix = how.pop("logprefix", LogFlag.prefix)

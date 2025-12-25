@@ -101,7 +101,9 @@ class DbusInteractions:
             # get the session object path
             session_path = manager.GetSession(session_id)
             # fetch the raw object proxy
-            session_obj = self._get_bus().get_object("org.freedesktop.login1", session_path)
+            session_obj = self._get_bus().get_object(
+                "org.freedesktop.login1", session_path
+            )
             # wrap it in the standard Properties interface
             self._interfaces[cache_key] = dbus.Interface(
                 session_obj, "org.freedesktop.DBus.Properties"
@@ -142,7 +144,10 @@ class DbusInteractions:
             except dbus.exceptions.DBusException:
                 pass
         # try specific unit type interface
-        return iface.Get(f"org.freedesktop.systemd1.{unit_id.split('.')[-1].capitalize()}", unit_property)
+        return iface.Get(
+            f"org.freedesktop.systemd1.{unit_id.split('.')[-1].capitalize()}",
+            unit_property,
+        )
 
     def get_session_property(self, session_id, session_property):
         "Returns value of login session property"
