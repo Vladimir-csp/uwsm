@@ -14,7 +14,7 @@ printf_err() {
 }
 
 start() {
-	printf_out '%s\n' "Starting ${COMPOSITOR}..."
+	printf_out '%s\n' "Starting ${UNIT}..."
 	case "${TERM_SESSION_TYPE:-}" in
 	kms)
 		printf_out '%s\n' "Requesting kmscon background."
@@ -27,7 +27,7 @@ start() {
 	esac
 	{
 		trap '' TERM HUP INT
-		exec systemctl --user start --wait "${COMPOSITOR}"
+		exec systemctl --user start --wait "${UNIT}"
 	} &
 	STARTPID=$!
 	printf_out '%s\n' "Forked systemctl, PID ${STARTPID}."
@@ -36,8 +36,8 @@ start() {
 # shellcheck disable=SC2329
 stop() {
 	trap '' TERM HUP INT
-	printf_out '%s\n' "Received SIG${1}, stopping ${COMPOSITOR}..."
-	systemctl --user stop "${COMPOSITOR}" &
+	printf_out '%s\n' "Received SIG${1}, stopping ${UNIT}..."
+	systemctl --user stop "${UNIT}" &
 	finish
 }
 
@@ -66,7 +66,7 @@ if [ "$#" != "1" ]; then
 	exit 1
 fi
 
-COMPOSITOR=$1
+UNIT=$1
 
 trap "stop TERM" TERM
 trap "stop HUP" HUP

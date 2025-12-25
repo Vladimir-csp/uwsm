@@ -1,0 +1,9 @@
+[Unit]
+Description=Session envelope of %I Wayland compositor
+Documentation=man:uwsm(1) man:systemd.special(7)
+BindsTo=wayland-wm-env@%i.service wayland-wm@%i.service
+Before=wayland-wm-env@%i.service wayland-wm@%i.service
+PropagatesStopTo=wayland-wm@%i.service
+Conflicts=wayland-session-shutdown.target
+After=wayland-session-shutdown.target
+StopWhenUnneeded=yes

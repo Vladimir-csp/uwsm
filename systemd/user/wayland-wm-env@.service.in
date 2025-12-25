@@ -4,6 +4,7 @@ Documentation=man:uwsm(1)
 BindsTo=wayland-session-pre@%i.target
 Before=wayland-session-pre@%i.target graphical-session-pre.target
 PropagatesStopTo=wayland-session-pre@%i.target
+Wants=wayland-session-envelope@%i.target
 OnSuccess=wayland-session-shutdown.target
 OnSuccessJobMode=replace-irreversibly
 OnFailure=wayland-session-shutdown.target

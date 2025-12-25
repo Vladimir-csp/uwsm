@@ -14,6 +14,11 @@ install_data(
   install_mode: 'rw-r--r--',
 )
 install_data(
+  'wayland-session-envelope@.target',
+  install_dir: SD_USER_DIR,
+  install_mode: 'rw-r--r--',
+)
+install_data(
   'wayland-session-pre@.target',
   install_dir: SD_USER_DIR,
   install_mode: 'rw-r--r--',

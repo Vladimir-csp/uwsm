@@ -6,6 +6,7 @@ BindsTo=wayland-session@%i.target
 Before=wayland-session@%i.target graphical-session.target
 PropagatesStopTo=wayland-session@%i.target graphical-session.target
 After=wayland-session-pre@%i.target graphical-session-pre.target
+Wants=wayland-session-envelope@%i.target
 OnSuccess=wayland-session-shutdown.target
 OnSuccessJobMode=replace-irreversibly
 OnFailure=wayland-session-shutdown.target

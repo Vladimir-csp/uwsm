@@ -4668,7 +4668,7 @@ def main():
                 "--",
                 sh_path,
                 os.path.join(PKG_LIBEXEC_DIR, "signal-handler.sh"),
-                f"wayland-wm@{CompGlobals.id_unit_string}.service",
+                f"wayland-session-envelope@{CompGlobals.id_unit_string}.target",
             )
 
         except Exception as caught_exception:
