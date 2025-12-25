@@ -92,6 +92,22 @@ class DbusInteractions:
             )
         return self._interfaces[cache_key]
 
+    def _get_session_properties_iface(self, session_id: str):
+        """Retrieve and cache a DBus.Properties interface for the given login session ID."""
+        cache_key = f"session_{session_id}"
+        if cache_key not in self._interfaces:
+            # manager interface for systemd
+            manager: dbus.Interface = self._get_interface("login", "manager")
+            # get the session object path
+            session_path = manager.GetSession(session_id)
+            # fetch the raw object proxy
+            session_obj = self._get_bus().get_object("org.freedesktop.login1", session_path)
+            # wrap it in the standard Properties interface
+            self._interfaces[cache_key] = dbus.Interface(
+                session_obj, "org.freedesktop.DBus.Properties"
+            )
+        return self._interfaces[cache_key]
+
     def get_properties(
         self, service_key: str, iface_key: str, iface_service: str, keys: list[str]
     ):
@@ -127,6 +143,12 @@ class DbusInteractions:
                 pass
         # try specific unit type interface
         return iface.Get(f"org.freedesktop.systemd1.{unit_id.split('.')[-1].capitalize()}", unit_property)
+
+    def get_session_property(self, session_id, session_property):
+        "Returns value of login session property"
+        iface = self._get_session_properties_iface(session_id)
+        # try specific unit type interface
+        return iface.Get(f"org.freedesktop.login1.Session", session_property)
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"

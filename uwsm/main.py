@@ -2600,7 +2600,7 @@ def get_session_by_vt(vtnr: int, verbose: bool = False):
         if (
             str(session_class) == "user"
             and str(user_name) == login
-            and str(tty_name) == tty
+            and int(bus_system.get_session_property(session_id, "VTNr")) == vtnr
         ):
             print_debug("found session")
             return (str(session_id), str(seat_id))
@@ -2698,6 +2698,7 @@ def prepare_env():
             if v_term is None:
                 raise RuntimeError("Could not determine foreground VT")
             # update session environment
+            print_ok(f"Deduced XDG_VTNR={v_term} from foreground VT")
             env_login.update({"XDG_VTNR": str(v_term)})
         else:
             v_term = int(env_login["XDG_VTNR"])
@@ -2705,7 +2706,8 @@ def prepare_env():
         # this returns session and seat tuple
         session_vars = get_session_by_vt(v_term)
         if session_vars is None:
-            raise RuntimeError("Could not determine session of foreground VT")
+            raise RuntimeError("Could not determine session on foreground VT {v_term}")
+        print_ok(f"Deduced XDG_SESSION_ID={session_vars[0]}, XDG_SEAT={session_vars[1]}")
         env_login.update(
             {"XDG_SESSION_ID": session_vars[0], "XDG_SEAT": session_vars[1]}
         )
