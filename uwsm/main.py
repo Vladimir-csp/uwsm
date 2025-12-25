@@ -2567,7 +2567,7 @@ def get_fg_vt() -> int:
         return None
 
 
-def get_session_by_vt(vtnr: int, verbose: bool = False):
+def get_session_by_vt(vtnr: int, verbose: bool = False, bus_system=None):
     "Takes VT number, returns tuple of (session_id, seat_id) or None"
 
     tty = f"tty{vtnr}"
@@ -2579,8 +2579,10 @@ def get_session_by_vt(vtnr: int, verbose: bool = False):
         print_error("Could not determine login name")
         return None
 
+    if bus_system is None:
+        bus_system = DbusInteractions("system")
+
     # get session list
-    bus_system = DbusInteractions("system")
     for (
         session_id,
         _user_id,
@@ -2704,13 +2706,39 @@ def prepare_env():
             v_term = int(env_login["XDG_VTNR"])
 
         # this returns session and seat tuple
-        session_vars = get_session_by_vt(v_term)
+        bus_system = DbusInteractions("system")
+        session_vars = get_session_by_vt(v_term, bus_system=bus_system)
         if session_vars is None:
             raise RuntimeError("Could not determine session on foreground VT {v_term}")
-        print_ok(f"Deduced XDG_SESSION_ID={session_vars[0]}, XDG_SEAT={session_vars[1]}")
+        print_ok(
+            f"Deduced XDG_SESSION_ID={session_vars[0]}, XDG_SEAT={session_vars[1]}"
+        )
         env_login.update(
             {"XDG_SESSION_ID": session_vars[0], "XDG_SEAT": session_vars[1]}
         )
+
+        # most likely there is no login session bind at this point,
+        # check and start bindpid on session leader if so.
+        # this won't get proper ordering, but any bind is better than nothing.
+        if not bus_session.list_units_by_patterns(
+            ["active", "activating"], ["wayland-session-bindpid@*.service"]
+        ):
+            print_warning(
+                f"No running wayland-session-bindpid@*.service unit found, starting one on session {session_vars[0]} leader PID..."
+            )
+            session_leader_pid = int(
+                bus_system.get_session_property(session_vars[0], "Leader")
+            )
+            sprc = subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "start",
+                    f"wayland-session-bindpid@{session_leader_pid}.service",
+                ],
+                check=True,
+            )
+            print_debug(sprc)
 
         # (re-)save session vars for unit EnvironmentFile= from amended env_login
         save_env(
