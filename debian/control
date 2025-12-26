@@ -2,33 +2,51 @@ Source: uwsm
 Section: x11
 Priority: optional
 Maintainer: Vladimir-csp
-Rules-Requires-Root: no
 Build-Depends:
  debhelper-compat (= 13),
- dh-python,
+ dh-sequence-python3,
+ python3-all,
  meson,
+ ninja-build,
+ cmake,
+ pkgconf,
  scdoc,
-Standards-Version: 4.6.2
+ python3-dbus,
+ python3-xdg,
+Standards-Version: 4.7.2
 Homepage: https://github.com/Vladimir-csp/uwsm
 Vcs-Browser: https://github.com/Vladimir-csp/uwsm
 Vcs-Git: https://github.com/Vladimir-csp/uwsm.git
 
 Package: uwsm
-Architecture: all
+Architecture: any
 Depends:
  ${python3:Depends},
  ${misc:Depends},
  systemd,
- util-linux-extra
+ util-linux-extra,
+ python3-xdg,
+ python3-dbus,
 Recommends:
  whiptail,
  walker | fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu,
  libnotify-bin,
- inotify-tools
+ inotify-tools,
 Suggests:
- dbus-broker
-Description: Universal Wayland Session Manager
- Provides graphical session with environment management, XDG autostart, and
- clean shutdown by wrapping standalone Wayland compositors into a set of systemd
- units. Also provides helpers for launching applications, user units management,
- and login shell integration.
+ dbus-broker,
+Description: Wayland session manager for standalone compositors
+ uwsm (Universal Wayland Session Manager) provides a lightweight, modular
+ session management framework for Wayland environments based on systemd user
+ units and various helpers.
+ .
+ It handles various session-related tasks for standalone Wayland compositors,
+ such as:
+ - startup from login shell or DM
+ - dynamic loading and cleanup of environment variables for graphical session
+ - binding lifetime of graphical session and login session together
+ .
+ It sets the stage for systemd to do launch and lifecycle management,
+ XDG autostart, clean shutdown.
+ .
+ dbus-broker is recommended for better systemd integration and environment
+ cleanup.

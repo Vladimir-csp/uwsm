@@ -99,13 +99,15 @@ fi
 
 echo "Building"
 
+ARCH=$(dpkg --print-architecture)
+
 dpkg-buildpackage -b -tc --no-sign
 
-echo "Package: ${BUILD_DIR}/../uwsm_${DEBVERSION}_all.deb"
+echo "Package: ${BUILD_DIR}/../uwsm_${DEBVERSION}_${ARCH}.deb"
 
 case "$1" in
 -i | --install)
-	echo "Installing uwsm_${DEBVERSION}_all.deb"
-	sudo apt-get install --reinstall "../uwsm_${DEBVERSION}_all.deb"
+	echo "Installing uwsm_${DEBVERSION}_${ARCH}.deb"
+	sudo apt-get install --reinstall "../uwsm_${DEBVERSION}_${ARCH}.deb"
 	;;
 esac

@@ -1,21 +1,14 @@
 #!/usr/bin/make -f
 
-PREFIX = /usr
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
-	dh $@ --with=python3
+	dh $@ --buildsystem=meson --with=python3
 
 override_dh_auto_configure:
 	dh_auto_configure -- \
-		--prefix=$(PREFIX) \
-		-Dlicensedir=$(PREFIX)/share/doc/uwsm \
 		-Duuctl=enabled \
 		-Dfumon=enabled \
-		-Dfumon-preset=enabled \
 		-Dttyautolock=enabled \
-		-Dttyautolock-preset=disabled \
 		-Dwait-tray=enabled \
 		-Duwsm-app=enabled
-
-override_dh_python3:
-	dh_python3 --depends=pyxdg --depends=dbus-python

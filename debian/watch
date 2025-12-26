@@ -1,5 +1,8 @@
-version=4
+Version: 5
 
-opts="filenamemangle=s%(?:.*?)?v?(@ANY_VERSION@@ARCHIVE_EXT@)%@PACKAGE@-$1%" \
-    https://github.com/<user>/<project>/tags \
-    (?:.*?/)v?@ANY_VERSION@@ARCHIVE_EXT@
+Template: GitHub
+Owner: Vladimir-csp
+Project: uwsm
+Repack: yes
+Repacksuffix: +ds
+Dversion-Mangle: auto
