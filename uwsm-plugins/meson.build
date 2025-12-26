@@ -11,7 +11,7 @@ install_data(
 )
 
 install_symlink(
-  'start-hyprland.sh',
+  'start_hyprland.sh',
   install_dir: PKG_DATA_DIR / 'plugins',
   pointing_to: 'hyprland.sh',
 )
