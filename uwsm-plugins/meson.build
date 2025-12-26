@@ -3,15 +3,11 @@ uwsm_plugins = [
   'wayfire.sh',
   'sway.sh',
   'hyprland.sh',
+  'start_hyprland.sh',
 ]
 
 install_data(
   uwsm_plugins,
   install_dir: PKG_DATA_DIR / 'plugins',
-)
-
-install_symlink(
-  'start_hyprland.sh',
-  install_dir: PKG_DATA_DIR / 'plugins',
-  pointing_to: 'hyprland.sh',
+  follow_symlinks: false,
 )

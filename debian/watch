@@ -3,6 +3,3 @@ Version: 5
 Template: GitHub
 Owner: Vladimir-csp
 Project: uwsm
-Repack: yes
-Repacksuffix: +ds
-Dversion-Mangle: auto
