@@ -2,7 +2,7 @@ project(
   'uwsm',
   version: run_command('sh', 'version.sh', check: true).stdout().strip(),
   license: 'MIT',
-  meson_version: '>=1.1'
+  meson_version: '>=1.3.0'
 )
 
 PYTHON = import('python')
