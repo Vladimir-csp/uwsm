@@ -250,7 +250,7 @@ for arg in "$@"; do
 	esac
 done
 
-DMENU_CLEANUP=
+DMENU_CLEANUP=true
 if [ "$#" -le "1" ]; then
 	dmenu_candidates="vicinae walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
 
@@ -279,7 +279,6 @@ if [ "$#" -le "1" ]; then
 		# rig cleanup command if defined as function
 		case "$(command -v "df_${dmenu_candidate}_cleanup")" in
 		"df_${dmenu_candidate}_cleanup") DMENU_CLEANUP=df_${dmenu_candidate}_cleanup ;;
-		*) DMENU_CLEANUP=true ;;
 		esac
 		;;
 	'' | *)
