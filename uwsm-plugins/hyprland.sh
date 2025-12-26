@@ -19,3 +19,7 @@ quirks_hyprland() {
 	UWSM_WAIT_VARNAMES="${UWSM_WAIT_VARNAMES}${UWSM_WAIT_VARNAMES:+ }HYPRLAND_INSTANCE_SIGNATURE"
 	export UWSM_WAIT_VARNAMES
 }
+
+quirks_start_hyprland() {
+	quirks_hyprland "$@"
+}
