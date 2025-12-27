@@ -4,8 +4,8 @@ Provides a set of Systemd units and helpers to set up the environment and manage
 standalone Wayland compositor sessions.
 
 Aside from environment setup/cleanup, it makes Systemd do most of the work and
-does not require any extra daemons running in background (except for two tiny
-`waitpid` processes in the lightest case).
+does not require any extra daemons running in background (except for a tiny
+`waitpid` process and a simple shell signal handler in the lightest case).
 
 This setup provides robust session management, overridable compositor- and
 session-aware environment management, XDG autostart, bi-directional binding with
@@ -23,26 +23,15 @@ interaction with its caveats.
 > `feat!: ...`, etc.).
 
 > [!IMPORTANT]
-> v0.25.0 introduces a mechainsm for special treatment of transient session
-> vars: `XDG_SEAT`, `XDG_SEAT_PATH`, `XDG_SESSION_ID`, `XDG_SESSION_PATH`,
-> `XDG_VTNR`.
-> Those vars will be fed to compositor unit via `EnvironmentFile=` directive,
-> `uwsm app` will pass them to launched services automatically. The point is to
-> stop exporting them to activation environment(s) since they are highly
-> session-specific. v0.25.0 does not change exporting behavior yet, but provides
-> a way to test it by setting env variable: `UWSM_SEPARATE_SESSION_VARS=true`.
-> The plan is for v0.26.0 to transition to the new behavior permanently.
-> In other v0.25.0 news:
-> - (!) `UWSM_NO_TWEAKS` var is deprecated in favour of `UWSM_TWEAKS`, no
->   inverted booleans from now on.
-> - Support for launching from [kmscon](https://github.com/kmscon/kmscon)
->   (>=9.2.0 required).
-> - Better login session handling with a signal handling process. This allows
->   graceful synchronized termination of/by parent login process, not just
->   keeping session unit open purely via systemd logic.
-> - `ttyautock` script and service (optional dependency: `inotify-tools`)
-> - Systemd service state presets for `fumon` and `ttyautolock`,
->   new build options.
+> v0.26.0 now has special treatment of transient session vars: `XDG_SEAT`,
+> `XDG_SEAT_PATH`, `XDG_SESSION_ID`, `XDG_SESSION_PATH`, `XDG_VTNR`.
+> Those vars are not exported to activation environment(s) since they are highly
+> session-specific. Instead they are fed to compositor unit via
+> `EnvironmentFile=` directive pointing to a runtime file. `uwsm app` will pass
+> them to launched services automatically.
+> Also static unit files are now permanent, and shell code is moved to separate
+> files in libexec dir. Compositor's executable basename will only be auto-added
+> to XDG_CURRENT_DESKTOP if other sources came up empty.
 
 > [!NOTE]
 > It is highly recommended to use
@@ -188,6 +177,7 @@ Basic provided unit files (can be transiet if project built with
 background-graphical.slice
 app-graphical.slice
 session-graphical.slice
+wayland-session-envelope@.target
 wayland-session-pre@.target
 wayland-session-shutdown.target
 wayland-session-xdg-autostart@.target
@@ -909,7 +899,10 @@ Basic set of unit files:
     `app-graphical.slice`
   - `plasma-xdg-desktop-portal-kde.service.d/order-tweak.conf` - adds ordering
     `After=graphical-session.target` to KDE desktop portal.
-- shutdown and cleanup units
+- meta, shutdown, and cleanup units
+  - `wayland-session-envelope@.target` - initiates/propagates startup and
+    shutdown, itself brought up on startup, lives throughout whole startup,
+    session lifetime, and shutdown.
   - `wayland-session-bindpid@.service` - starts `waitpid` utility for a given
     PID. Invokes `wayland-session-shutdown.target` when deactivated.
     `uwsm start` starts this unit pointing to itself just before replacing
@@ -929,9 +922,11 @@ track PID of login shell (`$$`) and stop graphical session when it exits:
 `systemctl --user start wayland-session-bindpid@$$.service`
 
 Add `--wait` to hold the terminal until session ends, `exec` it to replace login
-shell with `systemctl` invocation reusing its PID:
+shell with `systemctl` invocation reusing its PID, also use
+`wayland-session-envelope@${compositor}.target` instead of main service to
+wait until proper environment teardown at the end.
 
-`exec systemctl --user start --wait wayland-wm@${compositor}.service`
+`exec systemctl --user start --wait wayland-session-envelope@${compositor}.target`
 
 This makes the end of login shell also be the end of wayland session and vice
 versa.
@@ -952,7 +947,10 @@ prepare environment. The code sources POSIX shell profile (if environment from
 Environment state at the end of shell code is given back to the main process.
 `uwsm` is also smart enough to find login session associated with current TTY
 and set `$XDG_SESSION_ID`, `$XDG_VTNR` if it was not found in the context saved
-by `uwsm start`.
+by `uwsm start`. In this case the presense of `wayland-session-bindpid@.service`
+being active is also checked, and an instance pointing to login session leader
+is launched automatically if none found, as the last best effort at binding to
+login session lifetime.
 
 The difference between initial env (that is the state of activation environment)
 and after all the sourcing and setting is done, plus `Varnames.always_export`,

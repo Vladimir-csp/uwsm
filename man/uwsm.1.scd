@@ -130,6 +130,7 @@ UWSM uses a set of units bound to standard user session targets:
 	- *wayland-wm@.service* (service for the selected compositor)
 - *wayland-session-xdg-autostart@.target* (bound to
   *xdg-desktop-autostart.target*)
+- *wayland-session-envelope@.target* (lives through entire lifecycle)
 - *wayland-session-shutdown.target* (conflicts with targets above for shutdown)
 - *wayland-session-bindpid@.service* (PID-tracking session killswitch)
 - *wayland-session-waitenv.service* (delays graphical session until vars appear)
@@ -182,7 +183,7 @@ The compositor is launched in *session.slice* by default (as recommended by
 
 Can be initiated by either:
 - running *uwsm stop*
-- stopping *wayland-wm@\*.service*
+- stopping *wayland-wm@\*.service* or *wayland-session-envelope@\*.target*
 - starting *wayland-session-shutdown.target*
 
 Systemd stops all user units in reverse, as it usually does. During deactivation
