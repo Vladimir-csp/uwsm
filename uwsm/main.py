@@ -4773,6 +4773,9 @@ def main():
 
     #### CHECK
     elif Args.parsed.mode == "check" and Args.parsed.checker == "is-active":
+        if not os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""):
+            print_error("DBUS_SESSION_BUS_ADDRESS is not available")
+            sys.exit(1)
         try:
             if is_active(Args.parsed.wm, Args.parsed.verbose):
                 sys.exit(0)
@@ -4783,6 +4786,14 @@ def main():
             sys.exit(1)
 
     elif Args.parsed.mode == "check" and Args.parsed.checker == "may-start":
+        # start with checking DBus availability. Python module will try to
+        # start it unconditionally if not found, and make a fuss.
+        # silently fail if verbosity not requested. For ssh sessions and like.
+        if not os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""):
+            if Args.parsed.verbose:
+                print_warning("DBUS_SESSION_BUS_ADDRESS is not available")
+            sys.exit(1)
+
         already_active_msg = (
             "A compositor and/or graphical-session* targets are already active"
         )
