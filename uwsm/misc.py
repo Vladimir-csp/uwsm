@@ -1,10 +1,11 @@
+"various output functions and global flag classes"
+
 import os
 import sys
 import re
 import textwrap
 import random
 import syslog
-import traceback
 from io import StringIO
 from typing import List
 
@@ -16,20 +17,19 @@ def str2bool_plus(string: str, numeric: bool = False):
         if numeric:
             return number
         return number > 0
-    elif not string or string.lower().capitalize() in (
-        "No",
-        "False",
-        "N",
+    if not string or string.lower() in (
+        "no",
+        "false",
+        "n",
     ):
         if numeric:
             return 0
         return False
-    elif string.lower().capitalize() in ("Yes", "True", "Y"):
+    if string.lower() in ("yes", "true", "y"):
         if numeric:
             return 1
         return True
-    else:
-        raise ValueError(f'Expected boolean or numeric or empty value, got "{string}"')
+    raise ValueError(f'Expected boolean or numeric or empty value, got "{string}"')
 
 
 class DebugFlag:

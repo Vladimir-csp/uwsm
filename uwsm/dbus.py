@@ -1,3 +1,5 @@
+"DBus interactions for UWSM"
+
 import dbus
 from uwsm.misc import print_debug
 
@@ -153,7 +155,7 @@ class DbusInteractions:
         "Returns value of login session property"
         iface = self._get_session_properties_iface(session_id)
         # try specific unit type interface
-        return iface.Get(f"org.freedesktop.login1.Session", session_property)
+        return iface.Get("org.freedesktop.login1.Session", session_property)
 
     def reload_systemd(self):
         "Reloads systemd manager, returns job"
@@ -196,6 +198,7 @@ class DbusInteractions:
         )
 
     def stop_unit(self, unit: str, job_mode: str = "fail"):
+        "Stops unit"
         return self._get_interface("systemd", "manager").StopUnit(unit, job_mode)
 
     def list_login_sessions(self):

@@ -40,11 +40,25 @@ from uwsm.params import (
     BIN_PATH,
     PROJECT_VERSION,
     SH_BIN,
-    WAITPID_BIN,
     WHIPTAIL_BIN,
     PKG_LIBEXEC_DIR,
 )
-from uwsm.misc import *
+from uwsm.misc import (
+    DebugFlag,
+    LogFlag,
+    NoStdOutFlag,
+    Styles,
+    Val,
+    dedent,
+    print_debug,
+    print_error,
+    print_normal,
+    print_ok,
+    print_warning,
+    random_hex,
+    sane_split,
+    str2bool_plus,
+)
 from uwsm.dbus import DbusInteractions
 
 
@@ -227,10 +241,7 @@ class MainArg:
             if not Val.entry_id.search(self.entry_id):
                 if self.path is None:
                     raise ValueError(f'Invalid Desktop Entry ID "{self.entry_id}"')
-                else:
-                    print_warning(
-                        f'Invalid Desktop Entry ID "{self.entry_id}"', notify=1
-                    )
+                print_warning(f'Invalid Desktop Entry ID "{self.entry_id}"', notify=1)
 
         # Executable
         else:
@@ -810,7 +821,7 @@ def select_comp_entry(default="", just_confirm=False):
     if not choices:
         raise RuntimeError("No choices found")
 
-    if len(choices) % 2 != 0:
+    if len(choices) % 2:
         raise ValueError(
             f"Choices for whiptail are not even ({len(choices)}): {choices}"
         )
@@ -998,7 +1009,7 @@ def unset_systemd_vars(vars_list, bus_session=None):
 
 def char2cesc(string: str) -> str:
     "Takes a string, returns c-style '\\xXX' sequence"
-    return "".join("\\x%02x" % b for b in bytes(string, "utf-8"))
+    return "".join(f"\\x{b:02x}" for b in bytes(string, "utf-8"))
 
 
 def simple_systemd_escape(string: str, start: bool = True) -> str:
@@ -1025,9 +1036,12 @@ def simple_systemd_escape(string: str, start: bool = True) -> str:
 
 
 def wait_for_unit(
-    unit: str, bus, timeout: int, states: list = ["active"], quiet: bool = False
+    unit: str, bus, timeout: int, states: list = None, quiet: bool = False
 ):
     "Waits for 'unit' via 'bus' for time 'timeout' to be in 'states', returns bool."
+
+    if states is None:
+        states = ["active"]
 
     if set(states) not in (
         {"active", "activating"},
@@ -1055,6 +1069,7 @@ def wait_for_unit(
 
     # check if unit is queued,
     # wait if it is, recheck when it leaves queue.
+    job_state = None
     if "active" in states or "activating" in states:
         job_state = "start"
     elif "inactive" in states or "deactivating" in states:
@@ -1617,7 +1632,7 @@ def remove_units(only: List[str] | None = None, rung: str = "run") -> None:
                         if (
                             not only
                             and any(
-                                [line.strip().startswith(item) for item in match_lines]
+                                line.strip().startswith(item) for item in match_lines
                             )
                         ) or (only and line.strip() in match_lines):
                             unit_files.append(
@@ -1839,7 +1854,7 @@ class Args:
                 tweaks_default = True
         elif nt_raw is not None:
             try:
-                tweaks_default = not (str2bool_plus(nt_raw))
+                tweaks_default = not str2bool_plus(nt_raw)
                 tweaks_preset = True
             except ValueError:
                 print_warning(
@@ -1850,7 +1865,7 @@ class Args:
             tweaks_default = True
         if nt_raw is not None:
             print_warning(
-                f"UWSM_NO_TWEAKS is deprecated and being replaced by UWSM_TWEAKS."
+                "UWSM_NO_TWEAKS is deprecated and being replaced by UWSM_TWEAKS."
             )
         del t_raw, nt_raw
         parsers["start_tw"] = parsers["start"].add_mutually_exclusive_group()
@@ -2504,7 +2519,7 @@ def save_env(filename: str, env: dict = None, separator: str = "\0"):
         return
     env_file = os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, filename)
     os.makedirs(os.path.dirname(env_file), exist_ok=True)
-    with open(env_file, "w") as env_file_data:
+    with open(env_file, "w", encoding="UTF-8") as env_file_data:
         # No processing or escaping is done here.
         # The intended use of alternative separator is for writing systemd
         # EnvironmentFile= with session XDG_ vars which should not
@@ -2567,10 +2582,8 @@ def get_fg_vt() -> int:
         return None
 
 
-def get_session_by_vt(vtnr: int, verbose: bool = False, bus_system=None):
+def get_session_by_vt(vtnr: int, bus_system=None):
     "Takes VT number, returns tuple of (session_id, seat_id) or None"
-
-    tty = f"tty{vtnr}"
 
     try:
         login = os.getlogin()
@@ -2628,8 +2641,7 @@ def filter_varnames(data):
         if not Val.sh_varname.search(data):
             print_warning(f'Encountered illegal var "{data}".')
             return None
-        else:
-            return data
+        return data
 
     if isinstance(data, dict):
         for var in list(data.keys()):
@@ -2791,7 +2803,7 @@ def prepare_env():
     )
     print_debug("aux_vars_file", aux_vars_file, aux_vars)
 
-    with open(aux_vars_file, "w") as avf:
+    with open(aux_vars_file, "w", encoding="UTF-8") as avf:
         avf.write(aux_vars)
 
     # find plugins for shell env loader beforehand
@@ -2802,7 +2814,6 @@ def prepare_env():
     sh_path = which(SH_BIN)
     if not sh_path:
         raise OSError(f'"{SH_BIN}" is not {"found" if "/" in SH_BIN else "in PATH"}!')
-        sys.exit(1)
 
     sprc = subprocess.run(
         [
@@ -3013,7 +3024,7 @@ def gen_entry_args(entry, args, entry_action=None):
         if len(re.findall(r"(?!^|[^%])%[a-zA-Z]", entry_arg)) > 1:
             raise RuntimeError(f'More than one % field in argument: "{entry_arg}"')
 
-        elif "%%" in entry_arg:
+        if "%%" in entry_arg:
             new_arg = entry_arg.replace("%%", "%")
             entry_args.append(new_arg)
             print_debug(f'replaced with "{new_arg}", appended: {entry_args}')
@@ -3527,6 +3538,7 @@ def app(
 
             elif opt.startswith("--title="):
                 app_id_arg = ""
+                title_arg = ""
                 if Terminal.entry.hasKey("TerminalArgTitle"):
                     title_arg = Terminal.entry.get("TerminalArgTitle")
                 elif Terminal.entry.hasKey("X-TerminalArgTitle"):
@@ -3752,14 +3764,14 @@ def app_daemon():
     Expects receiving script to have functions "message", "error".
     """
 
-    def trap_stopper(signal=0, stack_frame=None):
+    def trap_stopper(sig=0, stack_frame=None):
         """
         For use in signal trap to stop app daemon
         """
-        print_normal(f"Received signal {signal}, stopping app daemon...")
+        print_normal(f"Received signal {sig}, stopping app daemon...")
         print_debug(stack_frame)
         # shutdown successfully
-        sys.exit()
+        sys.exit(0)
 
     signal.signal(signal.SIGINT, trap_stopper)
     signal.signal(signal.SIGTERM, trap_stopper)
@@ -4149,11 +4161,10 @@ def fill_comp_globals():
                     raise ValueError(
                         f'{BIN_NAME} in entry "{CompGlobals.id}" requests exclusive desktop names ("-e") but has no desktop names listed via "-D"!'
                     )
-                else:
-                    # set exclusive desktop names
-                    CompGlobals.desktop_names = sane_split(
-                        entry_uwsm_args.parsed.desktop_names, ":"
-                    )
+                # set exclusive desktop names
+                CompGlobals.desktop_names = sane_split(
+                    entry_uwsm_args.parsed.desktop_names, ":"
+                )
             # prepend desktop names from entry (and existing or login environment)
             # treating us processing an entry the same as us being launched by DM with XDG_CURRENT_DESKTOP
             # set by it from DesktopNames
@@ -4895,8 +4906,8 @@ def main():
                 print_error(caught_exception)
                 try:
                     cleanup_env()
-                except Exception as caught_exception:
-                    print_error(caught_exception)
+                except Exception as caught_exception2:
+                    print_error(caught_exception2)
                 sys.exit(1)
         elif Args.parsed.aux_action == "cleanup-env":
             if is_active("compositor-only", verbose_active=True):
