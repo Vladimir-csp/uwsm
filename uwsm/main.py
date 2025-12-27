@@ -4182,9 +4182,6 @@ def fill_comp_globals():
                         )
                     )
                 CompGlobals.desktop_names.extend(entry.get("DesktopNames", list=True))
-                # Fallback to basename of the binary if nothing came up so far
-                if not CompGlobals.desktop_names:
-                    CompGlobals.desktop_names.append(CompGlobals.bin_name)
                 if entry_uwsm_args is not None:
                     CompGlobals.desktop_names.extend(
                         sane_split(entry_uwsm_args.parsed.desktop_names, ":")
@@ -4193,6 +4190,9 @@ def fill_comp_globals():
                 CompGlobals.desktop_names.extend(
                     sane_split(Args.parsed.desktop_names, ":")
                 )
+                # Fallback to basename of the binary if nothing came up so far
+                if not CompGlobals.desktop_names:
+                    CompGlobals.desktop_names.append(CompGlobals.bin_name)
 
             print_debug("CompGlobals.desktop_names", CompGlobals.desktop_names)
 
@@ -4272,13 +4272,13 @@ def fill_comp_globals():
                             ":",
                         )
                     )
-                # Fallback to basename of the binary if nothing came up so far
-                if not CompGlobals.desktop_names:
-                    CompGlobals.desktop_names.append(CompGlobals.bin_name)
                 # append from args
                 CompGlobals.desktop_names.extend(
                     sane_split(Args.parsed.desktop_names, ":")
                 )
+                # Fallback to basename of the binary if nothing came up so far
+                if not CompGlobals.desktop_names:
+                    CompGlobals.desktop_names.append(CompGlobals.bin_name)
 
             CompGlobals.name = Args.parsed.wm_name
             CompGlobals.description = Args.parsed.wm_comment
