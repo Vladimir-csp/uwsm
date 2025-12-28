@@ -28,6 +28,7 @@ unit selection.
 
 Supported menu apps:
 
+- vicinae
 - walker
 - fuzzel
 - wofi
