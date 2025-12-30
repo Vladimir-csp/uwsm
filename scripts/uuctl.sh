@@ -38,6 +38,7 @@ showhelp() {
 		  bemenu
 		  wmenu
 		  dmenu
+      hyprlauncher
 
 		If just a single tool name is given, it is interpreted as a preferred selection.
 		If more arguments are given, they are used as full menu command line, so
@@ -235,6 +236,10 @@ df_dmenu() {
 	dmenu -p "$@"
 }
 
+df_hyprlauncher() {
+  hyprlauncher -m
+}
+
 ALL=''
 for arg in "$@"; do
 	case "$arg" in
@@ -252,7 +257,7 @@ done
 
 DMENU_CLEANUP=true
 if [ "$#" -le "1" ]; then
-	dmenu_candidates="vicinae walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
+	dmenu_candidates="vicinae walker fuzzel wofi rofi tofi bemenu wmenu dmenu hyprlauncher"
 
 	if [ "$#" = "1" ]; then
 		case " $dmenu_candidates " in

@@ -36,6 +36,7 @@ Supported menu apps:
 - bemenu
 - wmenu
 - dmenu
+- hyprlauncher
 
 Menu app is autoselected, but can be specified manually as a single argument.
 
