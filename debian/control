@@ -29,7 +29,7 @@ Depends:
  python3-dbus,
 Recommends:
  whiptail,
- walker | fuzzel | wofi | rofi | tofi | bemenu | wmenu | dmenu | hyprlauncher,
+ walker | fuzzel | wofi | rofi | hyprlauncher | tofi | bemenu | wmenu | dmenu,
  libnotify-bin,
  inotify-tools,
 Suggests:
