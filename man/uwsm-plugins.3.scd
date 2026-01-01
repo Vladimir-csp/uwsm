@@ -55,7 +55,8 @@ It is used as plugin id and suffix in function names.
 	reverse (increasing priority)
 *in\_each\_config\_dir\_reversed*
 	called by *process\_config\_dirs\_reversed* for each config dir
-	as *$1*, loads *uwsm/env*, *uwsm/env-*_${desktop}_ files
+	as *$1*, loads *uwsm/env*, *uwsm/env.d/*\*, *uwsm/env-*_${desktop}_,
+	*uwsm/env-*_${desktop}_*.d/*\* files
 *in\_each\_config\_dir*
 	called by *process\_config\_dirs* for each config dir as *$1*,
 	does nothing ATM

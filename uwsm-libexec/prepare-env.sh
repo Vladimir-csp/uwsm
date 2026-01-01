@@ -4,15 +4,15 @@
 
 reverse() {
 	# returns list $1 delimited by ${2:-:} in reverse
-	__REVERSE_OUT__=''
+	__reverse_out__=''
 	IFS="${2:-:}"
-	for __ITEM__ in $1; do
-		if [ -n "${__ITEM__}" ]; then
-			__REVERSE_OUT__="${__ITEM__}${__REVERSE_OUT__:+$IFS}${__REVERSE_OUT__}"
+	for __item__ in $1; do
+		if [ -n "${__item__}" ]; then
+			__reverse_out__="${__item__}${__reverse_out__:+$IFS}${__reverse_out__}"
 		fi
 	done
-	printf '%s' "${__REVERSE_OUT__}"
-	unset __REVERSE_OUT__
+	printf '%s' "${__reverse_out__}"
+	unset __reverse_out__
 	IFS="${__OIFS__}"
 }
 
@@ -30,6 +30,19 @@ source_file() {
 		else
 			"Environment file ${1} is not readable" >&2
 		fi
+	fi
+}
+
+source_dir() {
+	# applies source_file to every file in dir
+	if [ -d "${1}" ]; then
+		# process in standard order and visibility given by ls
+		while IFS='' read -r __env_file__; do
+			source_file "${1}/${__env_file__}"
+		done <<- EOF
+			$(ls "${1}")
+		EOF
+		unset __env_file__
 	fi
 }
 
@@ -53,37 +66,38 @@ in_each_config_dir_reversed() {
 
 	# compose sequence of env files from lowercase desktop names in reverse
 	IFS=':'
-	__ENV_FILES__=''
-	for __DNLC__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
+	__env_files__=''
+	for __dnlc__ in $(lowercase "$(reverse "${XDG_CURRENT_DESKTOP}")"); do
 		IFS="${__OIFS__}"
-		__ENV_FILES__="${__SELF_NAME__}/env-${__DNLC__}${__ENV_FILES__:+:}${__ENV_FILES__}"
+		__env_files__="${__SELF_NAME__}/env-${__dnlc__}${__env_files__:+:}${__env_files__}"
 	done
 	# add common env file at the beginning
-	__ENV_FILES__="${__SELF_NAME__}/env${__ENV_FILES__:+:}${__ENV_FILES__}"
-	unset __DNLC__
+	__env_files__="${__SELF_NAME__}/env${__env_files__:+:}${__env_files__}"
+	unset __dnlc__
 
 	# load env file sequence from this config dir rung
 	IFS=':'
-	for __ENV_FILE__ in ${__ENV_FILES__}; do
-		source_file "${1}/${__ENV_FILE__}"
+	for __env_file__ in ${__env_files__}; do
+		source_file "${1}/${__env_file__}"
+		source_dir "${1}/${__env_file__}.d"
 	done
-	unset __ENV_FILE__
-	unset __ENV_FILES__
+	unset __env_file__
+	unset __env_files__
 	IFS="${__OIFS__}"
 }
 
 process_config_dirs() {
 	# iterate over config dirs (decreasing importance) and call in_each_config_dir* functions
 	IFS=":"
-	for __CONFIG_DIR__ in $(get_all_config_dirs_extended); do
+	for __config_dir__ in $(get_all_config_dirs_extended); do
 		IFS="${__OIFS__}"
 		if type "in_each_config_dir_${__WM_BIN_ID__}" > /dev/null 2>&1; then
-			"in_each_config_dir_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
+			"in_each_config_dir_${__WM_BIN_ID__}" "${__config_dir__}" || return $?
 		else
-			in_each_config_dir "${__CONFIG_DIR__}" || return $?
+			in_each_config_dir "${__config_dir__}" || return $?
 		fi
 	done
-	unset __CONFIG_DIR__
+	unset __config_dir__
 	IFS="${__OIFS__}"
 	return 0
 }
@@ -91,15 +105,15 @@ process_config_dirs() {
 process_config_dirs_reversed() {
 	# iterate over reverse config dirs (increasing importance) and call in_each_config_dir_reversed* functions
 	IFS=":"
-	for __CONFIG_DIR__ in $(reverse "$(get_all_config_dirs_extended)"); do
+	for __config_dir__ in $(reverse "$(get_all_config_dirs_extended)"); do
 		IFS="${__OIFS__}"
 		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" > /dev/null 2>&1; then
-			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__CONFIG_DIR__}" || return $?
+			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__config_dir__}" || return $?
 		else
-			in_each_config_dir_reversed "${__CONFIG_DIR__}" || return $?
+			in_each_config_dir_reversed "${__config_dir__}" || return $?
 		fi
 	done
-	unset __CONFIG_DIR__
+	unset __config_dir__
 	IFS="${__OIFS__}"
 	return 0
 }
@@ -129,7 +143,8 @@ rm -f "${1}"
 shift
 
 if [ -z "${__RANDOM_MARK__}" ]; then
-	printf '%s\n' "Random mark \${__RANDOM_MARK__} not set! Exiting." >&2
+	# shellcheck disable=SC2016
+	printf '%s\n' 'Random mark ${__RANDOM_MARK__} not set! Exiting.' >&2
 	exit 1
 fi
 

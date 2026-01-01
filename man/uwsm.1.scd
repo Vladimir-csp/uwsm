@@ -44,7 +44,11 @@ Help for each subcommand is accessible by running "*uwsm* {_subcommand_} *-h*".
 In XDG config hierarchy:
 |[ *uwsm/env*
 :<
+|  *uwsm/env.d/*\*
+:<
 |  *uwsm/env-*_${compositor}_
+:<
+|  *uwsm/env-*_${compositor}_*.d/*\*
 :  Environment (shell) to be sourced for the graphical session. Sourced from
    directories of increasing priority, in each directory common file is sourced
    first, then suffixed files in the order of items listed in

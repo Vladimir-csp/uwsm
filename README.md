@@ -104,8 +104,9 @@ Idempotently (well, best-effort-idempotently) handles environment.
 - On startup a specialized unit prepares environment by:
   - either loading environment context saved by `uwsm start` command or sourcing
     shell profile by itself
-  - sourcing `uwsm/env`, `uwsm/env-${desktop}` files from each dir of reversed
-    sequence `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}` (in
+  - sourcing `uwsm/env`, `uwsm/env.d/*`, `uwsm/env-${desktop}`,
+    `uwsm/env-${desktop}.d/*` files from each dir of reversed sequence
+    `${XDG_CONFIG_HOME}:${XDG_CONFIG_DIRS}:${XDG_DATA_DIRS}` (in
     increasing priority), where `${desktop}` is each item of
     `${XDG_CURRENT_DESKTOP}`, lowercased
 - Difference between environment state before and after preparation is exported
@@ -621,8 +622,10 @@ Summary of where to put a user-level var for the first two categories:
 - For login shell context and uwsm environment preloader, including plugins:
   export in your shell's profile.
 - For uwsm-managed graphical session: export in `${XDG_CONFIG_HOME}/uwsm/env`
+  or `${XDG_CONFIG_HOME}/uwsm/env.d/my_vars`
 - For uwsm-managed graphical session of specific compositor: export in
-  `${XDG_CONFIG_HOME}/uwsm/env-${desktop}`
+  `${XDG_CONFIG_HOME}/uwsm/env-${desktop}` or
+  `${XDG_CONFIG_HOME}/uwsm/env-${desktop}.d/my_vars`
 
 Choose whatever scope suits your needs.
 
@@ -943,7 +946,9 @@ custom arguments).
 
 It looks for environment saved by `uwsm start` command, then runs shell code to
 prepare environment. The code sources POSIX shell profile (if environment from
-`uwsm start` was not found), `uwsm/env*` files, anything that plugins dictate.
+`uwsm start` was not found), common and desktop-matching `uwsm/env*`,
+`uwsm/env*.d/*` files, anything that plugins dictate.
+
 Environment state at the end of shell code is given back to the main process.
 `uwsm` is also smart enough to find login session associated with current TTY
 and set `$XDG_SESSION_ID`, `$XDG_VTNR` if it was not found in the context saved
@@ -1117,7 +1122,8 @@ Standard functions:
 - `process_config_dirs_reversed` - called by `load_wm_env`, same as
   `process_config_dirs`, but in reverse (increasing priority)
 - `in_each_config_dir_reversed` - called by `process_config_dirs_reversed` for
-  each config dir, loads `uwsm/env`, `uwsm/env-${desktop}` files
+  each config dir, loads `uwsm/env`, `uwsm/env.d/*`, `uwsm/env-${desktop}`,
+  `uwsm/env-${desktop}.d/*` files
 - `source_file` - sources `$1` file, providing messages for log.
 
 See code inside `uwsm/main.py` for more auxiliary functions.
