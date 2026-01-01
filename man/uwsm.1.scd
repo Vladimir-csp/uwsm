@@ -244,10 +244,12 @@ general is in active or activating state.
 
 
 Checks whether it is OK to launch a wayland session via the following conditions:
+- *DBUS_SESSION_BUS_ADDRESS* is set
 - Running from login shell
 - System is at *graphical.target*
 - User *graphical-session\*.target* units are not yet active
 - Foreground VT is among allowed (default: 1)
+- Login session's VT is matching
 
 ## start
 

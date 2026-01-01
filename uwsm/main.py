@@ -2197,10 +2197,11 @@ class Args:
             epilog=dedent(
                 """
                 Conditions:\n
+                  - User's dbus is available
                   - Running from login shell\n
                   - System is at graphical.target\n
                   - User graphical-session*.target are not yet active\n
-                  - Foreground VT is among allowed (default: 1)\n
+                  - Foreground and session's VT is among allowed (default: 1)\n
                 \n
                 This command is essential for integrating startup into shell profile.
                 """
@@ -4797,29 +4798,31 @@ def main():
             sys.exit(1)
 
     elif Args.parsed.mode == "check" and Args.parsed.checker == "may-start":
+        # silent dealbreakers
+        dealbreakers = []
+        # visible dealbreakers
+        v_dealbreakers = []
+        errors = []
+        # skip further testing, i.e. due to errors
+        enough = False
+
         # start with checking DBus availability. Python module will try to
         # start it unconditionally if not found, and make a fuss.
         # silently fail if verbosity not requested. For ssh sessions and like.
         if not os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""):
-            if Args.parsed.verbose:
-                print_warning("DBUS_SESSION_BUS_ADDRESS is not available")
-            sys.exit(1)
+            dealbreakers.append("DBUS_SESSION_BUS_ADDRESS is not available")
+            enough = True
 
-        already_active_msg = (
-            "A compositor and/or graphical-session* targets are already active"
-        )
-        dealbreakers = []
-
-        try:
-            if is_active():
-                dealbreakers.append(already_active_msg)
-        except Exception as caught_exception:
-            print_error("Could not check for active compositor!")
-            print_error(caught_exception)
-            sys.exit(1)
+        if not enough:
+            try:
+                if is_active():
+                    v_dealbreakers.append("A compositor and/or graphical-session* targets are already active")
+            except Exception as caught_exception:
+                errors.append("Could not check for active compositor!")
+                enough = True
 
         # check if parent process is a login shell
-        if not Args.parsed.nologin:
+        if not enough and not Args.parsed.nologin:
             try:
                 with open(
                     f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
@@ -4828,32 +4831,54 @@ def main():
                     parent_cmdline = parent_cmdline.strip()
                 print_debug(f"parent_pid: {os.getppid()}")
                 print_debug(f"parent_cmdline: {parent_cmdline}")
+                if not parent_cmdline.startswith("-"):
+                    dealbreakers.append("Not in login shell")
             except Exception as caught_exception:
-                print_error("Could not determine parent process command!")
-                print_error(caught_exception)
-                sys.exit(1)
-            if not parent_cmdline.startswith("-"):
-                dealbreakers.append("Not in login shell")
+                errors.append("Could not determine parent process command!")
+                enough = True
+
+        # check foreground VT
+        fgvt = None
 
         # argparse does not pass default for this in some python versions
-        allowed_vtnr = Args.parsed.vtnr or [0]
-        if allowed_vtnr != [0]:
-
-            # check foreground VT
+        allowed_vtnr = Args.parsed.vtnr or [1]
+        print_debug("allowed_vtnr", allowed_vtnr)
+        if not enough and allowed_vtnr != [0]:
             fgvt = get_fg_vt()
             if fgvt is None:
-                print_error("Could not determine foreground VT")
-                sys.exit(1)
+                dealbreakers.append("Could not determine foreground VT")
             else:
                 if fgvt not in allowed_vtnr:
                     dealbreakers.append(
                         f"Foreground VT ({fgvt}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
                     )
 
+        bus_system = None
+        # check session VTNr
+        if not enough and allowed_vtnr != [0]:
+            session_id_str = os.environ.get("XDG_SESSION_ID", "")
+            if session_id_str:
+                try:
+                    bus_system = DbusInteractions("system")
+                    session_vtnr = int(bus_system.get_session_property(session_id_str, "VTNr"))
+                    print_debug("session_vtnr", session_vtnr)
+                    if session_vtnr == 0:
+                        dealbreakers.append(f"Session {session_id_str} is not associated with VT")
+                    elif session_vtnr not in allowed_vtnr:
+                        dealbreakers.append(
+                            f"Session VT ({session_vtnr}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
+                        )
+                except Exception as caught_exception:
+                    errors.extend("Could not get session VTNr!", caught_exception)
+                    enough = True
+            else:
+                dealbreakers.append("XDG_SESSION_ID is not available")
+
         # check for graphical target
-        if Args.parsed.gst_seconds > 0:
+        if not enough and Args.parsed.gst_seconds > 0:
             try:
-                bus_system = DbusInteractions("system")
+                if bus_system is None:
+                    bus_system = DbusInteractions("system")
                 print_debug("bus_system initial", bus_system)
 
                 if not wait_for_unit(
@@ -4866,18 +4891,20 @@ def main():
                     dealbreakers.append("System has not reached graphical.target")
 
             except Exception as caught_exception:
-                print_error("Could not check if graphical.target is reached!")
-                print_error(caught_exception)
-                sys.exit(1)
+                errors.extend("Could not check if graphical.target is reached!", caught_exception)
+                enough = True
 
-        if dealbreakers:
-            if Args.parsed.verbose or (
-                # if the only failed condition is active graphical session, say it,
-                # unless -q is given
-                not Args.parsed.quiet
-                and dealbreakers == [already_active_msg]
-            ):
-                print_warning("\n  ".join(["May not start compositor:"] + dealbreakers))
+        # sum up, print, and exit with verdict
+        if errors or v_dealbreakers or dealbreakers:
+            if errors:
+                errors.insert(0, "Got errors while checking if may start compositor:")
+                print_error(*errors, sep="\n")
+            if v_dealbreakers or dealbreakers:
+                if Args.parsed.verbose:
+                    v_dealbreakers.insert(0, "May not start compositor:")
+                    print_warning(*(v_dealbreakers + dealbreakers), sep="\n  ")
+                elif not Args.parsed.quiet and v_dealbreakers:
+                    print_warning(*v_dealbreakers, sep="\n")
             sys.exit(1)
         else:
             if Args.parsed.verbose:

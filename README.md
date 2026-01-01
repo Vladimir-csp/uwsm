@@ -758,9 +758,10 @@ in situations when running `uwsm start` is not desired. I.e. if this is
 if compositor's unit was activated without the use of `uwsm start` command).
 
 `uwsm check may-start` subcommand serves as a collection of useful checks.
-By default: parent is a login shell (process name starts with `-`), tty1 is in
-foreground, system's `graphical.target` is active or activating, user's
-`graphical-session.target` and other related units are inactive.
+By default: user's dbus is available, parent is a login shell (process name
+starts with `-`), tty1 is in foreground, login session's tty matches, system's
+`graphical.target` is active or activating, user's `graphical-session.target`
+and other related units are inactive.
 
 Also for convenience environment preloader defines `IN_UWSM_ENV_PRELOADER=true`
 variable (not exported), which can be probed from shell profile to do things
