@@ -33,6 +33,7 @@ Supported menu apps:
 - fuzzel
 - wofi
 - rofi
+- hyprlauncher
 - tofi
 - bemenu
 - wmenu

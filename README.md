@@ -319,6 +319,7 @@ Runtime dependencies:
   - `bemenu`
   - `wmenu`
   - `dmenu`
+  - `hyprlauncher`
 - `notify-send` (optional, for feedback from `uwsm app` commands and
   optional failed unit monitor `fumon` service; from `libnotify-bin` or
   `libnotify` package)
@@ -490,6 +491,7 @@ Some examples:
 | wofi     | shell   | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` | yes   |
 | tofi     | shell   | `uwsm app -- $(tofi-drun)`                                                                                                                                                       | no    |
 | rofi     | command | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               | no    |
+| hyprlauncher | config | `desktop_launch_prefix = 'uwsm app --'` | no |
 
 Compositor itself runs in `session.slice` which has priority in some resource
 allocation. It would be a bad practice to accumulate all apps there, and
