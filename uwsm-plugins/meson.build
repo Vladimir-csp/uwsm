@@ -4,6 +4,8 @@ uwsm_plugins = [
   'sway.sh',
   'hyprland.sh',
   'start_hyprland.sh',
+  'niri.sh',
+  'niri_session.sh',
 ]
 
 install_data(
