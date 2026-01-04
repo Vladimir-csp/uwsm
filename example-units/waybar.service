@@ -1,7 +1,8 @@
 [Unit]
 Description=Highly customizable Wayland bar for Sway and Wlroots based compositors.
 Documentation=man:waybar(5)
-# order startup after WM
+# make service stoppable/restartable by target
+PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
@@ -21,3 +22,4 @@ WantedBy=graphical-session.target
 #WantedBy=wayland-session@wayfire.desktop.target
 #WantedBy=wayland-session@labwc.desktop.target
 #WantedBy=wayland-session@hyprland.desktop.target
+EnvironmentFile=-%t/uwsm/env_session.conf
