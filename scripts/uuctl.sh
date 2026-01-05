@@ -30,11 +30,11 @@ showhelp() {
 		Menu tool and options are selected from predefined profiles for:
 
 		  vicinae
-      walker
+		  walker
 		  fuzzel
 		  wofi
 		  rofi
-      hyprlauncher
+		  hyprlauncher
 		  tofi
 		  bemenu
 		  wmenu
@@ -203,7 +203,6 @@ df_walker_cleanup() {
 	walker -q
 }
 
-
 df_vicinae() {
 	vicinae dmenu
 }
@@ -221,7 +220,7 @@ df_rofi() {
 }
 
 df_hyprlauncher() {
-  hyprlauncher -m
+	hyprlauncher -m
 }
 
 df_tofi() {
@@ -435,8 +434,14 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 	## special handling of some surviving actions
 	disable+*+ufs:runtime-enabled+*+as:activ* | disable+*+ufs:runtime-enabled+*+as:reloading*)
 		case "${UNIT}" in
-		*@*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime"; DISABLE_ACTIONS_SHOW=true ;;
-		*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime${N}disable --runtime --now"; DISABLE_ACTIONS_SHOW=true ;;
+		*@*)
+			DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime"
+			DISABLE_ACTIONS_SHOW=true
+			;;
+		*)
+			DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable --runtime${N}disable --runtime --now"
+			DISABLE_ACTIONS_SHOW=true
+			;;
 		esac
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
@@ -448,7 +453,10 @@ for ACTION in start reload restart stop kill reset-failed enable disable freeze 
 	disable+*+as:activ* | disable+*+as:reloading*)
 		case "${UNIT}" in
 		*@*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable" ;;
-		*) DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable${N}disable --now"; DISABLE_ACTIONS_SHOW=true ;;
+		*)
+			DISABLE_ACTIONS="${DISABLE_ACTIONS}${DISABLE_ACTIONS:+$N}disable${N}disable --now"
+			DISABLE_ACTIONS_SHOW=true
+			;;
 		esac
 		ACTIONS="${ACTIONS}${ACTIONS:+$N}${ACTION}"
 		;;
