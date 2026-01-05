@@ -34,6 +34,7 @@ showhelp() {
 		  fuzzel
 		  wofi
 		  rofi
+      hyprlauncher
 		  tofi
 		  bemenu
 		  wmenu
@@ -219,6 +220,10 @@ df_rofi() {
 	rofi -dmenu -p "$@"
 }
 
+df_hyprlauncher() {
+  hyprlauncher -m
+}
+
 df_tofi() {
 	tofi --prompt-text "$@"
 }
@@ -252,7 +257,7 @@ done
 
 DMENU_CLEANUP=true
 if [ "$#" -le "1" ]; then
-	dmenu_candidates="vicinae walker fuzzel wofi rofi tofi bemenu wmenu dmenu"
+	dmenu_candidates="vicinae walker fuzzel wofi rofi hyprlauncher tofi bemenu wmenu dmenu"
 
 	if [ "$#" = "1" ]; then
 		case " $dmenu_candidates " in
