@@ -95,6 +95,9 @@ Currently included:
 - `labwc`
 - `hyprland`
 
+LXQt variants of the above are provided by the experimental [LXQt Universal
+Wayland Session](https://github.com/basil/lxqt-uwsm-session).
+
 </details>
 
 <details><summary>
@@ -1189,3 +1192,4 @@ Special thanks to:
   package.
 - @YaLTeR for an idea that lead to automatic compositor startup detection.
 - @izmyname for integration and documentation work on Hyprland's side.
+- @basil for LXQt integration and documentation work.
