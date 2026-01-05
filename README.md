@@ -315,11 +315,11 @@ Runtime dependencies:
   - `walker`
   - `wofi`
   - `rofi`
+  - `hyprlauncher`
   - `tofi`
   - `bemenu`
   - `wmenu`
   - `dmenu`
-  - `hyprlauncher`
 - `notify-send` (optional, for feedback from `uwsm app` commands and
   optional failed unit monitor `fumon` service; from `libnotify-bin` or
   `libnotify` package)
@@ -479,19 +479,19 @@ Not all launchers are able to provide Desktop Entry ID, most just provide the
 resulting command, so units will lack fancy description.
 Some examples:
 
-| Launcher | Via     | What                                                                                                                                                                             | Entry |
-| -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
-| vicinae  | gui     | `vicinae settings > extentions > Applications > Launch Prefix=uwsm app --`                                                                                                       | no    |
-| fuzzel   | command | `fuzzel "--launch-prefix=uwsm app --"`                                                                                                                                           | no    |
-| fuzzel   | config  | `launch-prefix=uwsm app --`                                                                                                                                                      | no    |
-| albert   | env var | `ALBERT_APPLICATIONS_COMMAND_PREFIX`: `uwsm;app;--`                                                                                                                              | no    |
-| albert   | shell   | `ALBERT_APPLICATIONS_COMMAND_PREFIX="uwsm;app;--" albert`                                                                                                                        | no    |
-| walker   | config  | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             | no    |
-| wofi     | shell   | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        | yes   |
-| wofi     | shell   | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` | yes   |
-| tofi     | shell   | `uwsm app -- $(tofi-drun)`                                                                                                                                                       | no    |
-| rofi     | command | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               | no    |
-| hyprlauncher | config | `desktop_launch_prefix = 'uwsm app --'` | no |
+| Launcher     | Via     | What                                                                                                                                                                             | Entry |
+| --------     | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| vicinae      | gui     | `vicinae settings > extentions > Applications > Launch Prefix=uwsm app --`                                                                                                       | no    |
+| fuzzel       | command | `fuzzel "--launch-prefix=uwsm app --"`                                                                                                                                           | no    |
+| fuzzel       | config  | `launch-prefix=uwsm app --`                                                                                                                                                      | no    |
+| albert       | env var | `ALBERT_APPLICATIONS_COMMAND_PREFIX`: `uwsm;app;--`                                                                                                                              | no    |
+| albert       | shell   | `ALBERT_APPLICATIONS_COMMAND_PREFIX="uwsm;app;--" albert`                                                                                                                        | no    |
+| walker       | config  | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             | no    |
+| wofi         | shell   | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        | yes   |
+| wofi         | shell   | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` | yes   |
+| hyprlauncher | config  | `desktop_launch_prefix = 'uwsm app --'`                                                                                                                                          | no    |
+| tofi         | shell   | `uwsm app -- $(tofi-drun)`                                                                                                                                                       | no    |
+| rofi         | command | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               | no    |
 
 Compositor itself runs in `session.slice` which has priority in some resource
 allocation. It would be a bad practice to accumulate all apps there, and
