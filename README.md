@@ -492,7 +492,7 @@ Some examples:
 | walker       | config  | `app_launch_prefix = "uwsm app -- "`                                                                                                                                             | no    |
 | wofi         | shell   | `uwsm app -- "$(wofi --show drun --define=drun-print_desktop_file=true \| sed -E "s/(\.desktop) /\1:/")"`                                                                        | yes   |
 | wofi         | shell   | `uwsm app -- "$(D=$(wofi --show drun --define=drun-print_desktop_file=true); case "$D" in *'.desktop '*) echo "${D%.desktop *}.desktop:${D#*.desktop }";; *) echo "$D";; esac)"` | yes   |
-| hyprlauncher | config  | `desktop_launch_prefix = 'uwsm app --'`                                                                                                                                          | no    |
+| hyprlauncher | config  | `desktop_launch_prefix = uwsm app --`                                                                                                                                          | no    |
 | tofi         | shell   | `uwsm app -- $(tofi-drun)`                                                                                                                                                       | no    |
 | rofi         | command | `rofi -show drun -run-command "uwsm app -- {cmd}"`                                                                                                                               | no    |
 
