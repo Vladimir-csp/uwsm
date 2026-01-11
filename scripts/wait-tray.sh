@@ -40,14 +40,14 @@ wait_tray() {
 		"$@" \
 		--limit-messages 1 \
 		--timeout "${TIMEOUT}s" \
-		> /dev/null 2>&1 &
+		>/dev/null 2>&1 &
 	MON_PID=$!
 }
 
 check_tray() {
 	# return 0 if any of tray serivces is active
 	for service in $TRAY_NAMES; do
-		if busctl --user status "$service" --no-pager --no-legend > /dev/null 2>&1; then
+		if busctl --user status "$service" --no-pager --no-legend >/dev/null 2>&1; then
 			return 0
 		fi
 	done
@@ -60,7 +60,7 @@ trapterm() {
 	trap - INT TERM HUP EXIT
 
 	# suppress stderr, including "Terminated" message
-	exec 2> /dev/null
+	exec 2>/dev/null
 
 	kill "$MON_PID" || true
 	wait "$MON_PID" || true

@@ -33,7 +33,7 @@ message() {
 	# print message "$1" to stdout
 	echo "$1"
 	# if notify-send is installed and stdout is not a terminal, also send notification
-	if [ ! -t 1 ] && command -v notify-send > /dev/null; then
+	if [ ! -t 1 ] && command -v notify-send >/dev/null; then
 		notify-send -u normal -i info -a "${SELF_NAME}" "App message" "$1"
 	fi
 }
@@ -42,7 +42,7 @@ error() {
 	# print message "$1" to stderr
 	echo "$1" >&2
 	# if notify-send is installed and stderr is not a terminal, also send notification
-	if [ ! -t 2 ] && command -v notify-send > /dev/null; then
+	if [ ! -t 2 ] && command -v notify-send >/dev/null; then
 		notify-send -u critical -i error -a "${SELF_NAME}" "App failure" "$1"
 	fi
 	# if code is 141 (128+13, exit due to SIGPIPE), also restart daemon
@@ -55,8 +55,8 @@ error() {
 
 get_lock() {
 	# get a lock if flock is accessible
-	if command -v flock > /dev/null; then
-		exec 3> "$LOCKFILE"
+	if command -v flock >/dev/null; then
+		exec 3>"$LOCKFILE"
 		if ! flock -w "$LOCK_TIMEOUT" -x 3; then
 			error "Could not acquire lock on '$LOCKFILE'"
 		fi
@@ -76,7 +76,7 @@ sleepkiller() {
 	# kill sleep ($1) from pipekiller
 	# cancel trap to make it single-use
 	trap - INT TERM HUP
-	if kill -0 "$1" 2> /dev/null; then
+	if kill -0 "$1" 2>/dev/null; then
 		kill "$1"
 	fi
 }
@@ -88,7 +88,7 @@ pipekiller() {
 	# trap to also kill sleep
 	trap 'sleepkiller "$SLEEP_PID"' INT TERM HUP
 	wait
-	if kill -0 $MAINPID 2> /dev/null; then
+	if kill -0 $MAINPID 2>/dev/null; then
 		kill -13 $MAINPID
 	fi
 }
@@ -144,10 +144,10 @@ if [ "$#" = "0" ]; then
 	exit 1
 elif [ "$#" = "1" ] && [ "$1" = "ping" ]; then
 	get_lock
-	printf '%s' 'ping' > "$PIPE_IN"
+	printf '%s' 'ping' >"$PIPE_IN"
 elif [ "$#" = "1" ] && [ "$1" = "stop" ]; then
 	get_lock
-	printf '%s' 'stop' > "$PIPE_IN"
+	printf '%s' 'stop' >"$PIPE_IN"
 elif [ "$#" -ge "1" ] && {
 	# intercept -h|--help arg
 	help=false
@@ -169,7 +169,7 @@ elif [ "$#" -ge "1" ] && {
 	exec uwsm app -h
 else
 	get_lock
-	printf '\0%s' app "$@" > "$PIPE_IN"
+	printf '\0%s' app "$@" >"$PIPE_IN"
 fi
 
 # update message
@@ -179,7 +179,7 @@ trap 'error "Timed out trying to read from ${PIPE_OUT}!" 141' PIPE
 CMDLINE=
 while IFS='' read -r line; do
 	CMDLINE="${CMDLINE}${CMDLINE:+$N}${line}"
-done < "$PIPE_OUT"
+done <"$PIPE_OUT"
 
 release_lock
 

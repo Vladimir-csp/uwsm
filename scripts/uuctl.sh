@@ -17,7 +17,7 @@ SD_USER_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user
 showhelp() {
 	while IFS='' read -r line; do
 		printf '%s\n' "$line"
-	done <<- EOH
+	done <<-EOH
 		Usage: ${SELF} [-ah] [menu] [menu args ...]
 
 		  menu       select menu tool (if without arguments)
@@ -70,7 +70,7 @@ silence() {
 			DefaultStandardOutput) dso=$value ;;
 			DefaultStandardError) dse=$value ;;
 			esac
-		done <<- EOF
+		done <<-EOF
 			$(systemctl --user show --property DefaultStandardOutput --property DefaultStandardError)
 		EOF
 		case "$dse" in
@@ -82,7 +82,7 @@ silence() {
 	# silence both
 	both) set -- "$@" 'StandardOutput=null' 'StandardError=null' ;;
 	esac
-	printf '%s\n' "$@" > "${SD_USER_DIR}/${UNIT_TEMPLATE}.d/slient.conf"
+	printf '%s\n' "$@" >"${SD_USER_DIR}/${UNIT_TEMPLATE}.d/slient.conf"
 	systemctl --user daemon-reload
 	# restart unit if requested
 	case "$RESTART" in
@@ -181,7 +181,7 @@ get_units() {
 			reset_current
 			;;
 		esac
-	done <<- EOF
+	done <<-EOF
 		$(systemctl --user show --type=service,scope,socket,target --all --no-pager --quiet --property=Id,ActiveState,Description,Names,UnitFileState,NeedDaemonReload)
 		END
 	EOF
@@ -273,7 +273,7 @@ if [ "$#" -le "1" ]; then
 	fi
 
 	for dmenu_candidate in $1 $dmenu_candidates; do
-		! command -v "$dmenu_candidate" > /dev/null || break
+		! command -v "$dmenu_candidate" >/dev/null || break
 	done
 
 	case "$(command -v "df_${dmenu_candidate}")" in
@@ -292,7 +292,7 @@ if [ "$#" -le "1" ]; then
 		;;
 	esac
 else
-	if ! command -v "$1" > /dev/null; then
+	if ! command -v "$1" >/dev/null; then
 		echo "Menu tool '$1' not found" >&2
 		exit 1
 	fi
@@ -364,7 +364,7 @@ while IFS="=" read -r prop value; do
 	RefuseManualStart) RM_START=$value ;;
 	RefuseManualStop) RM_STOP=$value ;;
 	esac
-done <<- EOF
+done <<-EOF
 	$(systemctl --user show --no-pager --quiet --property=Description,CanFreeze,CanStart,CanReload,CanStop,FreezerState,ActiveState,UnitFileState,WantedBy,RequiredBy,UpheldBy,RefuseManualStart,RefuseManualStop "$UNIT")
 EOF
 
@@ -481,7 +481,7 @@ done
 
 # select action
 ACTION=$(
-	"$@" "${DESCRIPTION#*=} (${STATE}): " <<- EOF
+	"$@" "${DESCRIPTION#*=} (${STATE}): " <<-EOF
 		$ACTIONS
 	EOF
 ) || cancel_exit
@@ -493,7 +493,7 @@ case "$ACTION" in
 enable)
 	if [ -n "$ENABLE_ACTIONS" ]; then
 		ACTION=$(
-			"$@" "Select enable action for ${DESCRIPTION#*=}: " <<- EOF
+			"$@" "Select enable action for ${DESCRIPTION#*=}: " <<-EOF
 				$ENABLE_ACTIONS
 			EOF
 		) || cancel_exit
@@ -502,7 +502,7 @@ enable)
 disable)
 	if [ -n "$DISABLE_ACTIONS" ]; then
 		ACTION=$(
-			"$@" "Select disable action for ${DESCRIPTION#*=}: " <<- EOF
+			"$@" "Select disable action for ${DESCRIPTION#*=}: " <<-EOF
 				$DISABLE_ACTIONS
 			EOF
 		) || cancel_exit
@@ -512,7 +512,7 @@ kill)
 	# this is definitely the last menu invocation
 	MENU_STAGE='end'
 	SIGNAL=$(
-		"$@" "Select signal for ${DESCRIPTION#*=}: " <<- EOF
+		"$@" "Select signal for ${DESCRIPTION#*=}: " <<-EOF
 			SIGTERM
 			SIGHUP
 			SIGINT
@@ -527,7 +527,7 @@ kill)
 	;;
 silence)
 	SILENCE_ACTION=$(
-		"$@" "Silence for ${DESCRIPTION#*=}: " <<- EOF
+		"$@" "Silence for ${DESCRIPTION#*=}: " <<-EOF
 			stdout
 			stderr
 			both
@@ -538,7 +538,7 @@ silence)
 	# this is definitely the last menu invocation
 	MENU_STAGE='end'
 	RESTART=$(
-		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
+		"$@" "Restart ${DESCRIPTION#*=}?: " <<-EOF
 			no
 			yes
 		EOF
@@ -549,7 +549,7 @@ unsilence)
 	# this is definitely the last menu invocation
 	MENU_STAGE='end'
 	RESTART=$(
-		"$@" "Restart ${DESCRIPTION#*=}?: " <<- EOF
+		"$@" "Restart ${DESCRIPTION#*=}?: " <<-EOF
 			no
 			yes
 		EOF
@@ -585,11 +585,11 @@ unsilence)
 esac
 
 # apply selected action
-if command -v notify-send > /dev/null; then
+if command -v notify-send >/dev/null; then
 	# capture only stderr
 	ERR=$(
 		# shellcheck disable=SC2086
-		"$@" 2>&1 > /dev/null
+		"$@" 2>&1 >/dev/null
 	)
 	RC="$?"
 	if [ "$RC" = "0" ] && [ -z "$ERR" ]; then

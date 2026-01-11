@@ -33,7 +33,7 @@ while IFS='=' read -r key value; do
 		;;
 	TTY) WATCH_TTY=$value ;;
 	esac
-done <<- EOF
+done <<-EOF
 	$(
 		# unset session vars to make auto fallback to find graphical session
 		unset XDG_SEAT XDG_SEAT_PATH XDG_SESSION_ID XDG_SESSION_PATH XDG_VTNR
@@ -55,7 +55,7 @@ fi
 TTY=$WATCH_TTY
 get_tty() {
 	PREV_TTY=$TTY
-	read -r TTY < "$TTY_FILE"
+	read -r TTY <"$TTY_FILE"
 	if [ -z "$TTY" ]; then
 		printf '%s\n' "Could not get current TTY" >&2
 		exit 1

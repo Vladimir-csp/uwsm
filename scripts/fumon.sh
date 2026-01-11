@@ -67,7 +67,7 @@ get_id() {
 			return 0
 			;;
 		esac
-	done <<- EOF
+	done <<-EOF
 		$ILIST
 	EOF
 	return 1
@@ -125,7 +125,7 @@ check_failed_units() {
 		[ -n "$line" ] || continue
 		FAILED_UNITS="${FAILED_UNITS}${FAILED_UNITS:+ }${line}"
 		COUNTER=$((COUNTER + 1))
-	done <<- EOF
+	done <<-EOF
 		$FAILED_UNITS_RAW
 	EOF
 
@@ -151,7 +151,7 @@ busctl_trigger() {
 		--match "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged'"
 }
 
-if ! command -v notify-send > /dev/null; then
+if ! command -v notify-send >/dev/null; then
 	echo "Command not found: notify-send" >&2
 	exit 1
 fi
