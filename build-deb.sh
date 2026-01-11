@@ -23,7 +23,7 @@ ii*) echo "devscripts already installed" ;;
 	;;
 esac
 
-if git rev-parse --is-inside-work-tree > /dev/null 2> /dev/null; then
+if git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; then
 	BUILD_DIR=/tmp/uwsm-build/uwsm-${VERSION}
 	echo "Exporting HEAD to '$BUILD_DIR' and building there..."
 	rm -fr "$BUILD_DIR"
@@ -38,7 +38,7 @@ DCHVERSION=$(dpkg-parsechangelog -l debian/changelog -S Version)
 
 if [ "$DEBVERSION" != "$DCHVERSION" ]; then
 	echo "Generating debian/changelog"
-	cat <<- EOF > debian/changelog
+	cat <<-EOF >debian/changelog
 		uwsm ($DEBVERSION) UNRELEASED; urgency=medium
 
 		  * Upstream build.
@@ -63,7 +63,7 @@ case "$(dpkg-query -Wf '${db:Status-Abbrev};${source:Version}' uwsm-build-deps)"
 		case "$line" in
 		'Depends:'*) bd_ideps=$line ;;
 		esac
-	done <<- EOF
+	done <<-EOF
 		$(apt-cache show uwsm-build-deps)
 	EOF
 	;;
@@ -82,7 +82,7 @@ if [ -n "$bd_cdeps" ]; then
 		case "$line" in
 		'Depends:'*) bd_cdeps=$line ;;
 		esac
-	done <<- EOF
+	done <<-EOF
 		$(apt-cache show "./uwsm-build-deps_${DEBVERSION}_all.deb")
 	EOF
 	if [ "$bd_ideps" = "$bd_cdeps" ]; then

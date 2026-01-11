@@ -7,7 +7,6 @@
 #      or reset
 #      (optional)
 
-
 UNIT=${1?First argument should be a unit to edit}
 SLICE=${2:-app-graphical.slice}
 
@@ -34,7 +33,6 @@ loaded__*)
 	;;
 esac
 
-
 case "$SLICE" in
 reset)
 	echo "Removing 'graphical-slice.conf' drop-in from '$UNIT'"
@@ -50,7 +48,7 @@ reset)
 	;;
 *)
 	echo "Assigning '$UNIT' to '$SLICE'"
-	systemctl --user edit --stdin --drop-in graphical-slice.conf "$UNIT" <<- EOF
+	systemctl --user edit --stdin --drop-in graphical-slice.conf "$UNIT" <<-EOF
 		[Unit]
 		After=graphical-session.target
 		[Service]

@@ -11,9 +11,9 @@ set -e
 if [ -n "$UWSM_VERSION" ]; then
 	echo "$UWSM_VERSION"
 
-elif git rev-parse --is-inside-work-tree > /dev/null 2>&1 && d_version=$(git describe --tags); then
+elif git rev-parse --is-inside-work-tree >/dev/null 2>&1 && d_version=$(git describe --tags); then
 	VERSION=${d_version#v}
-	IFS='-' read -r version cdelta ghash <<- EOF
+	IFS='-' read -r version cdelta ghash <<-EOF
 		$VERSION
 	EOF
 
