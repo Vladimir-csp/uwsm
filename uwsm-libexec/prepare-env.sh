@@ -39,7 +39,7 @@ source_dir() {
 		# process in standard order and visibility given by ls
 		while IFS='' read -r __env_file__; do
 			source_file "${1}/${__env_file__}"
-		done <<- EOF
+		done <<-EOF
 			$(ls "${1}")
 		EOF
 		unset __env_file__
@@ -91,7 +91,7 @@ process_config_dirs() {
 	IFS=":"
 	for __config_dir__ in $(get_all_config_dirs_extended); do
 		IFS="${__OIFS__}"
-		if type "in_each_config_dir_${__WM_BIN_ID__}" > /dev/null 2>&1; then
+		if type "in_each_config_dir_${__WM_BIN_ID__}" >/dev/null 2>&1; then
 			"in_each_config_dir_${__WM_BIN_ID__}" "${__config_dir__}" || return $?
 		else
 			in_each_config_dir "${__config_dir__}" || return $?
@@ -107,7 +107,7 @@ process_config_dirs_reversed() {
 	IFS=":"
 	for __config_dir__ in $(reverse "$(get_all_config_dirs_extended)"); do
 		IFS="${__OIFS__}"
-		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" > /dev/null 2>&1; then
+		if type "in_each_config_dir_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
 			"in_each_config_dir_reversed_${__WM_BIN_ID__}" "${__config_dir__}" || return $?
 		else
 			in_each_config_dir_reversed "${__config_dir__}" || return $?
@@ -120,7 +120,7 @@ process_config_dirs_reversed() {
 
 load_wm_env() {
 	# calls reverse config dir processing
-	if type "process_config_dirs_reversed_${__WM_BIN_ID__}" > /dev/null 2>&1; then
+	if type "process_config_dirs_reversed_${__WM_BIN_ID__}" >/dev/null 2>&1; then
 		"process_config_dirs_reversed_${__WM_BIN_ID__}" || return $?
 	else
 		process_config_dirs_reversed
@@ -182,14 +182,14 @@ export XDG_BACKEND="wayland"
 
 #### apply quirks
 
-if type "quirks_${__WM_BIN_ID__}" > /dev/null 2>&1; then
+if type "quirks_${__WM_BIN_ID__}" >/dev/null 2>&1; then
 	printf '%s\n' "Applying quirks for \"${__WM_BIN_ID__}\"."
 	"quirks_${__WM_BIN_ID__}" || exit $?
 fi
 
 #### load env files
 
-if type "load_wm_env_${__WM_BIN_ID__}" > /dev/null 2>&1; then
+if type "load_wm_env_${__WM_BIN_ID__}" >/dev/null 2>&1; then
 	"load_wm_env_${__WM_BIN_ID__}" || exit $?
 else
 	load_wm_env || exit $?
@@ -200,7 +200,7 @@ fi
 # TODO: remove this in a couple of years of xdg-user-dirs 0.19 spread
 # update XDG User Dirs, XDG Autostart would be too late
 
-if command -v xdg-user-dirs-update > /dev/null && ! systemctl --user is-enabled -q xdg-user-dirs.service; then
+if command -v xdg-user-dirs-update >/dev/null && ! systemctl --user is-enabled -q xdg-user-dirs.service; then
 	printf '%s\n' "Updating XDG User Dirs"
 	xdg-user-dirs-update
 fi

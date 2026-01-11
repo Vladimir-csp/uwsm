@@ -3,8 +3,7 @@
 
 quirks_labwc() {
 	# append "wlroots" to XDG_CURRENT_DESKTOP if not already there
-	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]
-	then
+	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]; then
 		case "A:${XDG_CURRENT_DESKTOP}:Z" in
 		*:wlroots:*) true ;;
 		*)
@@ -47,7 +46,7 @@ quirks_labwc() {
 	TEMP_UPDATE_REQUIRED=false
 	TEMP_RELOAD_REQUIRED=false
 	if [ -f "${TEMP_DROPIN_DIR}/55_reload.conf" ]; then
-		{ read -r TEMP_SUM1 TEMP_DROP && read -r TEMP_SUM2 TEMP_DROP ; } <<- EOF
+		{ read -r TEMP_SUM1 TEMP_DROP && read -r TEMP_SUM2 TEMP_DROP; } <<-EOF
 			$(printf '%s\n' "$TEMP_DROPIN_CONTENT" | md5sum - "${TEMP_DROPIN_DIR}/55_reload.conf")
 		EOF
 		if [ "$TEMP_SUM1" != "$TEMP_SUM2" ]; then
@@ -60,7 +59,7 @@ quirks_labwc() {
 	fi
 	if [ "$TEMP_UPDATE_REQUIRED" = "true" ]; then
 		echo "Adding reload drop-in for ${TEMP_WM_SERVICE}"
-		printf '%s\n' "$TEMP_DROPIN_CONTENT" > "${TEMP_DROPIN_DIR}/55_reload.conf"
+		printf '%s\n' "$TEMP_DROPIN_CONTENT" >"${TEMP_DROPIN_DIR}/55_reload.conf"
 	fi
 	# swap rung and clean up
 	case "$TEMP_DROPIN_RUNG" in
@@ -91,11 +90,11 @@ labwc_environment2finalize() {
 	# adds varnames to UWSM_FINALIZE_VARNAMES
 	while read -r line; do
 		case "$line" in
-		[!a-zA-Z_]* ) continue ;;
+		[!a-zA-Z_]*) continue ;;
 		*=*) true ;;
 		*) continue ;;
 		esac
-		IFS='=' read -r var value <<- EOF
+		IFS='=' read -r var value <<-EOF
 			$line
 		EOF
 		case "$var" in
@@ -112,7 +111,7 @@ in_each_config_dir_reversed_labwc() {
 	# fill UWSM_FINALIZE_VARNAMES with varnames from labwc env files
 	if [ -r "${1}/labwc/environment" ]; then
 		echo "Collecting varnames from \"${1}/labwc/environment\""
-		labwc_environment2finalize < "${1}/labwc/environment"
+		labwc_environment2finalize <"${1}/labwc/environment"
 		export UWSM_FINALIZE_VARNAMES
 	fi
 }
