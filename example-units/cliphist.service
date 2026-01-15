@@ -1,7 +1,8 @@
 [Unit]
 Description=Clipboard history “manager” for wayland
 Documentation=https://github.com/sentriz/cliphist
-# order startup after WM
+# make service stoppable/restartable by target
+PartOf=graphical-session.target
 After=graphical-session.target
 
 [Service]
@@ -20,3 +21,4 @@ WantedBy=graphical-session.target
 #WantedBy=wayland-session@wayfire.desktop.target
 #WantedBy=wayland-session@labwc.desktop.target
 #WantedBy=wayland-session@hyprland.desktop.target
+EnvironmentFile=-%t/uwsm/env_session.conf
