@@ -68,7 +68,7 @@ try_lock() {
 	*":${WATCH_TTY}") true ;;
 	# leaving watched tty: lock
 	"${WATCH_TTY}:"*)
-		if ! loginctl show-session "$S_ID" --property Id >/dev/null; then
+		if ! loginctl show-session "$S_ID" --property Id > /dev/null; then
 			printf '%s\n' "Session disappeared, exiting."
 			exit 0
 		fi
