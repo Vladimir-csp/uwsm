@@ -3694,7 +3694,7 @@ def app(
         final_args.extend(
             ["--property=Type=exec", "--property=ExitType=cgroup"]
             + [
-                f"--setenv={var}={os.environ.get(var, "")}"
+                f"--setenv={var}={os.environ.get(var, '')}"
                 for var in sorted(Varnames.session_specific)
                 if os.environ.get(var, "")
             ]
