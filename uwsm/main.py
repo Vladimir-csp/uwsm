@@ -2232,6 +2232,12 @@ class Args:
             help="Do not check for login shell.",
         )
         parsers["may_start"].add_argument(
+            "-r",
+            action="store_true",
+            dest="allow_remote",
+            help="Do not check for local session (allow remote).",
+        )
+        parsers["may_start"].add_argument(
             "-g",
             type=int,
             dest="gst_seconds",
@@ -4478,6 +4484,147 @@ def waitenv(
     )
 
 
+def check_may_start():
+    "Checks conditions for compositor startup, returns three sets: errors, v_dealbreakers, dealbreakers"
+    errors = set()
+    # visible dealbreakers
+    v_dealbreakers = set()
+    # silent dealbreakers
+    dealbreakers = set()
+
+    # just bail out if root
+    if os.geteuid() == 0:
+        dealbreakers.add("Running as root")
+        return errors, v_dealbreakers, dealbreakers
+
+    # start with checking DBus availability. Python module will try to
+    # start it unconditionally if not found, and make a fuss.
+    # silently fail if verbosity not requested. For ssh sessions and like.
+    if not os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""):
+        dealbreakers.add("DBUS_SESSION_BUS_ADDRESS is not available")
+        return errors, v_dealbreakers, dealbreakers
+
+    try:
+        if is_active():
+            v_dealbreakers.add("A compositor and/or graphical-session* targets are already active")
+            if not Args.parsed.verbose:
+                return errors, v_dealbreakers, dealbreakers
+    except Exception as caught_exception:
+        errors.update("Could not check for active compositor!", caught_exception)
+        return errors, v_dealbreakers, dealbreakers
+
+    # check if parent process is a login shell
+    if not Args.parsed.nologin:
+        try:
+            with open(
+                f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
+            ) as ppcmdline:
+                parent_cmdline = ppcmdline.read()
+                parent_cmdline = parent_cmdline.strip()
+            print_debug(f"parent_pid: {os.getppid()}")
+            print_debug(f"parent_cmdline: {parent_cmdline}")
+            if not parent_cmdline.startswith("-"):
+                dealbreakers.add("Not in login shell")
+                if not Args.parsed.verbose:
+                    return errors, v_dealbreakers, dealbreakers
+        except Exception as caught_exception:
+            errors.update("Could not determine parent process command!", caught_exception)
+            return errors, v_dealbreakers, dealbreakers
+
+    # check foreground VT
+    fgvt = None
+
+    # argparse does not pass default for this in some python versions
+    allowed_vtnr = Args.parsed.vtnr or [1]
+    print_debug("allowed_vtnr", allowed_vtnr)
+    if allowed_vtnr != [0]:
+        fgvt = get_fg_vt()
+        if fgvt is None:
+            dealbreakers.add("Could not determine foreground VT")
+            if not Args.parsed.verbose:
+                return errors, v_dealbreakers, dealbreakers
+        else:
+            if fgvt not in allowed_vtnr:
+                dealbreakers.add(
+                    f"Foreground VT ({fgvt}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
+                )
+                if not Args.parsed.verbose:
+                    return errors, v_dealbreakers, dealbreakers
+
+    bus_system = None
+    session_id_str = os.environ.get("XDG_SESSION_ID", "")
+    # check session VTNr
+    if allowed_vtnr != [0]:
+        if session_id_str:
+            try:
+                bus_system = DbusInteractions("system")
+                session_vtnr = int(bus_system.get_session_property(session_id_str, "VTNr"))
+                print_debug("session_vtnr", session_vtnr)
+                if session_vtnr == 0:
+                    dealbreakers.add(f"Session {session_id_str} is not associated with a VT")
+                    if not Args.parsed.verbose:
+                        return errors, v_dealbreakers, dealbreakers
+                elif session_vtnr not in allowed_vtnr:
+                    dealbreakers.add(
+                        f"Session VT ({session_vtnr}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
+                    )
+                    if not Args.parsed.verbose:
+                        return errors, v_dealbreakers, dealbreakers
+            except Exception as caught_exception:
+                errors.update("Could not get session VTNr!", caught_exception)
+                return errors, v_dealbreakers, dealbreakers
+        else:
+            dealbreakers.add("XDG_SESSION_ID is not available")
+            if not Args.parsed.verbose:
+                return errors, v_dealbreakers, dealbreakers
+
+    # check local session
+    if not Args.parsed.allow_remote:
+        if session_id_str:
+            try:
+                if bus_system is None:
+                    bus_system = DbusInteractions("system")
+                    print_debug("bus_system initial", bus_system)
+
+                session_remote = int(bus_system.get_session_property(session_id_str, "Remote"))
+                print_debug("session_remote", session_remote)
+                if session_remote:
+                    dealbreakers.add(f"Session {session_id_str} is not local")
+                    if not Args.parsed.verbose:
+                        return errors, v_dealbreakers, dealbreakers
+            except Exception as caught_exception:
+                errors.update("Could not get session Remote attr!", caught_exception)
+                return errors, v_dealbreakers, dealbreakers
+        else:
+            dealbreakers.add("XDG_SESSION_ID is not available")
+            if not Args.parsed.verbose:
+                return errors, v_dealbreakers, dealbreakers
+
+    # check for graphical target
+    if Args.parsed.gst_seconds > 0:
+        try:
+            if bus_system is None:
+                bus_system = DbusInteractions("system")
+                print_debug("bus_system initial", bus_system)
+
+            if not wait_for_unit(
+                "graphical.target",
+                bus=bus_system,
+                states=["active", "activating"],
+                timeout=Args.parsed.gst_seconds,
+                quiet=Args.parsed.quiet,
+            ):
+                dealbreakers.add("System has not reached graphical.target")
+                if not Args.parsed.verbose:
+                    return errors, v_dealbreakers, dealbreakers
+
+        except Exception as caught_exception:
+            errors.update("Could not check if graphical.target is reached!", caught_exception)
+            return errors, v_dealbreakers, dealbreakers
+
+    return errors, v_dealbreakers, dealbreakers
+
+
 def main():
     "UWSM main entrypoint"
 
@@ -4798,108 +4945,17 @@ def main():
             sys.exit(1)
 
     elif Args.parsed.mode == "check" and Args.parsed.checker == "may-start":
-        # silent dealbreakers
-        dealbreakers = []
-        # visible dealbreakers
-        v_dealbreakers = []
-        errors = []
-        # skip further testing, i.e. due to errors
-        enough = False
-
-        # start with checking DBus availability. Python module will try to
-        # start it unconditionally if not found, and make a fuss.
-        # silently fail if verbosity not requested. For ssh sessions and like.
-        if not os.environ.get("DBUS_SESSION_BUS_ADDRESS", ""):
-            dealbreakers.append("DBUS_SESSION_BUS_ADDRESS is not available")
-            enough = True
-
-        if not enough:
-            try:
-                if is_active():
-                    v_dealbreakers.append("A compositor and/or graphical-session* targets are already active")
-            except Exception as caught_exception:
-                errors.append("Could not check for active compositor!")
-                enough = True
-
-        # check if parent process is a login shell
-        if not enough and not Args.parsed.nologin:
-            try:
-                with open(
-                    f"/proc/{os.getppid()}/cmdline", "r", encoding="UTF-8"
-                ) as ppcmdline:
-                    parent_cmdline = ppcmdline.read()
-                    parent_cmdline = parent_cmdline.strip()
-                print_debug(f"parent_pid: {os.getppid()}")
-                print_debug(f"parent_cmdline: {parent_cmdline}")
-                if not parent_cmdline.startswith("-"):
-                    dealbreakers.append("Not in login shell")
-            except Exception as caught_exception:
-                errors.append("Could not determine parent process command!")
-                enough = True
-
-        # check foreground VT
-        fgvt = None
-
-        # argparse does not pass default for this in some python versions
-        allowed_vtnr = Args.parsed.vtnr or [1]
-        print_debug("allowed_vtnr", allowed_vtnr)
-        if not enough and allowed_vtnr != [0]:
-            fgvt = get_fg_vt()
-            if fgvt is None:
-                dealbreakers.append("Could not determine foreground VT")
-            else:
-                if fgvt not in allowed_vtnr:
-                    dealbreakers.append(
-                        f"Foreground VT ({fgvt}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
-                    )
-
-        bus_system = None
-        # check session VTNr
-        if not enough and allowed_vtnr != [0]:
-            session_id_str = os.environ.get("XDG_SESSION_ID", "")
-            if session_id_str:
-                try:
-                    bus_system = DbusInteractions("system")
-                    session_vtnr = int(bus_system.get_session_property(session_id_str, "VTNr"))
-                    print_debug("session_vtnr", session_vtnr)
-                    if session_vtnr == 0:
-                        dealbreakers.append(f"Session {session_id_str} is not associated with VT")
-                    elif session_vtnr not in allowed_vtnr:
-                        dealbreakers.append(
-                            f"Session VT ({session_vtnr}) is not among allowed VTs ({'|'.join([str(v) for v in allowed_vtnr])})"
-                        )
-                except Exception as caught_exception:
-                    errors.extend("Could not get session VTNr!", caught_exception)
-                    enough = True
-            else:
-                dealbreakers.append("XDG_SESSION_ID is not available")
-
-        # check for graphical target
-        if not enough and Args.parsed.gst_seconds > 0:
-            try:
-                if bus_system is None:
-                    bus_system = DbusInteractions("system")
-                print_debug("bus_system initial", bus_system)
-
-                if not wait_for_unit(
-                    "graphical.target",
-                    bus=bus_system,
-                    states=["active", "activating"],
-                    timeout=Args.parsed.gst_seconds,
-                    quiet=Args.parsed.quiet,
-                ):
-                    dealbreakers.append("System has not reached graphical.target")
-
-            except Exception as caught_exception:
-                errors.extend("Could not check if graphical.target is reached!", caught_exception)
-                enough = True
+        errors, v_dealbreakers, dealbreakers = check_may_start()
 
         # sum up, print, and exit with verdict
         if errors or v_dealbreakers or dealbreakers:
             if errors:
+                errors = list(errors)
                 errors.insert(0, "Got errors while checking if may start compositor:")
                 print_error(*errors, sep="\n")
             if v_dealbreakers or dealbreakers:
+                v_dealbreakers = list(v_dealbreakers)
+                dealbreakers = list(dealbreakers)
                 if Args.parsed.verbose:
                     v_dealbreakers.insert(0, "May not start compositor:")
                     print_warning(*(v_dealbreakers + dealbreakers), sep="\n  ")

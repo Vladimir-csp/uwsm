@@ -232,15 +232,19 @@ general is in active or activating state.
 
 	*uwsm* check may-start [-h] [-g [_S_]] [-v|-q] [_N_ ...]
 
-|[     *-g* _S_
-:< wait _S_ seconds for graphical.target in queue (default: 60; 0 or
+|[     _N_ ...
+:< allowed VT numbers (default: 1)
+|      *-g* _S_
+:  wait _S_ seconds for graphical.target in queue (default: 60; 0 or
    less disables check).
+|      *-i*
+:  do not check for login shell
+|      *-r*
+:  do not check for local session (allow remote session)
 |      *-v*
 :  show all failed tests
 |      *-q*
 :  be quiet
-|      _N_ ...
-:  allowed VT numbers (default: 1)
 
 
 Checks whether it is OK to launch a wayland session via the following conditions:
