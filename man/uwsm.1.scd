@@ -470,7 +470,7 @@ This asks to select a compositor (or refuse and continue with login shell)
 when logged in on VT 1:
 
 ```
-	if uwsm may-start && uwsm select; then
+	if uwsm check may-start && uwsm select; then
 		exec systemd-cat -t uwsm_start uwsm start default
 	fi
 ```
@@ -478,9 +478,9 @@ when logged in on VT 1:
 This just starts a specific compositor depending on foreground VT:
 
 ```
-	if uwsm may-start 1; then
+	if uwsm check may-start 1; then
 		exec systemd-cat -t uwsm_start uwsm start sway.desktop
-	elif uwsm may-start 2; then
+	elif uwsm check may-start 2; then
 		exec systemd-cat -t uwsm_start uwsm start labwc.desktop
 	fi
 ```
