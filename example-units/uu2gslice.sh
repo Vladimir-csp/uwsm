@@ -7,7 +7,6 @@
 #      or reset
 #      (optional)
 
-
 UNIT=${1?First argument should be a unit to edit}
 SLICE=${2:-app-graphical.slice}
 
@@ -33,7 +32,6 @@ loaded__*)
 	exit 1
 	;;
 esac
-
 
 case "$SLICE" in
 reset)
