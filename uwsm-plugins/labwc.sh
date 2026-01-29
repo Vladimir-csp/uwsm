@@ -3,8 +3,7 @@
 
 quirks_labwc() {
 	# append "wlroots" to XDG_CURRENT_DESKTOP if not already there
-	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]
-	then
+	if [ "${__WM_DESKTOP_NAMES_EXCLUSIVE__}" != "true" ]; then
 		case "A:${XDG_CURRENT_DESKTOP}:Z" in
 		*:wlroots:*) true ;;
 		*)
@@ -47,7 +46,7 @@ quirks_labwc() {
 	TEMP_UPDATE_REQUIRED=false
 	TEMP_RELOAD_REQUIRED=false
 	if [ -f "${TEMP_DROPIN_DIR}/55_reload.conf" ]; then
-		{ read -r TEMP_SUM1 TEMP_DROP && read -r TEMP_SUM2 TEMP_DROP ; } <<- EOF
+		{ read -r TEMP_SUM1 TEMP_DROP && read -r TEMP_SUM2 TEMP_DROP; } <<- EOF
 			$(printf '%s\n' "$TEMP_DROPIN_CONTENT" | md5sum - "${TEMP_DROPIN_DIR}/55_reload.conf")
 		EOF
 		if [ "$TEMP_SUM1" != "$TEMP_SUM2" ]; then
@@ -91,7 +90,7 @@ labwc_environment2finalize() {
 	# adds varnames to UWSM_FINALIZE_VARNAMES
 	while read -r line; do
 		case "$line" in
-		[!a-zA-Z_]* ) continue ;;
+		[!a-zA-Z_]*) continue ;;
 		*=*) true ;;
 		*) continue ;;
 		esac
