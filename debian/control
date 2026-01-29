@@ -1,7 +1,7 @@
 Source: uwsm
 Section: x11
 Priority: optional
-Maintainer: Vladimir-csp
+Maintainer: Vladimir-csp <4061903+Vladimir-csp@users.noreply.github.com>
 Build-Depends:
  debhelper-compat (= 13),
  dh-sequence-python3,
