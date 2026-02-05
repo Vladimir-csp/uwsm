@@ -6,6 +6,7 @@ uwsm_plugins = [
   'start_hyprland.sh',
   'niri.sh',
   'niri_session.sh',
+  'mango.sh',
 ]
 
 install_data(
