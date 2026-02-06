@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Mango
+GenericName=Wayland Compositor
+Comment=A lightweight wlroots Wayland compositor inspired by dwl
+Exec=mango
+Type=Application
+Keywords=wlroots;window;compositor;wayland
+Categories=System;Utility;
