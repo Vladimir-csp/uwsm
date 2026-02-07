@@ -94,6 +94,8 @@ Currently included:
 - `wayfire`
 - `labwc`
 - `hyprland`
+- `niri`
+- `mango`
 
 LXQt variants of the above are provided by the experimental [LXQt Universal
 Wayland Session](https://github.com/basil/lxqt-uwsm-session).
