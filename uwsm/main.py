@@ -3399,6 +3399,8 @@ def app(
 
             entry = entries[0]
 
+        unit_properties.append(f"SourcePath={entry.filename}")
+
         # request terminal
         if entry.getTerminal():
             print_debug("entry requested a terminal")
@@ -3498,6 +3500,34 @@ def app(
             cmdline = [cmd] + cmd_args
 
     # end of Desktop entry parsing
+
+    else:
+        # parse DESKTOP_ENTRY_* vars
+
+        if not app_name and os.environ.get("DESKTOP_ENTRY_ID", default=""):
+            app_name = os.environ.get("DESKTOP_ENTRY_ID").removesuffix(".desktop")
+            print_debug("set app_name from DESKTOP_ENTRY_ID", app_name)
+
+        if os.environ.get("DESKTOP_ENTRY_PATH", default=""):
+            unit_properties.append(f"SourcePath={os.environ.get('DESKTOP_ENTRY_PATH')}")
+            print_debug("set SourcePath property from DESKTOP_ENTRY_PATH", os.environ.get("DESKTOP_ENTRY_PATH"))
+
+        # get localized entry name for description if no override
+        if not unit_description:
+            unit_description = " - ".join(
+                n
+                for n in (
+                    os.environ.get("DESKTOP_ENTRY_NAME_L", default="")
+                    or os.environ.get("DESKTOP_ENTRY_NAME", default=""),
+                    os.environ.get("DESKTOP_ENTRY_GENERICNAME_L", default="")
+                    or os.environ.get("DESKTOP_ENTRY_GENERICNAME", default=""),
+                )
+                if n
+            )
+            if unit_description:
+                print_debug(
+                    "set unit_description from DESKTOP_ENTRY_*NAME*", unit_description
+                )
 
     print_debug("cmdline", cmdline)
 
@@ -3747,6 +3777,21 @@ def app(
 
     if return_cmdline:
         return final_args
+
+    # drop DESKTOP_ENTRY_* vars from environment
+    os.environ.pop("DESKTOP_ENTRY_ID", default="")
+    os.environ.pop("DESKTOP_ENTRY_PATH", default="")
+    os.environ.pop("DESKTOP_ENTRY_NAME", default="")
+    os.environ.pop("DESKTOP_ENTRY_NAME_L", default="")
+    os.environ.pop("DESKTOP_ENTRY_COMMENT", default="")
+    os.environ.pop("DESKTOP_ENTRY_COMMENT_L", default="")
+    os.environ.pop("DESKTOP_ENTRY_GENERICNAME", default="")
+    os.environ.pop("DESKTOP_ENTRY_GENERICNAME_L", default="")
+    os.environ.pop("DESKTOP_ENTRY_ICON", default="")
+    os.environ.pop("DESKTOP_ENTRY_ACTION", default="")
+    os.environ.pop("DESKTOP_ENTRY_ACTION_NAME", default="")
+    os.environ.pop("DESKTOP_ENTRY_ACTION_NAME_L", default="")
+    os.environ.pop("DESKTOP_ENTRY_ACTION_ICON", default="")
 
     if fork:
         return subprocess.Popen(final_args)
@@ -4506,7 +4551,9 @@ def check_may_start():
 
     try:
         if is_active():
-            v_dealbreakers.add("A compositor and/or graphical-session* targets are already active")
+            v_dealbreakers.add(
+                "A compositor and/or graphical-session* targets are already active"
+            )
             if not Args.parsed.verbose:
                 return errors, v_dealbreakers, dealbreakers
     except Exception as caught_exception:
@@ -4528,7 +4575,9 @@ def check_may_start():
                 if not Args.parsed.verbose:
                     return errors, v_dealbreakers, dealbreakers
         except Exception as caught_exception:
-            errors.update("Could not determine parent process command!", caught_exception)
+            errors.update(
+                "Could not determine parent process command!", caught_exception
+            )
             return errors, v_dealbreakers, dealbreakers
 
     # check foreground VT
@@ -4558,10 +4607,14 @@ def check_may_start():
         if session_id_str:
             try:
                 bus_system = DbusInteractions("system")
-                session_vtnr = int(bus_system.get_session_property(session_id_str, "VTNr"))
+                session_vtnr = int(
+                    bus_system.get_session_property(session_id_str, "VTNr")
+                )
                 print_debug("session_vtnr", session_vtnr)
                 if session_vtnr == 0:
-                    dealbreakers.add(f"Session {session_id_str} is not associated with a VT")
+                    dealbreakers.add(
+                        f"Session {session_id_str} is not associated with a VT"
+                    )
                     if not Args.parsed.verbose:
                         return errors, v_dealbreakers, dealbreakers
                 elif session_vtnr not in allowed_vtnr:
@@ -4586,7 +4639,9 @@ def check_may_start():
                     bus_system = DbusInteractions("system")
                     print_debug("bus_system initial", bus_system)
 
-                session_remote = int(bus_system.get_session_property(session_id_str, "Remote"))
+                session_remote = int(
+                    bus_system.get_session_property(session_id_str, "Remote")
+                )
                 print_debug("session_remote", session_remote)
                 if session_remote:
                     dealbreakers.add(f"Session {session_id_str} is not local")
@@ -4619,7 +4674,9 @@ def check_may_start():
                     return errors, v_dealbreakers, dealbreakers
 
         except Exception as caught_exception:
-            errors.update("Could not check if graphical.target is reached!", caught_exception)
+            errors.update(
+                "Could not check if graphical.target is reached!", caught_exception
+            )
             return errors, v_dealbreakers, dealbreakers
 
     return errors, v_dealbreakers, dealbreakers

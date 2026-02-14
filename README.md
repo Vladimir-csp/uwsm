@@ -482,6 +482,12 @@ A one-shot app launcher can be started directly, but either configured to run
 things via `uwsm app` or wrapped in a shell expression to handle output.
 Not all launchers are able to provide Desktop Entry ID, most just provide the
 resulting command, so units will lack fancy description.
+
+Fuzzel since 1.14.0 exports app metadata via `DESKTOP_ENTRY_*` vars, hopefully
+starting a good trend. Those vars are supported transparently by `uwsm app`.
+See [relevant PR](https://codeberg.org/dnkl/fuzzel/pulls/666#issuecomment-6804562)
+for more info.
+
 Some examples:
 
 | Launcher     | Via     | What                                                                                                                                                                             | Entry |
