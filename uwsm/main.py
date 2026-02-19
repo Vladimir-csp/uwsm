@@ -4549,17 +4549,6 @@ def check_may_start():
         dealbreakers.add("DBUS_SESSION_BUS_ADDRESS is not available")
         return errors, v_dealbreakers, dealbreakers
 
-    try:
-        if is_active():
-            v_dealbreakers.add(
-                "A compositor and/or graphical-session* targets are already active"
-            )
-            if not Args.parsed.verbose:
-                return errors, v_dealbreakers, dealbreakers
-    except Exception as caught_exception:
-        errors.update("Could not check for active compositor!", caught_exception)
-        return errors, v_dealbreakers, dealbreakers
-
     # check if parent process is a login shell
     if not Args.parsed.nologin:
         try:
@@ -4579,6 +4568,17 @@ def check_may_start():
                 "Could not determine parent process command!", caught_exception
             )
             return errors, v_dealbreakers, dealbreakers
+
+    try:
+        if is_active():
+            v_dealbreakers.add(
+                "A compositor and/or graphical-session* targets are already active"
+            )
+            if not Args.parsed.verbose:
+                return errors, v_dealbreakers, dealbreakers
+    except Exception as caught_exception:
+        errors.update("Could not check for active compositor!", caught_exception)
+        return errors, v_dealbreakers, dealbreakers
 
     # check foreground VT
     fgvt = None
