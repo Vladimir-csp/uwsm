@@ -3510,7 +3510,10 @@ def app(
 
         if os.environ.get("DESKTOP_ENTRY_PATH", default=""):
             unit_properties.append(f"SourcePath={os.environ.get('DESKTOP_ENTRY_PATH')}")
-            print_debug("set SourcePath property from DESKTOP_ENTRY_PATH", os.environ.get("DESKTOP_ENTRY_PATH"))
+            print_debug(
+                "set SourcePath property from DESKTOP_ENTRY_PATH",
+                os.environ.get("DESKTOP_ENTRY_PATH"),
+            )
 
         # get localized entry name for description if no override
         if not unit_description:
@@ -4008,6 +4011,9 @@ def fill_comp_globals():
             f'"{CompGlobals.id}" does not conform to "{Val.wm_id.pattern}" pattern!'
         )
 
+    # escape CompGlobals.id for systemd
+    CompGlobals.id_unit_string = simple_systemd_escape(CompGlobals.id, start=False)
+
     # if in aux exec and have cmdline already, this is all we need
     if (
         Args.parsed.mode == "aux"
@@ -4015,9 +4021,6 @@ def fill_comp_globals():
         and CompGlobals.cmdline
     ):
         return
-
-    # escape CompGlobals.id for systemd
-    CompGlobals.id_unit_string = simple_systemd_escape(CompGlobals.id, start=False)
 
     if main_arg.path is not None:
         main_arg.check_path()
