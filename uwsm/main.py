@@ -2538,8 +2538,8 @@ def save_env(filename: str, env: dict = None, separator: str = "\0"):
     print_debug(f"written {env_file}", env)
 
 
-def load_env(filename: str, delete: bool = False) -> dict:
-    "Reads environment from a null-separated runtime file"
+def load_env(filename: str, delete: bool = False, separator: str = "\0") -> dict:
+    "Reads environment from a runtime file, null-separated by default"
     env_file = os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, filename)
     env = {}
     if not os.path.isfile(env_file):
@@ -2547,7 +2547,7 @@ def load_env(filename: str, delete: bool = False) -> dict:
     try:
         with open(env_file, "r", encoding="UTF-8") as env_file_data:
             env_raw = env_file_data.read()
-        env_raw = sane_split(env_raw, "\0")
+        env_raw = sane_split(env_raw.strip(), separator)
         for string in env_raw:
             var, value = string.split("=", maxsplit=1)
             env.update({var: value})
@@ -3727,15 +3727,24 @@ def app(
 
     # compose arguments
     final_args = ["systemd-run", "--user"]
+    _session_env = load_env("env_session.conf", separator="\n")
     if app_unit_type == "scope":
         final_args.append("--scope")
+        final_args.extend(
+            [
+                f"--setenv={var}={val}"
+                for var in sorted(Varnames.session_specific)
+                if (val := os.environ.get(var) or _session_env.get(var))
+            ]
+        )
     else:
         final_args.extend(
             ["--property=Type=exec", "--property=ExitType=cgroup"]
+            + [f"--property=EnvironmentFile=-{os.path.join(BaseDirectory.get_runtime_dir(), BIN_NAME, 'env_session.conf')}"]
             + [
-                f"--setenv={var}={os.environ.get(var, '')}"
+                f"--setenv={var}={val}"
                 for var in sorted(Varnames.session_specific)
-                if os.environ.get(var, "")
+                if (val := os.environ.get(var) or _session_env.get(var))
             ]
         )
         # silence service via unit properties
