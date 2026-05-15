@@ -5,3 +5,4 @@ PartOf=graphical-session.target
 After=graphical-session.target
 Conflicts=wayland-session-shutdown.target
 Before=wayland-session-shutdown.target
+StopPropagatedFrom=graphical-session.target
