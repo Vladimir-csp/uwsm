@@ -1395,28 +1395,24 @@ def generate_dropins(rung: str = "runtime"):
     if waitenv_timeout != 30:
         update_unit(
             "wayland-wm@.service.d/50_timeout.conf",
-            dedent(
-                f"""
+            dedent(f"""
                 # injected by {BIN_NAME}, do not edit
                 [Unit]
                 X-UWSMMark=generic
                 [Service]
                 TimeoutStartSec={waitenv_timeout}
-                """
-            ),
+                """),
             rung=rung,
         )
         update_unit(
             "wayland-session-waitenv.service.d/50_timeout.conf",
-            dedent(
-                f"""
+            dedent(f"""
                 # injected by {BIN_NAME}, do not edit
                 [Unit]
                 X-UWSMMark=generic
                 [Service]
                 TimeoutStartSec={waitenv_timeout}
-                """
-            ),
+                """),
             rung=rung,
         )
     else:
@@ -1432,24 +1428,16 @@ def generate_dropins(rung: str = "runtime"):
         f"wayland-wm@{CompGlobals.id_unit_string}.service.d/50_custom.conf"
     )
     # initial data as lists for later joining
-    wm_specific_preloader_data = [
-        dedent(
-            f"""
+    wm_specific_preloader_data = [dedent(f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSMMark={CompGlobals.id}
-            """
-        )
-    ]
-    wm_specific_service_data = [
-        dedent(
-            f"""
+            """)]
+    wm_specific_service_data = [dedent(f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSMMark={CompGlobals.id}
-            """
-        )
-    ]
+            """)]
 
     # name or description is given
     if CompGlobals.name or CompGlobals.description:
@@ -1488,15 +1476,11 @@ def generate_dropins(rung: str = "runtime"):
             preloader_exec.append(CompGlobals.cmdline[0])
 
         # append to string list
-        wm_specific_preloader_data.append(
-            dedent(
-                f"""
+        wm_specific_preloader_data.append(dedent(f"""
                 [Service]
                 ExecStart=
                 ExecStart={shlex.join(preloader_exec_base + preloader_exec)}\n
-                """
-            )
-        )
+                """))
 
     # service exec needs ID and command line
     service_exec_base = [BIN_PATH, "aux", "exec", "--", "%I"]
@@ -1511,15 +1495,11 @@ def generate_dropins(rung: str = "runtime"):
 
     # append to string list
     if service_exec:
-        wm_specific_service_data.append(
-            dedent(
-                f"""
+        wm_specific_service_data.append(dedent(f"""
                 [Service]
                 ExecStart=
                 ExecStart={shlex.join(service_exec_base + service_exec)}\n
-                """
-            )
-        )
+                """))
 
     if len(wm_specific_preloader_data) > 1:
         # add preloader customization drop-in
@@ -1553,8 +1533,7 @@ def generate_tweaks(rung: str = "run"):
     # ordering and slicing autostart apps
     update_unit(
         "app-@autostart.service.d/slice-tweak.conf",
-        dedent(
-            f"""
+        dedent(f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSMMark=tweaks
@@ -1565,15 +1544,13 @@ def generate_tweaks(rung: str = "run"):
             # also put them in special graphical app slice
             Slice=app-graphical.slice
             EnvironmentFile=-%t/{BIN_NAME}/env_session.conf
-            """
-        ),
+            """),
         rung=rung,
     )
     # ordering and slicing flatpaks
     update_unit(
         "app-flatpak-.scope.d/order-tweak.conf",
-        dedent(
-            f"""
+        dedent(f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSMMark=tweaks
@@ -1583,8 +1560,7 @@ def generate_tweaks(rung: str = "run"):
             [Scope]
             # also put them in special graphical app slice
             Slice=app-graphical.slice
-            """
-        ),
+            """),
         rung=rung,
     )
     ## hotfix some portals
@@ -1592,14 +1568,12 @@ def generate_tweaks(rung: str = "run"):
     # upstream is ordered after plasma-core.target which may be not installed
     update_unit(
         "plasma-xdg-desktop-portal-kde.service.d/order-tweak.conf",
-        dedent(
-            f"""
+        dedent(f"""
             # injected by {BIN_NAME}, do not edit
             [Unit]
             X-UWSMMark=tweaks
             After=graphical-session.target
-            """
-        ),
+            """),
         rung=rung,
     )
 
@@ -1673,24 +1647,20 @@ class Args:
         # main parser with subcommands
         parsers["main"] = argparse.ArgumentParser(
             formatter_class=HelpFormatterNewlines,
-            description=dedent(
-                """
+            description=dedent("""
                 Universal Wayland Session Manager.\n
                 \n
                 Launches arbitrary wayland compositor via a set of systemd user units
                 to provide graphical user session with environment management,
                 XDG autostart support, scoped application launch helpers,
                 clean shutdown.
-                """
-            ),
+                """),
             # usage='%(prog)s [-h] action ...',
-            epilog=dedent(
-                f"""
+            epilog=dedent(f"""
                 See "{BIN_NAME} {{subcommand}} -h" for further help on each subcommand.\n
                 \n
                 See "man {BIN_NAME}" for more detailed info on integration and operation.\n
-                """
-            ),
+                """),
             exit_on_error=exit_on_error,
         )
         parsers["main_subparsers"] = parsers["main"].add_subparsers(
@@ -1711,15 +1681,13 @@ class Args:
             "wm_cmdline",
             metavar="args",
             nargs="+",
-            help=dedent(
-                """
+            help=dedent("""
                 Compositor command line. The first argument acts as an ID and should be either one of:\n
                   - Executable name\n
                   - Desktop Entry ID (optionally with ":"-delimited action ID)\n
                   - Special value "select" or "default"\n
                 If given as path, hardcode mode is implied.\n
-                """
-            ),
+                """),
         )
 
         parsers["wm_args_raw"] = argparse.ArgumentParser(
@@ -1791,15 +1759,13 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Select default compositor entry",
             description="Invokes whiptail menu for selecting wayland-sessions Desktop Entries.",
-            epilog=dedent(
-                f"""
+            epilog=dedent(f"""
                 Entries are selected from "wayland-sessions" XDG data hierarchy.
                 Default selection is read from first encountered "{BIN_NAME}/default-id" file in
                 XDG Config hierarchy and system part of XDG Data hierarchy. When selected, choice is
                 saved to user part of XDG Config hierarchy ("${{XDG_CONFIG_HOME}}/{BIN_NAME}/default-id").
                 Nothing else is done.
-                """
-            ),
+                """),
         )
 
         # start subcommand
@@ -1809,16 +1775,14 @@ class Args:
             help="Start compositor",
             description="Generates units for given compositor command line or Desktop Entry and starts compositor.",
             parents=[parsers["wm_args"], parsers["wm_meta"]],
-            epilog=dedent(
-                f"""
+            epilog=dedent(f"""
                 Compositor should either put WAYLAND_DISPLAY var into systemd user service environment
                 itself, or finalize its startup by running this:\n
                 \n
                   {BIN_NAME} finalize [VAR ...]\n
                 \n
                 Otherwise, the compositor's unit will terminate due to startup timeout.
-                """
-            ),
+                """),
         )
         unit_rung_preset = False
         unit_rung_default = os.getenv("UWSM_UNIT_RUNG", None)
@@ -1986,8 +1950,7 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Export variables from compositor, notify systemd of unit startup.",
             description="For use inside compositor to export essential variables and complete compositor unit startup.",
-            epilog=dedent(
-                """
+            epilog=dedent("""
                 Exports variables to systemd user manager: WAYLAND_DISPLAY, DISPLAY,
                 and any optional variables mentioned by name as arguments, or listed
                 whitespace-separated in UWSM_FINALIZE_VARNAMES environment var.\n
@@ -1997,8 +1960,7 @@ class Args:
                 If all is well, sends startup notification to systemd user manager,
                 so compositor unit is considered started and graphical-session.target
                 can be declared reached.
-                """
-            ),
+                """),
         )
         parsers["finalize"].add_argument(
             "env_names",
@@ -2056,42 +2018,36 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Application unit launcher",
             description="Launches application as a scope or service in specific slice.",
-            epilog=dedent(
-                """
+            epilog=dedent("""
                 It is highly recommended to configure your compositor to launch apps
                 via this command to fully utilize user-level systemd unit management.\n
                 It would not be prudent to accumulate app processes in compositor's unit.
-                """
-            ),
+                """),
         )
         parsers["app"].add_argument(
             "cmdline",
             metavar="args",
             # allow empty cmdline if '-T' is given
             nargs=("*" if terminal_requested else "+"),
-            help=dedent(
-                """
+            help=dedent("""
                 Application command line. The first argument can be either one of:\n
                   - Executable name or path\n
                   - Desktop Entry ID (with optional ":"-delimited action ID)\n
                   - Path to Desktop Entry file (with optional ":"-delimited action ID)\n
-                """
-            ),
+                """),
         )
         parsers["app"].add_argument(
             "-s",
             dest="slice_name",
             metavar="{a,b,s,custom.slice}",
-            help=dedent(
-                f"""
+            help=dedent(f"""
                 Slice selector:\n
                   - {Styles.under}a{Styles.reset}pp-graphical.slice\n
                   - {Styles.under}b{Styles.reset}ackground-graphical.slice\n
                   - {Styles.under}s{Styles.reset}ession-graphical.slice\n
                   - custom by full name\n
                 (default: %(default)s)
-                """
-            ),
+                """),
             default="a",
         )
         app_unit_type_preset = False
@@ -2161,12 +2117,10 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Performs state checks",
             description="Performs a check, returns 0 if true, 1 if false.",
-            epilog=dedent(
-                f"""
+            epilog=dedent(f"""
                 Use may-start checker to integrate startup into shell profile
                 See "{BIN_NAME} check may-start -h"
-                """
-            ),
+                """),
         )
         parsers["check_subparsers"] = parsers["check"].add_subparsers(
             title="Subcommands",
@@ -2195,8 +2149,7 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Checks for start conditions",
             description="Checks whether it is OK to launch a wayland session.",
-            epilog=dedent(
-                """
+            epilog=dedent("""
                 Conditions:\n
                   - User's dbus is available
                   - Running from login shell\n
@@ -2205,8 +2158,7 @@ class Args:
                   - Foreground and session's VT is among allowed (default: 1)\n
                 \n
                 This command is essential for integrating startup into shell profile.
-                """
-            ),
+                """),
         )
         parsers["may_start"].add_argument(
             "vtnr",
@@ -2319,8 +2271,7 @@ class Args:
             formatter_class=HelpFormatterNewlines,
             help="Daemon for fast app argument generation.",
             description="Receives app arguments from a named pipe, returns shell code",
-            epilog=dedent(
-                f"""
+            epilog=dedent(f"""
                 Receives app arguments via "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-in" pipe.\n
                 Returns shell code to "${{XDG_RUNTIME_DIR}}/uwsm-app-daemon-out" pipe.
                 \n
@@ -2332,8 +2283,7 @@ class Args:
                   app	the rest is processed the same as in "{BIN_NAME} app"\n
                   ping	just "pong" is returned\n
                   stop	daemon is stopped\n
-                """
-            ),
+                """),
         )
 
         parsers["version"] = parsers["main"].add_argument(
@@ -2786,8 +2736,7 @@ def prepare_env():
     random_mark = random_hex(16)
 
     # aux vars for env loader
-    aux_vars = dedent(
-        f"""
+    aux_vars = dedent(f"""
         # vars for plugins
         __SELF_NAME__={shlex.quote(BIN_NAME)}
         __WM_ID__={shlex.quote(CompGlobals.id)}
@@ -2802,8 +2751,7 @@ def prepare_env():
         __RANDOM_MARK__={random_mark}
         # context marker for profile scripting
         IN_UWSM_ENV_PRELOADER=true
-        """
-    )
+        """)
     aux_vars_file = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True),
         BIN_NAME,
@@ -4766,16 +4714,12 @@ def main():
                         )
                         sys.exit(1)
                     elif Args.parsed.gst_warn_seconds >= 0 and not NoStdOutFlag.nowarn:
-                        print_warning(
-                            dedent(
-                                """
+                        print_warning(dedent("""
                                 System has not reached graphical.target.
                                 It might be a good idea to check default system target or screen for this
                                 with a condition, i.e. via "uwsm check may-start".
                                 Will continue in 5 seconds...
-                                """
-                            )
-                        )
+                                """))
                         time.sleep(5)
 
             except Exception as caught_exception:
@@ -4809,18 +4753,14 @@ def main():
         try:
             fill_comp_globals()
 
-            print_normal(
-                dedent(
-                    f"""
+            print_normal(dedent(f"""
                     Selected compositor ID: {CompGlobals.id}
                               Command Line: {shlex.join(CompGlobals.cmdline)}
                           Plugin/binary ID: {CompGlobals.bin_id}
                      Initial Desktop Names: {':'.join(CompGlobals.desktop_names)}
                                       Name: {CompGlobals.name}
                                Description: {CompGlobals.description}
-                    """
-                )
-            )
+                    """))
 
             if is_active(verbose_active=True):
                 print_error(
