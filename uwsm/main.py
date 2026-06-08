@@ -211,8 +211,9 @@ class MainArg:
         # Desktop entry
         elif arg.endswith(".desktop") or ".desktop:" in arg:
             # separate action
-            if ":" in arg:
-                self.entry_id, entry_action = arg.split(":", maxsplit=1)
+            if ".desktop:" in arg:
+                self.entry_id, entry_action = arg.split(".desktop:", maxsplit=1)
+                self.entry_id = self.entry_id + ".desktop"
                 if entry_action:
                     if not Val.action_id.search(entry_action):
                         raise ValueError(
@@ -3399,7 +3400,7 @@ def app(
 
             entry = entries[0]
 
-        unit_properties.append(f"SourcePath={entry.filename}")
+        unit_properties.append(f"SourcePath={os.path.abspath(entry.filename)}")
 
         # request terminal
         if entry.getTerminal():
@@ -3509,10 +3510,11 @@ def app(
             print_debug("set app_name from DESKTOP_ENTRY_ID", app_name)
 
         if os.environ.get("DESKTOP_ENTRY_PATH", default=""):
-            unit_properties.append(f"SourcePath={os.environ.get('DESKTOP_ENTRY_PATH')}")
+            source_path = os.path.abspath(os.environ.get("DESKTOP_ENTRY_PATH"))
+            unit_properties.append(f"SourcePath={source_path}")
             print_debug(
                 "set SourcePath property from DESKTOP_ENTRY_PATH",
-                os.environ.get("DESKTOP_ENTRY_PATH"),
+                source_path,
             )
 
         # get localized entry name for description if no override
