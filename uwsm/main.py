@@ -240,7 +240,10 @@ class MainArg:
 
             # validate id if not given as path
             if not Val.entry_id.search(self.entry_id):
-                if self.path is None:
+                if self.path is None and os.path.isfile(self.entry_id):
+                    # entry id is ivnalid, but points to existing file in PWD, make a path
+                    self.path = f"./{self.entry_id}"
+                elif self.path is None:
                     raise ValueError(f'Invalid Desktop Entry ID "{self.entry_id}"')
                 print_warning(f'Invalid Desktop Entry ID "{self.entry_id}"', notify=1)
 
