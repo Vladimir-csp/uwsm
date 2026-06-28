@@ -102,6 +102,7 @@ class Terminal:
     neg_cache: dict = {}
     opts: List[str] = []
     print_opts: List[str] = []
+    default_execargs: dict = {}
 
 
 class UnitsState:
@@ -3125,6 +3126,7 @@ def find_terminal_entry():
     terminal_entries = []
     excluded_terminal_entries = []
     unexcluded_terminal_entries = []
+    valid_id_start = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_")
 
     ## read configs, compose preferred terminal entry list
     # iterate config dirs and xdg-terminal-exec dirs in system part of data dirs
@@ -3150,14 +3152,32 @@ def find_terminal_entry():
                     for line in [line.strip() for line in terminal_list.readlines()]:
                         if not line or line.startswith("#"):
                             continue
-                        if line.startswith("-"):
+                        if line.startswith("-") and ".desktop" in line:
                             fbcontrol = -1
                             line = line[1:]
-                        elif line.startswith("+"):
+                        elif line.startswith("+") and ".desktop" in line:
                             fbcontrol = 1
                             line = line[1:]
-                        else:
+                        elif line[0] in valid_id_start and ".desktop" in line:
                             fbcontrol = 0
+                        elif (
+                            line.startswith("/execarg_default:") and ".desktop:" in line
+                        ):
+                            # get non-standard /execarg_default directive
+                            # no fancy validation here, just split and set
+                            line = line.removeprefix("/execarg_default:")
+                            entry, arg = line.split(".desktop:", maxsplit=1)
+                            entry = entry + ".desktop"
+                            if entry not in Terminal.default_execargs:
+                                print_debug(
+                                    f"adding default exec arg for {entry}: {arg}"
+                                )
+                                Terminal.default_execargs[entry] = arg
+                            continue
+                        else:
+                            # drop unknown directives
+                            print_debug("discarded config line", line)
+                            continue
                         # be relaxed about line parsing
                         # only valid entry.desktop[:action] lines are of interest
                         try:
@@ -3508,6 +3528,8 @@ def app(
             terminal_execarg = Terminal.entry.get("ExecArg")
         elif Terminal.entry.hasKey("X-ExecArg"):
             terminal_execarg = Terminal.entry.get("X-ExecArg")
+        elif Terminal.entry_id in Terminal.default_execargs:
+            terminal_execarg = Terminal.default_execargs[Terminal.entry_id]
         else:
             terminal_execarg = "-e"
         terminal_execarg = (
