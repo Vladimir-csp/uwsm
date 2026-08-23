@@ -547,7 +547,7 @@ Systemd
 [documentation](https://systemd.io/DESKTOP_ENVIRONMENTS/#pre-defined-systemd-units)
 recommends launching apps as their own units (scopes or services). `app.slice`
 would be the default destination, `background.slice` and `session.slice` are
-available for low-priority non-interactive tasks and high-prioirity
+available for low-priority non-interactive tasks and high-priority
 responsiveness-aware tasks respectively, (see `man systemd.special`)
 
 `uwsm` provides a convenient way of handling this: special nested slices that
