@@ -3391,14 +3391,10 @@ def app(
 
         # get localized entry name for description if no override
         if not unit_description:
-            unit_description = " - ".join(
-                n
-                for n in (
-                    entry_expand_str(entry.getName()),
-                    entry_expand_str(entry.getGenericName()),
-                )
-                if n
-            )
+            unit_description = entry_expand_str(entry.getName())
+            unit_description_append = entry_expand_str(entry.getGenericName())
+            if unit_description_append and unit_description_append != unit_description:
+                unit_description = unit_description + " - " + unit_description_append
 
         # generate command and args according to entry
         cmd, cmd_args = gen_entry_args(
