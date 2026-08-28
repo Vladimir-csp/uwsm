@@ -98,7 +98,7 @@ be used for distro level defaults.
 | 
 :  _True_ or *1* to inhibit stdout messages from "*uwsm start*". *2* to also
    inhibit warnings.
-|  *DEBUG*
+|  *UWSM_DEBUG*, *DEBUG*
 :  (int or boolean value)
 | 
 :  _True_ or positive number to dump debug info to stderr.

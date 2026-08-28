@@ -33,9 +33,9 @@ def str2bool_plus(string: str, numeric: bool = False):
 
 
 class DebugFlag:
-    "Checks for DEBUG env value and holds 'debug' boolean, 'warning' string"
+    "Checks for UWSM_DEBUG, DEBUG env values and holds 'debug' boolean, 'warning' string"
 
-    debug_raw = os.getenv("DEBUG", "0")
+    debug_raw = os.getenv("UWSM_DEBUG", os.getenv("DEBUG", "0"))
     warning = None
     try:
         debug = str2bool_plus(debug_raw)
