@@ -1846,10 +1846,8 @@ class Args:
             choices=("run", "home"),
             help=f"Generated unit/drop-in files destination (default: %(default)s, {'was' if unit_rung_preset else 'can be'} preset by UWSM_UNIT_RUNG env var).",
         )
-        # TODO: remove _NO_ in future release
         tweaks_preset = False
         t_raw = os.getenv("UWSM_TWEAKS", None)
-        nt_raw = os.getenv("UWSM_NO_TWEAKS", None)
         if t_raw is not None:
             try:
                 tweaks_default = str2bool_plus(t_raw)
@@ -1859,22 +1857,9 @@ class Args:
                     f'Expected boolean value from UWSM_TWEAKS, got "{t_raw}" ignored, set to True.'
                 )
                 tweaks_default = True
-        elif nt_raw is not None:
-            try:
-                tweaks_default = not str2bool_plus(nt_raw)
-                tweaks_preset = True
-            except ValueError:
-                print_warning(
-                    f'Expected boolean value from UWSM_NO_TWEAKS, got "{nt_raw}" ignored, set to False.'
-                )
-                tweaks_default = True
         else:
             tweaks_default = True
-        if nt_raw is not None:
-            print_warning(
-                "UWSM_NO_TWEAKS is deprecated and being replaced by UWSM_TWEAKS."
-            )
-        del t_raw, nt_raw
+        del t_raw
         parsers["start_tw"] = parsers["start"].add_mutually_exclusive_group()
         parsers["start_tw"].add_argument(
             "-t",
