@@ -149,6 +149,8 @@ class Varnames:
         "XDG_SESSION_PATH",
         "XDG_VTNR",
     }
+    always_unset = {"DISPLAY", "WAYLAND_DISPLAY"} | session_specific
+
     always_export = {
         "PATH",
         "XDG_CURRENT_DESKTOP",
@@ -168,7 +170,6 @@ class Varnames:
         "TERM_SESSION_TYPE",
         "NOTIFY_SOCKET",
     } | session_specific
-    always_unset = {"DISPLAY", "WAYLAND_DISPLAY"} | session_specific
     always_cleanup = {
         "DISPLAY",
         "LANG",
@@ -288,6 +289,30 @@ class MainArg:
         if self.executable and not os.access(self.path, os.X_OK):
             raise PermissionError(f'Path "{self.path}" is not executable!')
         print_debug(f"Path {self.path} OK")
+
+
+def update_varnames_sets(env: dict = None):
+    """
+    Modifies Varnames.{always,never}_{export,cleanup} sets according to UWSM_*_VARNAMES vars:
+    Space-separated lists, plain or '+'-prefixed names are added, '-'-prefixed are removed.
+    """
+
+    if env is None:
+        env = os.environ
+
+    for mod_set_name in ("always_export", "never_export", "always_cleanup", "never_cleanup"):
+
+        v_raw = env.get(f"UWSM_{mod_set_name.upper()}_VARNAMES", "").split()
+        v_add = filter_varnames({v.removeprefix("+") for v in v_raw if not v.startswith("-")})
+        v_rem = filter_varnames({v.removeprefix("-") for v in v_raw if v.startswith("-")})
+
+        mod_set = getattr(Varnames, mod_set_name)
+
+        print_debug(f"{mod_set_name} addition", v_add.difference(mod_set))
+        mod_set.update(v_add)
+
+        print_debug(f"{mod_set_name} subtraction", v_rem.intersection(mod_set_name))
+        mod_set.difference_update(v_rem)
 
 
 def entry_expand_str(value: str):
@@ -2321,6 +2346,8 @@ def append_to_cleanup_file(varnames, skip_always_cleanup=False, create=True):
         "env_cleanup.list",
     )
 
+    update_varnames_sets()
+
     varnames = set(filter_varnames(varnames)) - Varnames.never_cleanup
 
     # do not bother with useless cleanups
@@ -2835,6 +2862,9 @@ def prepare_env():
     print_debug("env_post", env_post)
     print_debug("set_env", set_env)
 
+    # update Varnames sets according to vars in env_post
+    update_varnames_sets(env_post)
+
     # add "always_export" vars from env_post to set_env
     for var in sorted(
         Varnames.always_export - Varnames.never_export - Varnames.always_unset
@@ -2882,6 +2912,8 @@ def cleanup_env():
     Takes saved environment from "${XDG_RUNTIME_DIR}/uwsm/env_pre" and restores it
     Removes found cleanup files
     """
+
+    update_varnames_sets()
 
     print_normal("Cleaning up...")
     bus_session = DbusInteractions("session")

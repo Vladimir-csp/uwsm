@@ -66,38 +66,65 @@ be used for distro level defaults.
 | 
 :  Which rung of systemd/user/ hierarchy to manage generated unit and drop-in
    files in: $XDG_RUNTIME_DIR or $XDG_CONFIG_HOME.
+|  
+:  
 |  *UWSM_TWEAKS*
 :  (boolean value)
 | 
 :  Set to _False_ to remove and not generate tweak drop-ins for other software.
+|  
+:  
 |  *UWSM_FINALIZE_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
 :  Additional variables for "*uwsm finalize*".
+|  
+:  
 |  *UWSM_WAIT_VARNAMES*
 :  (whitespace-separated names of env vars)
 | 
 :  Variables to wait for in activation environment before proceeding to
    graphical session (in addition to *WAYLAND_DISPLAY*).
+|  
+:  
 |  *UWSM_WAIT_VARNAMES_TIMEOUT*
 :  (int value)
 | 
 :  Seconds to wait for variables to appear in activation environment.
    Essentially, startup timeout (default: 10).
+|  
+:  
 |  *UWSM_WAIT_VARNAMES_SETTLETIME*
 :  (float value)
 | 
 :  Seconds to pause after all expected vars found in activation environment
    (default: 0.2).
+|  
+:  
+|  *UWSM_ALWAYS_EXPORT_VARNAMES*,
+   *UWSM_NEVER_EXPORT_VARNAMES*,
+   *UWSM_ALWAYS_CLEANUP_VARNAMES*,
+   *UWSM_NEVER_CLEANUP_VARNAMES*
+:  (whitespace-separated names of env vars)
+| 
+:  Modify sets of variable names UWSM uses to filter export and cleanup.
+   Plain or *+*-prefixed names are added, *-*-prefixed names are removed.
+   "never" lists always win.
+|  
+:  
 |  *UWSM_APP_UNIT_TYPE*
 :  (*scope*|*service*)
 | 
 :  Default unit type for launching apps (default: *scope*).
+|  
+:  
 |  *UWSM_SILENT_START*
 :  (int or boolean value)
 | 
 :  _True_ or *1* to inhibit stdout messages from "*uwsm start*". *2* to also
    inhibit warnings.
+|  
+:  
 |  *UWSM_DEBUG*, *DEBUG*
 :  (int or boolean value)
 | 
