@@ -300,19 +300,32 @@ def update_varnames_sets(env: dict = None):
     if env is None:
         env = os.environ
 
-    for mod_set_name in ("always_export", "never_export", "always_cleanup", "never_cleanup"):
+    for mod_set_name in (
+        "always_export",
+        "never_export",
+        "always_cleanup",
+        "never_cleanup",
+    ):
 
         v_raw = env.get(f"UWSM_{mod_set_name.upper()}_VARNAMES", "").split()
-        v_add = filter_varnames({v.removeprefix("+") for v in v_raw if not v.startswith("-")})
-        v_rem = filter_varnames({v.removeprefix("-") for v in v_raw if v.startswith("-")})
+        v_add = filter_varnames(
+            {v.removeprefix("+") for v in v_raw if not v.startswith("-")}
+        )
+        v_rem = filter_varnames(
+            {v.removeprefix("-") for v in v_raw if v.startswith("-")}
+        )
 
         mod_set = getattr(Varnames, mod_set_name)
 
-        print_debug(f"{mod_set_name} addition", v_add.difference(mod_set))
-        mod_set.update(v_add)
+        delta = ", ".join(sorted(v_add.difference(mod_set)))
+        if delta:
+            print_normal(f"Adding to {mod_set_name} set: {delta}")
+            mod_set.update(v_add)
 
-        print_debug(f"{mod_set_name} subtraction", v_rem.intersection(mod_set_name))
-        mod_set.difference_update(v_rem)
+        delta = ", ".join(sorted(v_rem.intersection(mod_set)))
+        if delta:
+            print_normal(f"Removing from {mod_set_name} set: {delta}")
+            mod_set.difference_update(v_rem)
 
 
 def entry_expand_str(value: str):
