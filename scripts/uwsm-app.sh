@@ -99,7 +99,7 @@ pipekiller &
 KILLER_PID=$!
 
 # trap to errexit on SIGPIPE
-trap 'error "Timed out waiting for pipes!" 141' PIPE
+trap 'trap - PIPE; error "Timed out waiting for pipes!" 141' PIPE
 
 # restart server if pipes are missing or not pipes
 if [ ! -p "$PIPE_IN" ] || [ ! -p "$PIPE_OUT" ]; then
@@ -115,7 +115,7 @@ else
 fi
 
 # update message for errexit on SIGPIPE
-trap 'error "Timed out trying to write to ${PIPE_IN}!" 141' PIPE
+trap 'trap - PIPE; error "Timed out trying to write to ${PIPE_IN}!" 141' PIPE
 
 # prepend arguments if launched as a terminal
 case "${0##*/}" in
@@ -173,7 +173,7 @@ else
 fi
 
 # update message
-trap 'error "Timed out trying to read from ${PIPE_OUT}!" 141' PIPE
+trap 'trap - PIPE; error "Timed out trying to read from ${PIPE_OUT}!" 141' PIPE
 
 # read from output pipe
 CMDLINE=
