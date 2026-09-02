@@ -26,6 +26,7 @@ import textwrap
 import time
 import signal
 import stat
+import errno
 from typing import List, Callable
 from urllib import parse as urlparse
 from select import select
@@ -3858,8 +3859,20 @@ def app_daemon():
         "Takes original args_in (list), and final args_out (str), writes to output fifo"
         print_normal(f"received: {shlex.join(args_in)}\nsent: {args_out}")
         fifo_out_path = create_fifo("uwsm-app-daemon-out")
-        with open(fifo_out_path, "w", encoding="UTF-8") as fifo_out:
-            fifo_out.write(f"{args_out}\n")
+        try:
+            fd = open_fifo_write(fifo_out_path)
+        except TimeoutError:
+            print_warning(
+                f"Timed out waiting for client to read {fifo_out_path}, dropping reply"
+            )
+            return
+        with os.fdopen(fd, "w", encoding="UTF-8") as fifo_out:
+            try:
+                fifo_out.write(f"{args_out}\n")
+            except BrokenPipeError:
+                print_warning(
+                    f"Client closed {fifo_out_path} before reply was written"
+                )
 
     while True:
         # create both pipes right away and make sure they always exist
@@ -3961,6 +3974,30 @@ def app_daemon():
                 args_in, f"error {shlex.quote('Error: ' + str(caught_exception))} 1"
             )
             continue
+
+
+# Matches TIMEOUT in scripts/uwsm-app.sh
+APP_DAEMON_FIFO_TIMEOUT = 10
+
+
+def open_fifo_write(path, timeout=APP_DAEMON_FIFO_TIMEOUT):
+    """Open FIFO for writing, waiting up to timeout seconds for a reader.
+
+    Blocking open() waits forever. A client that dies after writing IN
+    would leave the daemon stuck here and block all later launches.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_NONBLOCK)
+            os.set_blocking(fd, True)
+            return fd
+        except OSError as err:
+            if err.errno != errno.ENXIO:
+                raise
+            if time.monotonic() >= deadline:
+                raise TimeoutError(path)
+            time.sleep(0.05)
 
 
 def create_fifo(path):
