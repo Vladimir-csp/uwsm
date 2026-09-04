@@ -185,6 +185,9 @@ release_lock
 
 # kill timeout killer process and its sleep process
 kill "$KILLER_PID"
+# Reap it before exec/exit, otherwise the launched long-running app
+# inherits it as a zombie child.
+wait "$KILLER_PID" 2>/dev/null || true
 
 case "$CMDLINE" in
 pong)
