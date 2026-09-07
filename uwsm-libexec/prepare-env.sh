@@ -22,14 +22,22 @@ lowercase() {
 }
 
 source_file() {
-	# sources file if exists, with messaging
+	# sources file if exists, readable, and has proper syntax, with messaging
 	if [ -f "${1}" ]; then
-		if [ -r "${1}" ]; then
-			printf '%s\n' "Loading environment from \"${1}\"."
-			. "${1}"
-		else
-			"Environment file ${1} is not readable" >&2
+		if [ ! -r "${1}" ]; then
+			printf '%s\n' "Environment file ${1} is not readable" >&2
+			return
 		fi
+		if [ ! -f "${1}" ]; then
+			printf '%s\n' "Not a file: ${1}" >&2
+			return
+		fi
+		if ! sh -n "${1}"; then
+			# sh would print to stderr
+			return
+		fi
+		printf '%s\n' "Sourcing environment file \"${1}\"."
+		. "${1}"
 	fi
 }
 
@@ -37,11 +45,12 @@ source_dir() {
 	# applies source_file to every file in dir
 	if [ -d "${1}" ]; then
 		# process in standard order and visibility given by ls
-		while IFS='' read -r __env_file__; do
-			source_file "${1}/${__env_file__}"
-		done <<- EOF
-			$(ls "${1}")
-		EOF
+		for __env_file__ in "${1}/"*; do
+			case "${__env_file__}" in
+			*.bak | *~ | *.disabled | *.example | *.sample | *.broken) continue ;;
+			esac
+			source_file "${__env_file__}"
+		done
 		unset __env_file__
 	fi
 }
