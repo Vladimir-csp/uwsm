@@ -3834,8 +3834,8 @@ def app_daemon():
     signal.signal(signal.SIGTERM, trap_stopper)
     signal.signal(signal.SIGHUP, trap_stopper)
 
-    # argparse exit_on_error is faulty https://github.com/python/cpython/issues/103498
-    # crudely work around it
+    # argparse exit_on_error was faulty https://github.com/python/cpython/issues/103498
+    # crudely work around it. TODO: remove this in 2027-ish
     error_flag_path = os.path.join(
         BaseDirectory.get_runtime_dir(strict=True), "uwsm", "app_daemon_error"
     )
@@ -3919,6 +3919,9 @@ def app_daemon():
                 args_in,
                 f"error {shlex.quote('Invalid arguments: ' + str(caught_exception))} 2",
             )
+            # remove error flag file since we are still alive
+            print_debug(f"removing {error_flag_path}")
+            os.remove(error_flag_path)
             continue
 
         # remove error flag file since args are parsed successfully
