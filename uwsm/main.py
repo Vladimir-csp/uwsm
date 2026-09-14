@@ -2283,7 +2283,7 @@ class Args:
             help="Waits for WAYLAND_DISPLAY and optionally other vars (for wayland-session-waitenv.service, wayland-session@.target).",
             description=(
                 "Exits successfully when WAYLAND_DISPLAY (and optionally other vars) appear in systemd user manager activation environment. "
-                "Optinal vars are read from command line and whitespace-separated UWSM_WAIT_VARNAMES var."
+                "Optional vars are read from command line and whitespace-separated UWSM_WAIT_VARNAMES var."
             ),
             epilog="Used in wayland-session-waitenv.service to delay activation of wayland-session@.target, graphical-session.target.",
         )
@@ -4922,7 +4922,7 @@ def main():
             # Upon receiving SIGTERM, SIGHUP, SIGINT a stopping systemctl will be
             # forked to stop compositor will be cleanly.
             # Both systemctl invocations are started with protection from
-            # SIGTERM/SIGHUP barrage occuring on login session termination.
+            # SIGTERM/SIGHUP barrage occurring on login session termination.
 
             sh_path = which(SH_BIN)
             if not sh_path:

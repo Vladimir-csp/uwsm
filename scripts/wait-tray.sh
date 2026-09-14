@@ -45,7 +45,7 @@ wait_tray() {
 }
 
 check_tray() {
-	# return 0 if any of tray serivces is active
+	# return 0 if any of tray services is active
 	for service in $TRAY_NAMES; do
 		if busctl --user status "$service" --no-pager --no-legend > /dev/null 2>&1; then
 			return 0
