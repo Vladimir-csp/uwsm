@@ -52,7 +52,8 @@ In XDG config hierarchy:
 :  Environment (shell) to be sourced for the graphical session. Sourced from
    directories of increasing priority, in each directory common file is sourced
    first, then suffixed files in the order of items listed in
-   *XDG_CURRENT_SESSION* var (lowercased).
+   *XDG_CURRENT_SESSION* var (lowercased). Fragments in *.d/* subdirs are ignored
+   if suffixed with: *.bak*, *~*, *.disabled*, *.example*, *.sample*, *.broken*.
 |  *uwsm/default-id*
 :  Stores Desktop Entry ID of default compositor.
 

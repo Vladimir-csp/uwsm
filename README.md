@@ -122,7 +122,7 @@ Idempotently (well, best-effort-idempotently) handles environment.
   so those vars are emptied instead (!))
 - Lists of variables for export and cleanup are determined algorithmically by:
   - comparing environment before and after preparation procedures
-  - boolean operations with predefined lists
+  - boolean operations with predefined lists (can be configured)
   - manually exported vars by `uwsm finalize` action
 
 </details>
@@ -652,6 +652,18 @@ shell was already sourced).
 Otherwise, environment preloader will source POSIX shell (`/bin/sh`) profile by
 itself (`/etc/profile`, `${HOME}/.profile`). Other shells compatibility with
 these files may vary.
+
+Environment preloader only exports difference between initial activation
+environment state and resulting environment provided by preparation process.
+Exported variables are marked for cleanup. There are internal sets of
+"always"/"never" overrides, which can be amended by listing names of variables
+(whitespace-separated) as `VAR`, `+VAR` (to add) or `-VAR` (to
+remove) in variables:
+
+- `UWSM_ALWAYS_EXPORT_VARNAMES`
+- `UWSM_NEVER_EXPORT_VARNAMES`
+- `UWSM_ALWAYS_CLEANUP_VARNAMES`
+- `UWSM_NEVER_CLEANUP_VARNAMES`
 
 ## Operation
 
