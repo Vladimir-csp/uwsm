@@ -3855,9 +3855,7 @@ def app_daemon():
             try:
                 fifo_out.write(f"{args_out}\n")
             except BrokenPipeError:
-                print_warning(
-                    f"Client closed {fifo_out_path} before reply was written"
-                )
+                print_warning(f"Client closed {fifo_out_path} before reply was written")
 
     while True:
         # create both pipes right away and make sure they always exist
