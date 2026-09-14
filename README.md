@@ -176,7 +176,7 @@ Provides better control of XDG autostart apps.
 Tries best to shutdown session cleanly via a net of dependencies between units.
 </summary>
 
-Basic provided unit files (can be transiet if project built with
+Basic provided unit files (can be transient if project built with
 `static-units=disabled`):
 
 ```
@@ -196,7 +196,7 @@ wayland-session-waitenv.service
 ```
 
 Managed generated files (in `${XDG_RUNTIME_DIR}/systemd/user` or
-`${XDG_CONFIG_HOME}/systemd/user` depending on `-U` opton):
+`${XDG_CONFIG_HOME}/systemd/user` depending on `-U` option):
 
 Compositor metadata customization drop-ins:
 
@@ -494,7 +494,7 @@ Some examples:
 
 | Launcher     | Via     | What                                                                                                                                                                             | Metadata |
 | --------     | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| vicinae      | gui     | Vicinae settings > Extentions > Applications > Launch Prefix=`uwsm app --`                                                                                                       | no       |
+| vicinae      | gui     | Vicinae settings > Extensions > Applications > Launch Prefix=`uwsm app --`                                                                                                       | no       |
 | fuzzel       | command | `fuzzel "--launch-prefix=uwsm app --"`                                                                                                                                           | env      |
 | fuzzel       | config  | `launch-prefix=uwsm app --`                                                                                                                                                      | env      |
 | albert       | env var | `ALBERT_APPLICATIONS_COMMAND_PREFIX`: `uwsm;app;--`                                                                                                                              | no       |
@@ -968,7 +968,7 @@ prepare environment. The code sources POSIX shell profile (if environment from
 Environment state at the end of shell code is given back to the main process.
 `uwsm` is also smart enough to find login session associated with current TTY
 and set `$XDG_SESSION_ID`, `$XDG_VTNR` if it was not found in the context saved
-by `uwsm start`. In this case the presense of `wayland-session-bindpid@.service`
+by `uwsm start`. In this case the presence of `wayland-session-bindpid@.service`
 being active is also checked, and an instance pointing to login session leader
 is launched automatically if none found, as the last best effort at binding to
 login session lifetime.
