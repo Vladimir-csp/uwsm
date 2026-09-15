@@ -4,7 +4,7 @@
 # or prints back UWSM_VERSION env if set,
 # or prints a fallback version if not in git repo.
 
-VERSION=0.26.7+git.1
+VERSION=0.27.0
 
 set -e
 
