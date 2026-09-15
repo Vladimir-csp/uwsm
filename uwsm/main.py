@@ -3962,11 +3962,7 @@ def app_daemon():
             continue
 
 
-# Matches TIMEOUT in scripts/uwsm-app.sh
-APP_DAEMON_FIFO_TIMEOUT = 10
-
-
-def open_fifo_write(path, timeout=APP_DAEMON_FIFO_TIMEOUT):
+def open_fifo_write(path, timeout=10):
     """Open FIFO for writing, waiting up to timeout seconds for a reader.
 
     Blocking open() waits forever. A client that dies after writing IN
@@ -3982,7 +3978,7 @@ def open_fifo_write(path, timeout=APP_DAEMON_FIFO_TIMEOUT):
             if err.errno != errno.ENXIO:
                 raise
             if time.monotonic() >= deadline:
-                raise TimeoutError(path)
+                raise TimeoutError(path) from err
             time.sleep(0.05)
 
 
