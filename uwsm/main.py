@@ -4452,7 +4452,7 @@ def stop_wm():
 
     print_normal(f"Found running compositor {units[0]}.")
 
-    job = bus_session.stop_unit(units[0], "fail")
+    job = bus_session.stop_unit(units[0], "replace")
 
     # wait for job to be done
     while True:
