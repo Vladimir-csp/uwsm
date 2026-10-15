@@ -1833,7 +1833,7 @@ class Args:
             unit_rung_preset = True
         elif unit_rung_default is not None:
             print_warning(
-                f'invalid UWSM_UNIT_RUNG value "{unit_rung_default}" ignored, set to "run".'
+                f'invalid UWSM_UNIT_RUNG value "{unit_rung_default}" ignored and set to "run".'
             )
             unit_rung_default = "run"
         else:
@@ -1855,7 +1855,7 @@ class Args:
                 tweaks_preset = True
             except ValueError:
                 print_warning(
-                    f'Expected boolean value from UWSM_TWEAKS, got "{t_raw}" ignored, set to True.'
+                    f'Expected boolean value from UWSM_TWEAKS, got "{t_raw}", ignored and set to True.'
                 )
                 tweaks_default = True
         else:
@@ -2084,7 +2084,7 @@ class Args:
             app_unit_type_preset = True
         elif app_unit_type_default is not None:
             print_warning(
-                f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored, set to "scope".'
+                f'invalid UWSM_APP_UNIT_TYPE value "{app_unit_type_default}" ignored and set to "scope".'
             )
             app_unit_type_default = "scope"
         else:
@@ -4452,7 +4452,13 @@ def stop_wm():
 
     print_normal(f"Found running compositor {units[0]}.")
 
-    job = bus_session.stop_unit(units[0], "replace")
+    stop_job_mode = os.environ.get("UWSM_STOP_JOB_MODE", "replace")
+    if stop_job_mode not in ["fail", "replace", "replace-irreversibly"]:
+        print_warning(
+            f'Expected fail|replace|replace-irreversibly from UWSM_STOP_JOB_MODE, got "{stop_job_mode}", ignored and set to "replace".'
+        )
+        stop_job_mode = "replace"
+    job = bus_session.stop_unit(units[0], stop_job_mode)
 
     # wait for job to be done
     while True:

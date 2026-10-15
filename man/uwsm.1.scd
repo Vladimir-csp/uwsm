@@ -126,6 +126,12 @@ be used for distro level defaults.
    inhibit warnings.
 |  
 :  
+|  *UWSM_STOP_JOB_MODE*
+:  (*fail*|*replace*|*replace-irreversibly*)
+| 
+:  Set job mode when "*uwsm stop*" brings down units, defaults to *replace*.
+|  
+:  
 |  *UWSM_DEBUG*, *DEBUG*
 :  (int or boolean value)
 | 
@@ -224,6 +230,10 @@ activation environments by unsetting all variables that were marked for removal
 during startup and finalization stages.
 
 Do not use compositor's native exit mechanism or kill its process directly.
+
+If complex dependencies result in a destructive transaction, try
+"*replace-irreversibly*" job mode (see _Environment vars_ section and
+*systemctl*(1))
 
 # SUBCOMMANDS
 

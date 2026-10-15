@@ -879,6 +879,11 @@ Do not use compositor's native exit mechanism or kill its process directly, this
 will yank compositor from under all the clients and interfere with ordered unit
 deactivation sequence.
 
+If complex dependencies or restarting services result in a destructive
+transaction, add `--job-mode=replace-irreversibly` argument to systemctl stop
+call, or set `UWSM_STOP_JOB_MODE=replace-irreversibly` environment var for
+`uwsm stop`.
+
 ## Longer story, tour under the hood
 
 Some extended examples and partial recreation of some behaviors via excessive
