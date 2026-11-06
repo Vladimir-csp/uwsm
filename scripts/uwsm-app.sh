@@ -111,7 +111,12 @@ if [ ! -p "$PIPE_IN" ] || [ ! -p "$PIPE_OUT" ]; then
 else
 	# start server in background
 	# this does nothing if it is already started
-	systemctl --user start "$DAEMON_UNIT" &
+	# double-fork to prevent systemctl from becoming a zombie
+	# if it takes too long to exit
+	(
+		systemctl --user start "$DAEMON_UNIT" &
+		exit
+	)
 fi
 
 # update message for errexit on SIGPIPE
