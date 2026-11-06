@@ -112,6 +112,7 @@ else
 	# start server in background
 	# this does nothing if it is already started
 	systemctl --user start "$DAEMON_UNIT" &
+	SYSTEMCTL_PID=$!
 fi
 
 # update message for errexit on SIGPIPE
@@ -188,6 +189,9 @@ kill "$KILLER_PID"
 # Reap it before exec/exit, otherwise the launched long-running app
 # inherits it as a zombie child.
 wait "$KILLER_PID" 2>/dev/null || true
+# Reap the backgrounded systemctl too, otherwise the launched long-running app
+# inherits it as a zombie child for as long as it runs.
+wait "${SYSTEMCTL_PID-}" 2>/dev/null || true
 
 case "$CMDLINE" in
 pong)
