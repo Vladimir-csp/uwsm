@@ -15,16 +15,7 @@ printf_err() {
 
 start() {
 	printf_out '%s\n' "Starting ${UNIT}..."
-	case "${TERM_SESSION_TYPE:-}" in
-	kms)
-		printf_out '%s\n' "Requesting kmscon background."
-		# shellcheck disable=SC1003
-		case "${TERM_PROGRAM:-}" in
-		tmux) printf '%b' '\033Ptmux;\033\033]setBackground\a\033\\' >&3 ;;
-		*) printf '\033]setBackground\a' >&3 ;;
-		esac
-		;;
-	esac
+	kmscon_background
 	{
 		trap '' TERM HUP INT
 		exec systemctl --user start --wait "${UNIT}"
@@ -44,21 +35,68 @@ stop() {
 finish() {
 	wait "${STARTPID}"
 	RC=$?
-	case "${TERM_SESSION_TYPE:-}" in
-	kms)
-		printf_out '%s\n' "Requesting kmscon foreground."
-		# shellcheck disable=SC1003
-		case "${TERM_PROGRAM:-}" in
-		tmux) printf '%b' '\033Ptmux;\033\033]setForeground\a\033\\' >&3 ;;
-		*) printf '\033]setForeground\a' >&3 ;;
-		esac
-		;;
-	esac
+	kmscon_foreground
 	case "$RC" in
 	0) printf_out '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
 	*) printf_err '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
 	esac
 	exit "$RC"
+}
+
+kmscon_background() {
+	# do nothing if we are not on kmscon in DRM mode
+	[ "${TERM_SESSION_TYPE:-}" = "kms" ] || return 0
+	# the rest is mostly from kmscon-launch-gui
+	# Store current tty number
+	kms_tty=
+	active_tty_file=/sys/class/tty/tty0/active
+	if [ -f "$active_tty_file" ]; then
+		read -r kms_tty < "$active_tty_file"
+	fi
+	printf_out '%s\n' "Requesting kmscon background."
+	# shellcheck disable=SC1003
+	case "${TERM_PROGRAM:-}" in
+	tmux) printf '%b' '\033Ptmux;\033\033]setBackground\a\033\\' >&3 ;;
+	*) printf '\033]setBackground\a' >&3 ;;
+	esac
+	{ sleep 0.2 || /bin/sleep 0.2 || sleep 1; } 2> /dev/null
+}
+
+kmscon_foreground() {
+	# do nothing if we are not on kmscon in DRM mode
+	[ "${TERM_SESSION_TYPE:-}" = "kms" ] || return 0
+	# wait for session type to become tty again, 5 second limit
+	ts=$(date +%s)
+	while [ "$(loginctl show-session '' --property=Type --value)" != "tty" ]; do
+		ts2=$(date +%s)
+		if [ "$((ts2 - ts))" -ge "5" ]; then
+			printf_err '%s\n' 'Session did not return to "tty" type'
+			break
+		fi
+		{ sleep 0.2 || /bin/sleep 0.2 || sleep 1; } 2> /dev/null
+	done
+	# the rest is mostly from kmscon-launch-gui
+	# If the current tty has changed, wait until the user switches back.
+	if [ -n "${kms_tty:-}" ]; then
+		read -r check_kms_tty < "$active_tty_file"
+		while [ "${check_kms_tty}" != "${kms_tty}" ]; do
+			printf_out '%s\n' "Waiting for ${kms_tty} to return to foreground..."
+			# use inotifywait if available, fallback to plain sleep
+			if command -v inotifywait > /dev/null; then
+				inotifywait -qqe modify "$active_tty_file"
+			else
+				sleep 1
+			fi
+			read -r check_kms_tty < "$active_tty_file"
+		done
+	fi
+	printf_out '%s\n' "Requesting kmscon foreground."
+	# shellcheck disable=SC1003
+	case "${TERM_PROGRAM:-}" in
+	tmux) printf '%b' '\033Ptmux;\033\033]setForeground\a\033\\' >&3 ;;
+	*) printf '\033]setForeground\a' >&3 ;;
+	esac
+	{ sleep 0.2 || /bin/sleep 0.2 || sleep 1; } 2> /dev/null
 }
 
 if [ "$#" != "1" ]; then
