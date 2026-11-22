@@ -44,8 +44,11 @@ finish() {
 }
 
 kmscon_background() {
-	# do nothing if we are not on kmscon in DRM mode
-	[ "${TERM_SESSION_TYPE:-}" = "kms" ] || return 0
+	# do nothing if we are not on kmscon
+	case "${TERM_SESSION_TYPE:-}" in
+	kms | fb) true ;;
+	*) return 0 ;;
+	esac
 	# the rest is mostly from kmscon-launch-gui
 	# Store current tty number
 	kms_tty=
@@ -63,8 +66,11 @@ kmscon_background() {
 }
 
 kmscon_foreground() {
-	# do nothing if we are not on kmscon in DRM mode
-	[ "${TERM_SESSION_TYPE:-}" = "kms" ] || return 0
+	# do nothing if we are not on kmscon
+	case "${TERM_SESSION_TYPE:-}" in
+	kms | fb) true ;;
+	*) return 0 ;;
+	esac
 	# wait for session type to become tty again, 5 second limit
 	ts=$(date +%s)
 	while [ "$(loginctl show-session '' --property=Type --value)" != "tty" ]; do
