@@ -2,15 +2,15 @@
 
 # shellcheck disable=SC2059
 printf_out() {
-	printf "$@"
+	printf "$@" 2>/dev/null
 	[ -z "$UWSM_SH_NO_STDOUT" ] || return
-	printf "$@" >&3
+	printf "$@" >&3 2>/dev/null
 }
 
 # shellcheck disable=SC2059
 printf_err() {
-	printf "$@" >&2
-	printf "$@" >&4
+	printf "$@" >&2 2>/dev/null
+	printf "$@" >&4 2>/dev/null
 }
 
 start() {
