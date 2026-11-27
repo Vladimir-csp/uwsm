@@ -21,7 +21,7 @@ start() {
 		exec systemctl --user start --wait "${UNIT}"
 	} &
 	STARTPID=$!
-	printf_out '%s\n' "Forked systemctl, PID ${STARTPID}."
+	printf_out '%s\n' "Forked PID ${STARTPID}: systemctl --user start --wait ${UNIT}"
 }
 
 # shellcheck disable=SC2329
@@ -41,8 +41,8 @@ finish() {
 	# request kmscon foreground on normal exit
 	[ -n "$SIGNAL" ] || kmscon_foreground
 	case "$RC" in
-	0) printf_out '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
-	*) printf_err '%s\n' "PID ${STARTPID} exited with RC ${RC}" ;;
+	0) printf_out '%s\n' "PID ${STARTPID} exited with RC ${RC}: systemctl --user start --wait ${UNIT}" ;;
+	*) printf_err '%s\n' "PID ${STARTPID} exited with RC ${RC}: systemctl --user start --wait ${UNIT}" ;;
 	esac
 	exit "$RC"
 }
